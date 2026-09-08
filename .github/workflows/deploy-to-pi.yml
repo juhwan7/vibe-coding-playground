@@ -58,8 +58,8 @@ jobs:
 
           git checkout --detach "$VERIFIED_SHA"
 
-          # Build only the service whose files changed. This keeps the low-power Pi
-          # from rebuilding both containers after every small UI or backend edit.
+          # Build only the service whose files changed. Docker's layer cache keeps
+          # unchanged frontend/backend stages cheap even when compose itself changed.
           if [ -n "$(echo "$SERVICES" | xargs)" ]; then
             UNIQUE_SERVICES="$(echo "$SERVICES" | xargs -n1 | sort -u | xargs)"
             echo "Rebuilding services: $UNIQUE_SERVICES"
@@ -67,11 +67,36 @@ jobs:
           else
             echo "No application image changes detected; reusing existing images"
           fi
-          docker compose up -d --remove-orphans
 
-          # A 200 response alone is not enough: wait until the Toss market snapshot
-          # has actually finished its first collection so the browser does not open
-          # against an empty dashboard immediately after deployment.
+          if ! docker compose up -d --remove-orphans; then
+            echo "docker compose up failed"
+            docker compose ps || true
+            docker compose logs --tail=200 backend frontend || true
+            exit 1
+          fi
+
+          # Phase 1: the HTTP API itself must answer. This is deliberately separate
+          # from market readiness so a slow Toss collection cannot make Docker startup
+          # look like a crashed web server.
+          API_LIVE=0
+          for attempt in $(seq 1 45); do
+            if curl --fail --silent --show-error http://localhost:8080/api/health >/tmp/k-market-health.json; then
+              cat /tmp/k-market-health.json
+              API_LIVE=1
+              break
+            fi
+            sleep 2
+          done
+
+          if [ "$API_LIVE" -ne 1 ]; then
+            echo "Backend HTTP API never became reachable"
+            docker compose ps || true
+            docker compose logs --tail=220 backend frontend || true
+            exit 1
+          fi
+
+          # Phase 2: wait for the first real market snapshot before declaring the
+          # deployment complete. The browser may already render its loading state.
           for attempt in $(seq 1 90); do
             if curl --fail --silent --show-error http://localhost:8080/api/health >/tmp/k-market-health.json; then
               cat /tmp/k-market-health.json
@@ -84,7 +109,7 @@ jobs:
             sleep 2
           done
 
-          echo "Health check failed: web server responded but market data never became ready"
-          docker compose ps
-          docker compose logs --tail=180 backend frontend
+          echo "HTTP API is live but market data did not become ready in time"
+          docker compose ps || true
+          docker compose logs --tail=220 backend frontend || true
           exit 1
