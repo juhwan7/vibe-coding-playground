@@ -40,6 +40,7 @@ export default function FeatureNews() {
     const controller = new AbortController()
     let newsTimer: number | undefined
     let snapshotTimer: number | undefined
+    let startupTimer: number | undefined
 
     const loadNews = async () => {
       try {
@@ -51,7 +52,7 @@ export default function FeatureNews() {
       } catch (error) {
         if ((error as Error).name === 'AbortError') return
       } finally {
-        newsTimer = window.setTimeout(loadNews, 180000)
+        if (!controller.signal.aborted) newsTimer = window.setTimeout(loadNews, 180000)
       }
     }
 
@@ -62,16 +63,17 @@ export default function FeatureNews() {
       } catch (error) {
         if ((error as Error).name === 'AbortError') return
       } finally {
-        snapshotTimer = window.setTimeout(loadSnapshot, 60000)
+        if (!controller.signal.aborted) snapshotTimer = window.setTimeout(loadSnapshot, 60000)
       }
     }
 
     void loadNews()
-    window.setTimeout(() => { void loadSnapshot() }, 250)
+    startupTimer = window.setTimeout(() => { void loadSnapshot() }, 250)
     return () => {
       controller.abort()
       if (newsTimer) window.clearTimeout(newsTimer)
       if (snapshotTimer) window.clearTimeout(snapshotTimer)
+      if (startupTimer) window.clearTimeout(startupTimer)
     }
   }, [])
 
