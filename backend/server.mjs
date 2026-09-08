@@ -34,7 +34,8 @@ const featureNews = new FeatureNewsService({ refreshMs: Number(process.env.FEATU
 let historyTimer = null
 let preparedTimer = null
 let preparedHistoryTimer = null
-let newsTimer = null
+let newsStartTimer = null
+let newsRefreshTimer = null
 let krThemeStartTimer = null
 let usThemeStartTimer = null
 let manualRefreshPromise = null
@@ -244,10 +245,10 @@ server.listen(port, '0.0.0.0', () => {
       }, Number(process.env.US_THEME_START_DELAY_MS || 8000))
       usThemeStartTimer.unref?.()
 
-      newsTimer = setTimeout(() => {
+      newsStartTimer = setTimeout(() => {
         void refreshPreparedNews().catch((error) => console.error('[market-backend] news initialization failed', error))
       }, Number(process.env.FEATURE_NEWS_START_DELAY_MS || 12000))
-      newsTimer.unref?.()
+      newsStartTimer.unref?.()
     })
     .catch((error) => console.error('[market-backend] KR initialization failed', error))
 
@@ -261,9 +262,8 @@ server.listen(port, '0.0.0.0', () => {
   preparedHistoryTimer.unref?.()
 
   const newsRefreshMs = Math.max(180000, Number(process.env.FEATURE_NEWS_REFRESH_MS || 180000))
-  const recurringNewsTimer = setInterval(() => refreshPreparedNews().catch(() => {}), newsRefreshMs)
-  recurringNewsTimer.unref?.()
-  newsTimer = newsTimer || recurringNewsTimer
+  newsRefreshTimer = setInterval(() => refreshPreparedNews().catch(() => {}), newsRefreshMs)
+  newsRefreshTimer.unref?.()
 })
 
 const shutdown = () => {
@@ -273,7 +273,8 @@ const shutdown = () => {
   if (historyTimer) clearInterval(historyTimer)
   if (preparedTimer) clearInterval(preparedTimer)
   if (preparedHistoryTimer) clearInterval(preparedHistoryTimer)
-  if (newsTimer) clearTimeout(newsTimer)
+  if (newsStartTimer) clearTimeout(newsStartTimer)
+  if (newsRefreshTimer) clearInterval(newsRefreshTimer)
   if (krThemeStartTimer) clearTimeout(krThemeStartTimer)
   if (usThemeStartTimer) clearTimeout(usThemeStartTimer)
   server.close(() => process.exit(0))
