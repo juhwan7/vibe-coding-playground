@@ -1,7 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import MarketDashboard from './MarketDashboard'
 import './liveMarket.css'
+import './theme.css'
 export { moneyFlowScore } from './marketData'
+
+type Theme = 'light' | 'dark'
 
 type QuizItem = {
   stock: string
@@ -39,5 +42,21 @@ function StockQuiz() {
 
 export default function App() {
   const [page, setPage] = useState<'flow' | 'quiz'>('flow')
-  return <div className="app-root"><nav className="global-nav"><button className="brand" onClick={() => setPage('flow')}>K-MARKET FLOW</button><div><button className={page === 'flow' ? 'active' : ''} onClick={() => setPage('flow')}>머니플로우</button><button className={page === 'quiz' ? 'active' : ''} onClick={() => setPage('quiz')}>종목 퀴즈</button></div><span className="live-dot">● MARKET LAB</span></nav>{page === 'flow' ? <MarketDashboard /> : <StockQuiz />}</div>
+  const [theme, setTheme] = useState<Theme>(() => {
+    try {
+      return localStorage.getItem('k-market-theme') === 'dark' ? 'dark' : 'light'
+    } catch {
+      return 'light'
+    }
+  })
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme
+    document.documentElement.style.colorScheme = theme
+    try { localStorage.setItem('k-market-theme', theme) } catch { /* storage can be unavailable */ }
+  }, [theme])
+
+  const toggleTheme = () => setTheme((current) => current === 'light' ? 'dark' : 'light')
+
+  return <div className="app-root"><nav className="global-nav"><button className="brand" onClick={() => setPage('flow')}>K-MARKET FLOW</button><div><button className={page === 'flow' ? 'active' : ''} onClick={() => setPage('flow')}>머니플로우</button><button className={page === 'quiz' ? 'active' : ''} onClick={() => setPage('quiz')}>종목 퀴즈</button></div><aside className="nav-actions"><span className="live-dot">● MARKET LAB</span><button className="theme-toggle" type="button" onClick={toggleTheme} aria-label={theme === 'light' ? '다크 테마로 전환' : '화이트 테마로 전환'} title={theme === 'light' ? '다크 테마' : '화이트 테마'}><span className="theme-icon" aria-hidden="true">☀</span><span className="toggle-track"><span className="toggle-knob" /></span><span className="theme-icon moon" aria-hidden="true">☾</span></button></aside></nav>{page === 'flow' ? <MarketDashboard /> : <StockQuiz />}</div>
 }
