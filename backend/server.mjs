@@ -122,8 +122,9 @@ function send(response, status, payload) {
 server.listen(port, '0.0.0.0', () => {
   console.log(`[market-backend] listening on :${port}`)
 
-  // Keep the HTTP server responsive immediately. KR and US market collectors
-  // initialize independently so one market cannot block the other dashboard.
+  // Only market collectors are started here. Quiz-universe and feature-news
+  // sources are loaded lazily when their endpoints are opened so optional
+  // external services can never delay or destabilize backend liveness.
   void collector.start()
     .then(() => history.maybeAppend(collector.snapshot).catch(() => {}))
     .then(() => themeFlow.start())
@@ -131,10 +132,6 @@ server.listen(port, '0.0.0.0', () => {
 
   void usThemeFlow.start()
     .catch((error) => console.error('[market-backend] US initialization failed', error))
-
-  // Warm lightweight caches without delaying the market API.
-  void quizUniverse.get().catch((error) => console.error('[market-backend] quiz universe warmup failed', error))
-  void featureNews.get().catch((error) => console.error('[market-backend] feature news warmup failed', error))
 
   historyTimer = setInterval(() => history.maybeAppend(collector.snapshot).catch(() => {}), 60000)
   historyTimer.unref?.()
