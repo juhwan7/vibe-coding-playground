@@ -3,6 +3,8 @@ import { MarketCollector } from './marketCollector.mjs'
 import { SnapshotStore } from './snapshotStore.mjs'
 import { ThemeFlowService } from './themeFlowService.mjs'
 import { UsThemeFlowService } from './usThemeFlowService.mjs'
+import { QuizUniverseService } from './quizUniverseService.mjs'
+import { FeatureNewsService } from './featureNewsService.mjs'
 import { TossClient } from './tossClient.mjs'
 
 const port = Number(process.env.PORT || 8787)
@@ -23,6 +25,8 @@ const usThemeFlow = new UsThemeFlowService(client, {
   refreshMs: Number(process.env.US_THEME_FLOW_REFRESH_MS || 60000),
   cachePath: process.env.US_THEME_CANDLE_CACHE_PATH || '/app/data/us-theme-candles.json',
 })
+const quizUniverse = new QuizUniverseService({ cachePath: process.env.QUIZ_UNIVERSE_CACHE_PATH || '/app/data/quiz-universe.json' })
+const featureNews = new FeatureNewsService({ refreshMs: 60000 })
 let historyTimer = null
 
 function fundingStatus() {
@@ -62,6 +66,8 @@ const server = http.createServer(async (request, response) => {
       historyEnabled: true,
       themeHistoryPersisted: true,
       usThemeHistoryPersisted: true,
+      quizUniverseCached: true,
+      featureNewsEnabled: true,
       refreshSeconds: 60,
     })
   }
@@ -77,6 +83,16 @@ const server = http.createServer(async (request, response) => {
 
   if (url.pathname === '/api/market/us-theme-flow') {
     return send(response, usThemeFlow.payload?.ok ? 200 : 503, usThemeFlow.payload)
+  }
+
+  if (url.pathname === '/api/market/feature-news') {
+    const payload = await featureNews.get()
+    return send(response, payload.ok ? 200 : 503, payload)
+  }
+
+  if (url.pathname === '/api/quiz/universe') {
+    const payload = await quizUniverse.get()
+    return send(response, payload.ok ? 200 : 503, payload)
   }
 
   if (url.pathname === '/api/market/history') {
@@ -115,6 +131,10 @@ server.listen(port, '0.0.0.0', () => {
 
   void usThemeFlow.start()
     .catch((error) => console.error('[market-backend] US initialization failed', error))
+
+  // Warm lightweight caches without delaying the market API.
+  void quizUniverse.get().catch((error) => console.error('[market-backend] quiz universe warmup failed', error))
+  void featureNews.get().catch((error) => console.error('[market-backend] feature news warmup failed', error))
 
   historyTimer = setInterval(() => history.maybeAppend(collector.snapshot).catch(() => {}), 60000)
   historyTimer.unref?.()
