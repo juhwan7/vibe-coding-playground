@@ -132,6 +132,31 @@ jobs:
             exit 1
           fi
 
+          # Catch the exact browser failure where a missing hashed module path falls
+          # through to index.html and nginx responds with text/html.
+          curl --fail --silent --show-error http://localhost:8080/ >/tmp/runtime-index.html
+          module_src="$(grep -oE 'src="[^"]+\.js"' /tmp/runtime-index.html | head -n 1 | cut -d'"' -f2)"
+          test -n "$module_src" || { echo 'No JavaScript module found in deployed index.html'; cat /tmp/runtime-index.html; exit 1; }
+          module_path="${module_src#./}"
+          module_path="/${module_path#/}"
+          curl --fail --silent --show-error -D /tmp/runtime-module.headers \
+            "http://localhost:8080${module_path}" -o /tmp/runtime-module.js
+          content_type="$(awk 'BEGIN{IGNORECASE=1} /^Content-Type:/ {gsub("\r",""); print $2; exit}' /tmp/runtime-module.headers)"
+          echo "Deployed runtime module: $module_path"
+          echo "Deployed module Content-Type: ${content_type:-missing}"
+          case "$content_type" in
+            application/javascript|text/javascript) ;;
+            *)
+              echo 'Deployed module did not return a JavaScript MIME type'
+              head -c 200 /tmp/runtime-module.js || true
+              exit 1
+              ;;
+          esac
+          if head -c 50 /tmp/runtime-module.js | grep -qi '<!doctype\|<html'; then
+            echo 'Deployed module path returned HTML instead of JavaScript'
+            exit 1
+          fi
+
           # Secondary tunnel recovery layer. The dedicated tunnel-status workflow is
           # the normal monitor, but if it has already recorded an unreachable Quick
           # Tunnel, a successful app deployment is a safe opportunity to rotate the
