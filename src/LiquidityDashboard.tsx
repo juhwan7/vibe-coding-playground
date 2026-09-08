@@ -107,6 +107,7 @@ export default function LiquidityDashboard() {
   useEffect(() => {
     const controller = new AbortController()
     let timer: number | undefined
+    let marketReady = false
     const load = async () => {
       try {
         const [snapshotResponse, historyResponse, fundingResponse] = await Promise.all([
@@ -114,7 +115,11 @@ export default function LiquidityDashboard() {
           fetch('/api/market/history?days=8&resolution=1', { signal: controller.signal, headers: { Accept: 'application/json' } }).catch(() => null),
           fetch('/api/market/funding', { signal: controller.signal, headers: { Accept: 'application/json' } }).catch(() => null),
         ])
-        if (snapshotResponse?.ok) setSnapshot(await snapshotResponse.json() as Snapshot)
+        if (snapshotResponse?.ok) {
+          const payload = await snapshotResponse.json() as Snapshot
+          setSnapshot(payload)
+          marketReady = Boolean(payload.ok)
+        }
         if (historyResponse?.ok) {
           const payload = await historyResponse.json() as HistoryResponse
           setHistory(payload.samples ?? [])
@@ -124,7 +129,7 @@ export default function LiquidityDashboard() {
       } catch (error) {
         if ((error as Error).name === 'AbortError') return
       } finally {
-        timer = window.setTimeout(load, 60000)
+        timer = window.setTimeout(load, marketReady ? 60000 : 5000)
       }
     }
     void load()
