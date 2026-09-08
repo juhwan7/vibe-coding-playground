@@ -3,7 +3,7 @@ import LiquidityDashboard from './LiquidityDashboard'
 import MarketWorkspace from './MarketWorkspace'
 import UsMarketWorkspace from './UsMarketWorkspace'
 import UsDataNotice from './UsDataNotice'
-import StockQuiz from './StockQuiz'
+import StockQuiz, { warmQuizUniverse } from './StockQuiz'
 import FeatureNews from './FeatureNews'
 import './liveMarket.css'
 import './theme.css'
@@ -34,6 +34,10 @@ export default function App() {
     document.documentElement.style.colorScheme = theme
     try { localStorage.setItem('k-market-theme-v3', theme) } catch { /* storage can be unavailable */ }
   }, [theme])
+
+  useEffect(() => {
+    void warmQuizUniverse()
+  }, [])
 
   const toggleTheme = () => setTheme((current) => current === 'light' ? 'dark' : 'light')
 
