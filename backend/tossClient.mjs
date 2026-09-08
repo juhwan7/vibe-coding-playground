@@ -29,12 +29,22 @@ export class RequestScheduler {
     this.starts = []
     this.queues = { critical: [], normal: [], background: [] }
     this.timer = null
+    this.pumpQueued = false
   }
 
   enqueue(task, { priority = 'normal' } = {}) {
     const normalized = PRIORITY_ORDER.includes(priority) ? priority : 'normal'
     return new Promise((resolve, reject) => {
       this.queues[normalized].push({ task, resolve, reject })
+      this.queuePump()
+    })
+  }
+
+  queuePump() {
+    if (this.pumpQueued) return
+    this.pumpQueued = true
+    queueMicrotask(() => {
+      this.pumpQueued = false
       this.pump()
     })
   }
@@ -82,7 +92,7 @@ export class RequestScheduler {
         .then(job.resolve, job.reject)
         .finally(() => {
           this.active -= 1
-          this.pump()
+          this.queuePump()
         })
     }
 
