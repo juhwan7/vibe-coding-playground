@@ -21,6 +21,12 @@ function displayTime(value?: string | null) {
   try { return new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(value)) } catch { return '-' }
 }
 
+function timestamp(value?: string | null) {
+  if (!value) return 0
+  const parsed = Date.parse(value)
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
 function matchTheme(title: string) {
   const found = THEME_WORDS.find(([, words]) => words.some((word) => title.toUpperCase().includes(word.toUpperCase())))
   return found?.[0] ?? null
@@ -62,7 +68,7 @@ export default function FeatureNews() {
     const aMatched = a.matches.length ? 1 : 0
     const bMatched = b.matches.length ? 1 : 0
     if (aMatched !== bMatched) return bMatched - aMatched
-    return Date.parse(b.publishedAt ?? 0) - Date.parse(a.publishedAt ?? 0)
+    return timestamp(b.publishedAt) - timestamp(a.publishedAt)
   }).slice(0, 12), [news.items, topStocks])
 
   return <section className="feature-news-shell" data-testid="feature-news">
