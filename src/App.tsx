@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
+import LiquidityDashboard from './LiquidityDashboard'
 import MarketWorkspace from './MarketWorkspace'
 import './liveMarket.css'
 import './theme.css'
 export { moneyFlowScore } from './marketData'
 
 type Theme = 'light' | 'dark'
+type Page = 'liquidity' | 'flow' | 'quiz'
 
 type QuizItem = {
   stock: string
@@ -41,7 +43,7 @@ function StockQuiz() {
 }
 
 export default function App() {
-  const [page, setPage] = useState<'flow' | 'quiz'>('flow')
+  const [page, setPage] = useState<Page>('liquidity')
   const [theme, setTheme] = useState<Theme>(() => {
     try {
       const saved = localStorage.getItem('k-market-theme-v2')
@@ -59,5 +61,20 @@ export default function App() {
 
   const toggleTheme = () => setTheme((current) => current === 'light' ? 'dark' : 'light')
 
-  return <div className="app-root"><nav className="global-nav"><button className="brand" onClick={() => setPage('flow')}>K-MARKET FLOW</button><div><button className={page === 'flow' ? 'active' : ''} onClick={() => setPage('flow')}>테마 흐름</button><button className={page === 'quiz' ? 'active' : ''} onClick={() => setPage('quiz')}>종목 퀴즈</button></div><aside className="nav-actions"><span className="live-dot">● MARKET LAB</span><button className="theme-toggle" type="button" onClick={toggleTheme} aria-label={theme === 'light' ? '다크 테마로 전환' : '화이트 테마로 전환'} title={theme === 'light' ? '다크 테마' : '화이트 테마'}><span className="theme-icon" aria-hidden="true">☀</span><span className="toggle-track"><span className="toggle-knob" /></span><span className="theme-icon moon" aria-hidden="true">☾</span></button></aside></nav>{page === 'flow' ? <MarketWorkspace /> : <StockQuiz />}</div>
+  let content = <LiquidityDashboard />
+  if (page === 'flow') content = <MarketWorkspace />
+  if (page === 'quiz') content = <StockQuiz />
+
+  return <div className="app-root">
+    <nav className="global-nav">
+      <button className="brand" onClick={() => setPage('liquidity')}>K-MARKET FLOW</button>
+      <div>
+        <button className={page === 'liquidity' ? 'active' : ''} onClick={() => setPage('liquidity')}>증시 자금</button>
+        <button className={page === 'flow' ? 'active' : ''} onClick={() => setPage('flow')}>테마 흐름</button>
+        <button className={page === 'quiz' ? 'active' : ''} onClick={() => setPage('quiz')}>종목 퀴즈</button>
+      </div>
+      <aside className="nav-actions"><span className="live-dot">● MARKET LAB</span><button className="theme-toggle" type="button" onClick={toggleTheme} aria-label={theme === 'light' ? '다크 테마로 전환' : '화이트 테마로 전환'} title={theme === 'light' ? '다크 테마' : '화이트 테마'}><span className="theme-icon" aria-hidden="true">☀</span><span className="toggle-track"><span className="toggle-knob" /></span><span className="theme-icon moon" aria-hidden="true">☾</span></button></aside>
+    </nav>
+    {content}
+  </div>
 }
