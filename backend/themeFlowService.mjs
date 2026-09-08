@@ -189,7 +189,7 @@ export class ThemeFlowService {
       const next = payload?.result?.nextBefore ?? null
       if (!next || next === before) break
       before = next
-      await sleep(60)
+      await sleep(100)
     }
     this.candleCache.set(symbol, merged)
   }
@@ -213,9 +213,9 @@ export class ThemeFlowService {
       const groups = buildThemeGroups(topRankings, { limit: 50, minMembers: 3, maxThemes: 7 })
       const chartSymbols = [...new Set(groups.flatMap((group) => group.members.map((member) => member.symbol).filter(Boolean)))]
 
-      await mapLimit(chartSymbols, 4, async (symbol) => {
+      await mapLimit(chartSymbols, 3, async (symbol) => {
         await this.refreshSymbol(symbol).catch(() => {})
-        await sleep(80)
+        await sleep(120)
       })
 
       const themes = groups.map((group) => {
