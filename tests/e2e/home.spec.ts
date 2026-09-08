@@ -11,9 +11,9 @@ test('domestic liquidity dashboard is the first page', async ({ page }, testInfo
   await page.screenshot({ path: testInfo.outputPath('liquidity-dashboard.png'), fullPage: true })
 })
 
-test('theme flow board and top100 rail render', async ({ page }, testInfo) => {
+test('domestic theme flow board and top100 rail render', async ({ page }, testInfo) => {
   await page.goto('/')
-  await page.getByRole('button', { name: '테마 흐름' }).click()
+  await page.getByRole('button', { name: '국내 테마 흐름' }).click()
   await expect(page.getByTestId('theme-strength-board')).toBeVisible()
   await expect(page.getByRole('heading', { name: /테마 강도 비교/ })).toBeVisible()
   await expect(page.getByText('TOP50 내 3종+')).toBeVisible()
@@ -27,6 +27,17 @@ test('theme flow board and top100 rail render', async ({ page }, testInfo) => {
   await expect(page.getByRole('heading', { name: '한국 시장 전체 Heatmap' })).toBeVisible()
 
   await page.screenshot({ path: testInfo.outputPath('theme-flow-dashboard.png'), fullPage: true })
+})
+
+test('US theme flow page is available', async ({ page }, testInfo) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: '미국 테마 흐름' }).click()
+  await expect(page.getByTestId('us-theme-strength-board')).toBeVisible()
+  await expect(page.getByRole('heading', { name: /미국 테마 강도 비교/ })).toBeVisible()
+  await expect(page.getByText('미국 TOP50 내 3종+')).toBeVisible()
+  await expect(page.getByTestId('us-top100-ranking')).toBeVisible()
+  await expect(page.getByRole('heading', { name: '미국 거래대금 TOP100' })).toBeVisible()
+  await page.screenshot({ path: testInfo.outputPath('us-theme-flow-dashboard.png'), fullPage: true })
 })
 
 test('stock quiz remains available from top navigation', async ({ page }) => {
@@ -45,7 +56,10 @@ test('pages have no horizontal overflow', async ({ page }) => {
   await page.goto('/')
   let sizes = await page.evaluate(() => ({ scrollWidth: document.documentElement.scrollWidth, clientWidth: document.documentElement.clientWidth }))
   expect(sizes.scrollWidth).toBeLessThanOrEqual(sizes.clientWidth + 1)
-  await page.getByRole('button', { name: '테마 흐름' }).click()
+  await page.getByRole('button', { name: '국내 테마 흐름' }).click()
+  sizes = await page.evaluate(() => ({ scrollWidth: document.documentElement.scrollWidth, clientWidth: document.documentElement.clientWidth }))
+  expect(sizes.scrollWidth).toBeLessThanOrEqual(sizes.clientWidth + 1)
+  await page.getByRole('button', { name: '미국 테마 흐름' }).click()
   sizes = await page.evaluate(() => ({ scrollWidth: document.documentElement.scrollWidth, clientWidth: document.documentElement.clientWidth }))
   expect(sizes.scrollWidth).toBeLessThanOrEqual(sizes.clientWidth + 1)
 })
