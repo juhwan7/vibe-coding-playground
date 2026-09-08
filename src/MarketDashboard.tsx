@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { MarketSnapshot, mergeLiveSectors, moneyFlowScore } from './marketData'
+import { mergeLiveSectors, moneyFlowScore } from './marketData'
+import type { MarketSnapshot } from './marketData'
 
 function signed(value: number, suffix = '') { return `${value > 0 ? '+' : ''}${value.toFixed(2)}${suffix}` }
 function fmtShares(value: number) {
@@ -92,7 +93,7 @@ export default function MarketDashboard() {
         <div><span>KOSPI</span><strong>{kospi?.lastPrice?.toLocaleString() ?? '3,287.41'}</strong><em className={(kospi?.changeRate ?? 1.14) >= 0 ? 'up' : 'down'}>{signed(kospi?.changeRate ?? 1.14, '%')}</em></div>
         <div><span>KOSDAQ</span><strong>{kosdaq?.lastPrice?.toLocaleString() ?? '921.08'}</strong><em className={(kosdaq?.changeRate ?? 0.62) >= 0 ? 'up' : 'down'}>{signed(kosdaq?.changeRate ?? 0.62, '%')}</em></div>
         <div><span>상승 / 하락</span><strong>{totalAdvancers} / {totalDecliners}</strong><em>현재 추적 종목 기준</em></div>
-        <div><span>통합 거래대금</span><strong>{fmtAmountTrillion(totalAmount)}</strong><em>KRX + NXT 시장 전체 우선</em></div>
+        <div><span>{live ? '통합 거래대금 TOP100' : '통합 거래대금'}</span><strong>{fmtAmountTrillion(totalAmount)}</strong><em>{live ? '토스 시장 전체 거래대금 랭킹 합계' : '데모 추적 섹터 합계'}</em></div>
         <div><span>외국인 / 기관</span><strong className={totalForeign >= 0 ? 'up' : 'down'}>{live ? fmtShares(totalForeign) : `${totalForeign > 0 ? '+' : ''}${totalForeign.toLocaleString()}억`}</strong><em className={totalInstitution >= 0 ? 'up' : 'down'}>{live ? fmtShares(totalInstitution) : `${totalInstitution > 0 ? '+' : ''}${totalInstitution.toLocaleString()}억`}</em></div>
       </section>
 
