@@ -25,6 +25,7 @@ services:
     restart: unless-stopped
 
   frontend:
+    image: vibe-coding-playground-frontend:latest
     build:
       context: .
       dockerfile: Dockerfile.frontend
