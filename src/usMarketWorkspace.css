@@ -1,0 +1,61 @@
+.us-theme-workspace,
+.us-theme-workspace .workspace-main,
+.us-theme-workspace .theme-strength-board,
+.us-theme-workspace .theme-strength-row,
+.us-theme-workspace .theme-chart-wrap,
+.us-theme-workspace .top100-rail {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.us-theme-workspace .market-bottom-strip {
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+}
+
+.us-theme-workspace .theme-board-head,
+.us-theme-workspace .theme-method-strip,
+.us-theme-workspace .theme-chart-title,
+.us-theme-workspace .theme-chart-metrics,
+.us-theme-workspace .market-mini-panel,
+.us-theme-workspace .top100-stock {
+  min-width: 0;
+}
+
+.us-theme-workspace .theme-board-head small,
+.us-theme-workspace .theme-method-strip span,
+.us-theme-workspace .market-mini-panel span,
+.us-theme-workspace .market-mini-panel b {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 1050px) {
+  .us-theme-workspace .market-bottom-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 680px) {
+  .us-theme-workspace .market-bottom-strip {
+    grid-template-columns: 1fr !important;
+  }
+
+  .us-theme-workspace .theme-chart-wrap {
+    overflow: hidden;
+  }
+
+  .us-theme-workspace .theme-chart-metrics,
+  .us-theme-workspace .theme-chart-metrics > span {
+    max-width: 100%;
+  }
+
+  .us-theme-workspace .top100-tabs button {
+    min-width: 0;
+    padding-inline: 6px;
+    font-size: 11px;
+    overflow-wrap: anywhere;
+  }
+
+  .us-theme-workspace .top100-head {
+    min-width: 0;
+  }
+}
