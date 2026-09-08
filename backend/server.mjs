@@ -10,14 +10,34 @@ const client = new TossClient({
   clientSecret: process.env.TOSS_CLIENT_SECRET,
 })
 const collector = new MarketCollector(client, {
-  fastMs: Number(process.env.POLL_MS || 5000),
+  fastMs: Number(process.env.POLL_MS || 60000),
   slowMs: Number(process.env.SLOW_POLL_MS || 60000),
 })
 const history = new SnapshotStore()
 const themeFlow = new ThemeFlowService(client, () => collector.snapshot, {
-  refreshMs: Number(process.env.THEME_FLOW_REFRESH_MS || 180000),
+  refreshMs: Number(process.env.THEME_FLOW_REFRESH_MS || 60000),
+  cachePath: process.env.THEME_CANDLE_CACHE_PATH || '/app/data/theme-candles.json',
 })
 let historyTimer = null
+
+function fundingStatus() {
+  const configured = Boolean(process.env.DATA_GO_KR_SERVICE_KEY)
+  return {
+    ok: false,
+    configured,
+    source: '금융위원회_금융투자협회종합통계정보',
+    sourceDataset: 'data.go.kr 15094809',
+    frequency: '일간/T+1',
+    investorDeposits: null,
+    cmaBalance: null,
+    creditBalance: null,
+    unsettledReceivables: null,
+    updatedAt: null,
+    note: configured
+      ? '공공데이터 서비스키는 설정되어 있으나 세부 자금 API 연결은 아직 준비 중입니다.'
+      : '공식 공공데이터 서비스키가 연결되기 전에는 주변자금 값을 임의로 표시하지 않습니다.',
+  }
+}
 
 const server = http.createServer(async (request, response) => {
   const url = new URL(request.url || '/', `http://${request.headers.host || 'localhost'}`)
@@ -33,6 +53,8 @@ const server = http.createServer(async (request, response) => {
       themeFlowError: themeFlow.payload?.error ?? null,
       updatedAt: collector.snapshot?.updatedAt ?? null,
       historyEnabled: true,
+      themeHistoryPersisted: true,
+      refreshSeconds: 60,
     })
   }
 
@@ -50,6 +72,10 @@ const server = http.createServer(async (request, response) => {
     const resolutionMinutes = Math.max(1, Math.min(30, Number(url.searchParams.get('resolution') || 5)))
     const payload = await history.read({ days, resolutionMinutes })
     return send(response, 200, payload)
+  }
+
+  if (url.pathname === '/api/market/funding') {
+    return send(response, 200, fundingStatus())
   }
 
   return send(response, 404, { error: 'not-found' })
@@ -70,7 +96,7 @@ server.listen(port, '0.0.0.0', async () => {
   await collector.start()
   await history.maybeAppend(collector.snapshot).catch(() => {})
   void themeFlow.start()
-  historyTimer = setInterval(() => history.maybeAppend(collector.snapshot).catch(() => {}), 5000)
+  historyTimer = setInterval(() => history.maybeAppend(collector.snapshot).catch(() => {}), 60000)
   historyTimer.unref?.()
 })
 
