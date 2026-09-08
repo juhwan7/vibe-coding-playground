@@ -46,10 +46,10 @@ jobs:
             echo "Changed files since previous deployment:"
             echo "$CHANGED"
 
-            if echo "$CHANGED" | grep -Eq '^(backend/|backend\.Dockerfile|docker-compose\.yml)'; then
+            if echo "$CHANGED" | grep -Eq '^(backend/|backend\.Dockerfile)'; then
               SERVICES="$SERVICES backend"
             fi
-            if echo "$CHANGED" | grep -Eq '^(src/|index\.html|Dockerfile\.frontend|docker/|vite\.config\.ts|package(-lock)?\.json|tsconfig.*\.json|docker-compose\.yml)'; then
+            if echo "$CHANGED" | grep -Eq '^(src/|index\.html|Dockerfile\.frontend|docker/|vite\.config\.ts|package(-lock)?\.json|tsconfig.*\.json)'; then
               SERVICES="$SERVICES frontend"
             fi
           else
@@ -58,8 +58,9 @@ jobs:
 
           git checkout --detach "$VERIFIED_SHA"
 
-          # Build only the service whose files changed. Docker's layer cache keeps
-          # unchanged frontend/backend stages cheap even when compose itself changed.
+          # Build only images whose application/build inputs changed.
+          # Compose-only configuration changes are applied by `docker compose up`
+          # without recompiling React on the low-power Pi.
           if [ -n "$(echo "$SERVICES" | xargs)" ]; then
             UNIQUE_SERVICES="$(echo "$SERVICES" | xargs -n1 | sort -u | xargs)"
             echo "Rebuilding services: $UNIQUE_SERVICES"
@@ -75,13 +76,10 @@ jobs:
             exit 1
           fi
 
-          # Phase 1: the HTTP API itself must answer. This is deliberately separate
-          # from market readiness so a slow Toss collection cannot make Docker startup
-          # look like a crashed web server.
+          # Phase 1: verify the public nginx -> backend path is reachable.
           API_LIVE=0
           for attempt in $(seq 1 45); do
             if curl --fail --silent --show-error http://localhost:8080/api/health >/tmp/k-market-health.json; then
-              cat /tmp/k-market-health.json
               API_LIVE=1
               break
             fi
@@ -95,21 +93,29 @@ jobs:
             exit 1
           fi
 
-          # Phase 2: wait for the first real market snapshot before declaring the
-          # deployment complete. The browser may already render its loading state.
+          # Phase 2: do not depend on a host Node.js install. The self-hosted Pi
+          # runner intentionally only needs bash/curl/docker, so parse the compact
+          # JSON response with grep and finish as soon as real market data is ready.
           for attempt in $(seq 1 90); do
             if curl --fail --silent --show-error http://localhost:8080/api/health >/tmp/k-market-health.json; then
-              cat /tmp/k-market-health.json
-              if node -e "const j=JSON.parse(require('fs').readFileSync('/tmp/k-market-health.json','utf8')); process.exit(j.marketReady ? 0 : 1)"; then
+              if grep -q '"marketReady":true' /tmp/k-market-health.json; then
+                cat /tmp/k-market-health.json
+                echo
                 echo "Market data is ready"
                 echo "Deployed verified commit: $VERIFIED_SHA"
                 exit 0
+              fi
+              if [ $((attempt % 10)) -eq 0 ]; then
+                echo "Waiting for market data (attempt $attempt/90)"
+                cat /tmp/k-market-health.json
+                echo
               fi
             fi
             sleep 2
           done
 
           echo "HTTP API is live but market data did not become ready in time"
+          cat /tmp/k-market-health.json 2>/dev/null || true
           docker compose ps || true
           docker compose logs --tail=220 backend frontend || true
           exit 1
