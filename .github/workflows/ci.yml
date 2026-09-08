@@ -53,6 +53,44 @@ jobs:
         run: npm run build
       - name: Validate runtime frontend image
         run: docker build -f Dockerfile.frontend.runtime -t market-flow-frontend-ci .
+      - name: Smoke test runtime module MIME
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run -d --rm --name market-flow-frontend-smoke -p 18080:80 market-flow-frontend-ci >/dev/null
+          trap 'docker rm -f market-flow-frontend-smoke >/dev/null 2>&1 || true' EXIT
+
+          for attempt in $(seq 1 20); do
+            if curl --fail --silent http://127.0.0.1:18080/ >/tmp/runtime-index.html; then
+              break
+            fi
+            sleep 0.25
+          done
+
+          module_src="$(grep -oE 'src="[^"]+\.js"' /tmp/runtime-index.html | head -n 1 | cut -d'"' -f2)"
+          test -n "$module_src" || { echo 'No JavaScript module found in built index.html'; cat /tmp/runtime-index.html; exit 1; }
+          module_path="${module_src#./}"
+          module_path="/${module_path#/}"
+
+          curl --fail --silent --show-error -D /tmp/runtime-module.headers \
+            "http://127.0.0.1:18080${module_path}" -o /tmp/runtime-module.js
+          content_type="$(awk 'BEGIN{IGNORECASE=1} /^Content-Type:/ {gsub("\r",""); print $2; exit}' /tmp/runtime-module.headers)"
+
+          echo "Runtime module: $module_path"
+          echo "Content-Type: ${content_type:-missing}"
+          case "$content_type" in
+            application/javascript|text/javascript) ;;
+            *)
+              echo 'Runtime module did not return JavaScript MIME type'
+              head -c 200 /tmp/runtime-module.js || true
+              exit 1
+              ;;
+          esac
+
+          if head -c 50 /tmp/runtime-module.js | grep -qi '<!doctype\|<html'; then
+            echo 'Runtime module path returned HTML instead of JavaScript'
+            exit 1
+          fi
       - name: Upload frontend deploy artifact
         uses: actions/upload-artifact@v4
         with:
