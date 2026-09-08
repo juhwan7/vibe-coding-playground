@@ -9,6 +9,9 @@ services:
       PORT: 8787
       POLL_MS: ${POLL_MS:-5000}
       SLOW_POLL_MS: ${SLOW_POLL_MS:-60000}
+      MARKET_HISTORY_PATH: /app/data/market-history.jsonl
+    volumes:
+      - market-history:/app/data
     restart: unless-stopped
 
   frontend:
@@ -21,3 +24,6 @@ services:
       backend:
         condition: service_healthy
     restart: unless-stopped
+
+volumes:
+  market-history:
