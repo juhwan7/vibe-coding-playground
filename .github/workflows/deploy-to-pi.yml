@@ -37,10 +37,37 @@ jobs:
           # Never overwrite the Pi-local .env/secrets. The repository is public.
           test -f .env || { echo "Missing $APP/.env; refusing deployment"; exit 1; }
 
+          PREVIOUS_SHA="$(git rev-parse HEAD 2>/dev/null || true)"
           git fetch --prune origin main
+
+          SERVICES=""
+          if [ -n "$PREVIOUS_SHA" ] && git cat-file -e "$PREVIOUS_SHA^{commit}" 2>/dev/null; then
+            CHANGED="$(git diff --name-only "$PREVIOUS_SHA" "$VERIFIED_SHA" || true)"
+            echo "Changed files since previous deployment:"
+            echo "$CHANGED"
+
+            if echo "$CHANGED" | grep -Eq '^(backend/|backend\.Dockerfile|docker-compose\.yml)'; then
+              SERVICES="$SERVICES backend"
+            fi
+            if echo "$CHANGED" | grep -Eq '^(src/|index\.html|Dockerfile\.frontend|docker/|vite\.config\.ts|package(-lock)?\.json|tsconfig.*\.json|docker-compose\.yml)'; then
+              SERVICES="$SERVICES frontend"
+            fi
+          else
+            SERVICES="backend frontend"
+          fi
+
           git checkout --detach "$VERIFIED_SHA"
 
-          docker compose up -d --build --remove-orphans
+          # Build only the service whose files changed. This keeps the low-power Pi
+          # from rebuilding both containers after every small UI or backend edit.
+          if [ -n "$(echo "$SERVICES" | xargs)" ]; then
+            UNIQUE_SERVICES="$(echo "$SERVICES" | xargs -n1 | sort -u | xargs)"
+            echo "Rebuilding services: $UNIQUE_SERVICES"
+            docker compose build $UNIQUE_SERVICES
+          else
+            echo "No application image changes detected; reusing existing images"
+          fi
+          docker compose up -d --remove-orphans
 
           # A 200 response alone is not enough: wait until the Toss market snapshot
           # has actually finished its first collection so the browser does not open
