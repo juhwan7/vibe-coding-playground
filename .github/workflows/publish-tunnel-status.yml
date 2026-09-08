@@ -58,7 +58,7 @@ jobs:
               printf 'user|active'
               return
             fi
-            printf 'system|${system_state:-inactive}'
+            printf 'system|%s' "${system_state:-inactive}"
           }
 
           collect_logs() {
