@@ -8,6 +8,7 @@ import FeatureNews from './FeatureNews'
 import './liveMarket.css'
 import './theme.css'
 import './usMarketWorkspace.css'
+import './refreshControl.css'
 export { moneyFlowScore } from './marketData'
 export { answerIsCorrect, buildQuizRound } from './StockQuiz'
 
