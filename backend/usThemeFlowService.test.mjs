@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { buildUsThemeGroups } from './usThemeCatalog.mjs'
-import { aggregateUsThemeSeries } from './usThemeFlowService.mjs'
+import { aggregateUsThemeSeries, loadUsRanking } from './usThemeFlowService.mjs'
 
 test('buildUsThemeGroups requires three US top50 members and sorts by turnover', () => {
   const rankings = [
@@ -48,4 +48,37 @@ test('aggregateUsThemeSeries normalizes members and averages them into 3-minute 
   assert.ok(Math.abs(points[0].value - 0) < 1e-9)
   assert.ok(Math.abs(points[1].value - 2) < 1e-9)
   assert.equal(points[1].tradingAmount, 2040)
+})
+
+test('loadUsRanking falls back from empty 1d market ranking to realtime market ranking', async () => {
+  const calls = []
+  const client = {
+    async request(path) {
+      calls.push(path)
+      if (path.includes('duration=1d')) return { result: { rankings: [], rankedAt: null } }
+      return { result: { rankings: [{ symbol: 'NVDA', tradingAmount: 100 }], rankedAt: '2026-09-09T00:00:00Z' } }
+    },
+  }
+  const result = await loadUsRanking(client)
+  assert.equal(result.source, 'market-realtime')
+  assert.equal(result.isMarketWide, true)
+  assert.equal(result.rankings.length, 1)
+  assert.equal(result.attempts.length, 2)
+  assert.equal(calls.length, 2)
+})
+
+test('loadUsRanking labels Toss-specific turnover as a non-market-wide final fallback', async () => {
+  const client = {
+    async request(path) {
+      if (path.includes('type=TOSS_SECURITIES_TRADING_AMOUNT')) {
+        return { result: { rankings: [{ symbol: 'TSLA', tradingAmount: 200 }], rankedAt: '2026-09-09T00:00:00Z' } }
+      }
+      return { result: { rankings: [], rankedAt: null } }
+    },
+  }
+  const result = await loadUsRanking(client)
+  assert.equal(result.source, 'toss-1d-fallback')
+  assert.equal(result.isMarketWide, false)
+  assert.equal(result.rankings[0].symbol, 'TSLA')
+  assert.equal(result.attempts.length, 3)
 })

@@ -34,6 +34,12 @@ export function filterStockRows(rows = []) {
     })
 }
 
+export function capIndexMembers(rows = [], expected) {
+  const limit = Number(expected)
+  if (!Number.isFinite(limit) || limit <= 0) return [...rows]
+  return rows.slice(0, Math.floor(limit))
+}
+
 async function latestBusinessDay() {
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit' })
     .format(new Date()).replaceAll('-', '')
@@ -45,7 +51,7 @@ async function latestBusinessDay() {
   return /^\d{8}$/.test(String(value)) ? String(value) : today
 }
 
-async function fetchIndexMembers(code, date) {
+async function fetchIndexMembers(code, date, expected) {
   const { indIdx, indIdx2 } = splitIndexCode(code)
   const body = new URLSearchParams({
     bld: 'dbms/MDC/STAT/standard/MDCSTAT00601',
@@ -64,7 +70,7 @@ async function fetchIndexMembers(code, date) {
   })
   if (!response.ok) throw new Error(`KRX 지수 구성종목 조회 실패 (${response.status})`)
   const payload = await response.json()
-  const rows = filterStockRows(payload?.output ?? payload?.block1 ?? [])
+  const rows = capIndexMembers(filterStockRows(payload?.output ?? payload?.block1 ?? []), expected)
   if (rows.length < 50) throw new Error(`${code} 구성종목 응답이 비정상적으로 적습니다 (${rows.length})`)
   return rows
 }
@@ -93,8 +99,8 @@ export class QuizUniverseService {
     try {
       const date = await latestBusinessDay()
       const [kospi200, kosdaq150] = await Promise.all([
-        fetchIndexMembers(INDEXES.kospi200.code, date),
-        fetchIndexMembers(INDEXES.kosdaq150.code, date),
+        fetchIndexMembers(INDEXES.kospi200.code, date, INDEXES.kospi200.expected),
+        fetchIndexMembers(INDEXES.kosdaq150.code, date, INDEXES.kosdaq150.expected),
       ])
       const payload = {
         ok: true,
@@ -102,6 +108,7 @@ export class QuizUniverseService {
         sourceDate: date,
         updatedAt: new Date().toISOString(),
         etfExcluded: true,
+        expectedCounts: { kospi200: INDEXES.kospi200.expected, kosdaq150: INDEXES.kosdaq150.expected },
         kospi200,
         kosdaq150,
         counts: { kospi200: kospi200.length, kosdaq150: kosdaq150.length },
@@ -112,7 +119,18 @@ export class QuizUniverseService {
       return payload
     } catch (error) {
       if (cached?.kospi200?.length && cached?.kosdaq150?.length) {
-        this.payload = { ...cached, ok: true, stale: true, error: error instanceof Error ? error.message : String(error) }
+        const kospi200 = capIndexMembers(filterStockRows(cached.kospi200), INDEXES.kospi200.expected)
+        const kosdaq150 = capIndexMembers(filterStockRows(cached.kosdaq150), INDEXES.kosdaq150.expected)
+        this.payload = {
+          ...cached,
+          ok: true,
+          stale: true,
+          etfExcluded: true,
+          kospi200,
+          kosdaq150,
+          counts: { kospi200: kospi200.length, kosdaq150: kosdaq150.length },
+          error: error instanceof Error ? error.message : String(error),
+        }
         return this.payload
       }
       this.payload = {
@@ -120,6 +138,7 @@ export class QuizUniverseService {
         source: 'KRX Data Marketplace · 지수구성종목',
         updatedAt: new Date().toISOString(),
         etfExcluded: true,
+        expectedCounts: { kospi200: INDEXES.kospi200.expected, kosdaq150: INDEXES.kosdaq150.expected },
         kospi200: [],
         kosdaq150: [],
         counts: { kospi200: 0, kosdaq150: 0 },

@@ -4,6 +4,7 @@ import { SnapshotStore } from './snapshotStore.mjs'
 import { ThemeFlowService } from './themeFlowService.mjs'
 import { UsThemeFlowService } from './usThemeFlowService.mjs'
 import { QuizUniverseService } from './quizUniverseService.mjs'
+import { QuizDescriptionService } from './quizDescriptionService.mjs'
 import { FeatureNewsService } from './featureNewsService.mjs'
 import { TossClient } from './tossClient.mjs'
 
@@ -26,6 +27,7 @@ const usThemeFlow = new UsThemeFlowService(client, {
   cachePath: process.env.US_THEME_CANDLE_CACHE_PATH || '/app/data/us-theme-candles.json',
 })
 const quizUniverse = new QuizUniverseService({ cachePath: process.env.QUIZ_UNIVERSE_CACHE_PATH || '/app/data/quiz-universe.json' })
+const quizDescriptions = new QuizDescriptionService({ cachePath: process.env.QUIZ_DESCRIPTION_CACHE_PATH || '/app/data/quiz-descriptions.json' })
 const featureNews = new FeatureNewsService({ refreshMs: 60000 })
 let historyTimer = null
 
@@ -62,11 +64,14 @@ const server = http.createServer(async (request, response) => {
       lastError: collector.lastError,
       themeFlowError: themeFlow.payload?.error ?? null,
       usThemeFlowError: usThemeFlow.payload?.error ?? null,
+      usThemeRankingSource: usThemeFlow.payload?.rankingSource ?? null,
+      usThemeRankingAttempts: usThemeFlow.payload?.rankingAttempts ?? [],
       updatedAt: collector.snapshot?.updatedAt ?? null,
       historyEnabled: true,
       themeHistoryPersisted: true,
       usThemeHistoryPersisted: true,
       quizUniverseCached: true,
+      quizDescriptionsCached: true,
       featureNewsEnabled: true,
       refreshSeconds: 60,
     })
@@ -92,6 +97,13 @@ const server = http.createServer(async (request, response) => {
 
   if (url.pathname === '/api/quiz/universe') {
     const payload = await quizUniverse.get()
+    return send(response, payload.ok ? 200 : 503, payload)
+  }
+
+  if (url.pathname === '/api/quiz/descriptions') {
+    const codes = String(url.searchParams.get('codes') || '').split(',').map((value) => value.trim()).filter(Boolean)
+    if (!codes.length) return send(response, 400, { ok: false, error: 'codes 파라미터가 필요합니다.', items: [] })
+    const payload = await quizDescriptions.getMany(codes)
     return send(response, payload.ok ? 200 : 503, payload)
   }
 
@@ -122,9 +134,8 @@ function send(response, status, payload) {
 server.listen(port, '0.0.0.0', () => {
   console.log(`[market-backend] listening on :${port}`)
 
-  // Only market collectors are started here. Quiz-universe and feature-news
-  // sources are loaded lazily when their endpoints are opened so optional
-  // external services can never delay or destabilize backend liveness.
+  // Only market collectors are started here. Quiz-universe, quiz descriptions and
+  // feature-news are lazy so optional public sources cannot block backend liveness.
   void collector.start()
     .then(() => history.maybeAppend(collector.snapshot).catch(() => {}))
     .then(() => themeFlow.start())

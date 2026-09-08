@@ -24,6 +24,81 @@ function rankingItem(item) {
   }
 }
 
+const US_RANKING_CANDIDATES = [
+  {
+    type: 'MARKET_TRADING_AMOUNT',
+    duration: '1d',
+    source: 'market-1d',
+    label: '미국 시장 전체 · 1일 거래대금',
+    isMarketWide: true,
+  },
+  {
+    type: 'MARKET_TRADING_AMOUNT',
+    duration: 'realtime',
+    source: 'market-realtime',
+    label: '미국 시장 전체 · 실시간 거래대금',
+    isMarketWide: true,
+  },
+  {
+    type: 'TOSS_SECURITIES_TRADING_AMOUNT',
+    duration: '1d',
+    source: 'toss-1d-fallback',
+    label: '토스증권 체결 · 1일 거래대금 (시장전체 랭킹 미집계 시 대체)',
+    isMarketWide: false,
+  },
+]
+
+export async function loadUsRanking(client) {
+  const attempts = []
+  let lastError = null
+
+  for (const candidate of US_RANKING_CANDIDATES) {
+    const query = new URLSearchParams({
+      type: candidate.type,
+      marketCountry: 'US',
+      duration: candidate.duration,
+      count: '100',
+    })
+    try {
+      const payload = await client.request(`/api/v1/rankings?${query.toString()}`)
+      const rankings = (payload?.result?.rankings ?? []).map(rankingItem).filter((item) => item.symbol)
+      attempts.push({
+        type: candidate.type,
+        duration: candidate.duration,
+        source: candidate.source,
+        count: rankings.length,
+        rankedAt: payload?.result?.rankedAt ?? null,
+        error: null,
+      })
+      if (rankings.length) return { ...candidate, payload, rankings, attempts, error: null }
+    } catch (error) {
+      lastError = error
+      attempts.push({
+        type: candidate.type,
+        duration: candidate.duration,
+        source: candidate.source,
+        count: 0,
+        rankedAt: null,
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
+
+  return {
+    payload: null,
+    rankings: [],
+    attempts,
+    source: null,
+    label: null,
+    isMarketWide: false,
+    type: null,
+    duration: null,
+    error: lastError instanceof Error
+      ? lastError.message
+      : '토스증권 미국 거래대금 랭킹이 현재 모든 조회 방식에서 빈 배열을 반환했습니다.',
+  }
+}
+
 function stockRecords(payload) {
   const result = payload?.result
   if (Array.isArray(result)) return result
@@ -217,7 +292,19 @@ export class UsThemeFlowService {
     this.metaUpdatedAt = 0
     this.candleCache = new Map()
     this.cacheLoaded = false
-    this.payload = { ok: false, updatedAt: null, rankedAt: null, marketTradingAmount: null, topRankings: [], themes: [], stage: 'initializing', error: '초기화 중' }
+    this.payload = {
+      ok: false,
+      updatedAt: null,
+      rankedAt: null,
+      marketTradingAmount: null,
+      topRankings: [],
+      themes: [],
+      stage: 'initializing',
+      rankingSource: null,
+      rankingLabel: null,
+      rankingAttempts: [],
+      error: '초기화 중',
+    }
     this.timer = null
     this.running = false
     this.refreshing = false
@@ -311,7 +398,7 @@ export class UsThemeFlowService {
       if (hasFullPreviousTradingDay(merged)) break
       if (!next || next === before) break
       before = next
-      await sleep(100)
+      await sleep(150)
     }
     this.candleCache.set(symbol, merged)
   }
@@ -328,30 +415,54 @@ export class UsThemeFlowService {
     if (this.refreshing || !this.client.configured) return this.payload
     this.refreshing = true
     try {
-      const rankingPayload = await this.client.request('/api/v1/rankings?type=MARKET_TRADING_AMOUNT&marketCountry=US&duration=1d&count=100')
-      const rankings = (rankingPayload?.result?.rankings ?? []).map(rankingItem).filter((item) => item.symbol)
+      const rankingResult = await loadUsRanking(this.client)
+      const rankings = rankingResult.rankings ?? []
+      if (!rankings.length) {
+        this.payload = {
+          ...this.payload,
+          ok: false,
+          updatedAt: new Date().toISOString(),
+          stage: 'ranking-empty',
+          rankingSource: null,
+          rankingLabel: null,
+          rankingAttempts: rankingResult.attempts ?? [],
+          error: rankingResult.error || '미국 거래대금 랭킹을 아직 받지 못했습니다.',
+        }
+        return this.payload
+      }
+
       const symbols = rankings.map((item) => item.symbol).filter(Boolean)
       await this.ensureMeta(symbols).catch(() => {})
       const topRankings = rankings.map((item) => this.enrichRanking(item))
       const marketTradingAmount = topRankings.reduce((sum, item) => sum + (item.tradingAmount ?? 0), 0)
       const groups = buildUsThemeGroups(topRankings, { limit: 50, minMembers: 3, maxThemes: 10 })
+      const rankedAt = rankingResult.payload?.result?.rankedAt ?? null
 
       // Publish TOP100 immediately. Theme charts can continue filling from persisted/backfilled candles.
       this.payload = {
         ...this.payload,
         ok: true,
         updatedAt: new Date().toISOString(),
-        rankedAt: rankingPayload?.result?.rankedAt ?? null,
+        rankedAt,
         marketTradingAmount,
         topRankings,
         stage: 'rankings-ready',
+        rankingSource: rankingResult.source,
+        rankingLabel: rankingResult.label,
+        rankingIsMarketWide: rankingResult.isMarketWide,
+        rankingAttempts: rankingResult.attempts,
         error: null,
       }
 
       const chartSymbols = [...new Set(groups.flatMap((group) => group.members.map((member) => member.symbol).filter(Boolean)))]
-      await mapLimit(chartSymbols, 3, async (symbol) => {
-        await this.refreshSymbol(symbol).catch(() => {})
-        await sleep(120)
+      const chartFailures = []
+      await mapLimit(chartSymbols, 2, async (symbol) => {
+        try {
+          await this.refreshSymbol(symbol)
+        } catch (error) {
+          chartFailures.push({ symbol, error: error instanceof Error ? error.message : String(error) })
+        }
+        await sleep(200)
       })
       await this.persistCache().catch(() => {})
 
@@ -378,18 +489,23 @@ export class UsThemeFlowService {
         marketCountry: 'US',
         currency: 'USD',
         updatedAt: new Date().toISOString(),
-        rankedAt: rankingPayload?.result?.rankedAt ?? null,
+        rankedAt,
         marketTradingAmount,
         topRankings,
         themes,
-        stage: 'ready',
+        stage: themes.some((theme) => theme.points.length >= 2) ? 'ready' : 'rankings-ready',
+        rankingSource: rankingResult.source,
+        rankingLabel: rankingResult.label,
+        rankingIsMarketWide: rankingResult.isMarketWide,
+        rankingAttempts: rankingResult.attempts,
+        chartFailures,
         criteria: {
           rankingLimit: 50,
           minMembers: 3,
           candleInterval: '1m',
           aggregateInterval: '3m',
           weighting: 'equal-return',
-          ranking: 'MARKET_TRADING_AMOUNT/US/1d',
+          ranking: `${rankingResult.type}/US/${rankingResult.duration}`,
           chartSession: 'US regular 09:30-16:00 ET',
           historyTradingDays: 2,
           persisted: true,
@@ -398,7 +514,13 @@ export class UsThemeFlowService {
       }
       return this.payload
     } catch (error) {
-      this.payload = { ...this.payload, error: error instanceof Error ? error.message : String(error) }
+      this.payload = {
+        ...this.payload,
+        ok: false,
+        stage: 'error',
+        updatedAt: new Date().toISOString(),
+        error: error instanceof Error ? error.message : String(error),
+      }
       return this.payload
     } finally {
       this.refreshing = false

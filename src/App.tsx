@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import LiquidityDashboard from './LiquidityDashboard'
 import MarketWorkspace from './MarketWorkspace'
 import UsMarketWorkspace from './UsMarketWorkspace'
+import UsDataNotice from './UsDataNotice'
 import StockQuiz from './StockQuiz'
 import FeatureNews from './FeatureNews'
 import './liveMarket.css'
@@ -34,7 +35,7 @@ export default function App() {
 
   let content = <LiquidityDashboard />
   if (page === 'flow') content = <div className="flow-page-with-news"><FeatureNews /><MarketWorkspace /></div>
-  if (page === 'us-flow') content = <UsMarketWorkspace />
+  if (page === 'us-flow') content = <div><UsDataNotice /><UsMarketWorkspace /></div>
   if (page === 'quiz') content = <StockQuiz />
 
   return <div className="app-root">
