@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isCorrectAnswer, moneyFlowScore, quizItems } from './App'
+import { answerIsCorrect, buildQuizRound, moneyFlowScore } from './App'
 
 describe('money flow score', () => {
   it('rewards positive momentum, breadth and institutional flow', () => {
@@ -11,15 +11,24 @@ describe('money flow score', () => {
   })
 })
 
-describe('stock company quiz', () => {
-  it('marks the configured company description as correct', () => {
-    const item = quizItems[0]
-    expect(isCorrectAnswer(item, item.correct)).toBe(true)
+describe('index stock quiz', () => {
+  const pool = [
+    { code: '005930', name: '삼성전자' },
+    { code: '000660', name: 'SK하이닉스' },
+    { code: '005380', name: '현대차' },
+    { code: '000270', name: '기아' },
+    { code: '035420', name: 'NAVER' },
+  ]
+
+  it('builds questions with four choices from the selected index pool', () => {
+    const questions = buildQuizRound(pool, 4)
+    expect(questions).toHaveLength(4)
+    expect(questions.every((question) => question.choices.length === 4)).toBe(true)
   })
 
-  it('rejects an incorrect company description', () => {
-    const item = quizItems[0]
-    const wrongChoice = item.correct === 0 ? 1 : 0
-    expect(isCorrectAnswer(item, wrongChoice)).toBe(false)
+  it('marks only the configured answer as correct', () => {
+    const [question] = buildQuizRound(pool, 1)
+    expect(answerIsCorrect(question, question.correct)).toBe(true)
+    expect(answerIsCorrect(question, (question.correct + 1) % 4)).toBe(false)
   })
 })
