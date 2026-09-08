@@ -132,6 +132,26 @@ jobs:
             exit 1
           fi
 
+          # Secondary tunnel recovery layer. The dedicated tunnel-status workflow is
+          # the normal monitor, but if it has already recorded an unreachable Quick
+          # Tunnel, a successful app deployment is a safe opportunity to rotate the
+          # stale cloudflared process. This does not run PR code and never exposes a
+          # secret. The following status workflow publishes the newly allocated URL.
+          TUNNEL_REGISTRY="https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/tunnel-status/CURRENT_TUNNEL.md"
+          TUNNEL_STATUS="$(curl --fail --silent --show-error --max-time 8 "$TUNNEL_REGISTRY" 2>/dev/null || true)"
+          if printf '%s' "$TUNNEL_STATUS" | grep -q '상태: `unreachable`'; then
+            echo "Tunnel registry reports unreachable; rotating market-tunnel.service"
+            if systemctl --user restart market-tunnel.service >/dev/null 2>&1; then
+              echo "Restarted user market-tunnel.service"
+              sleep 3
+            elif sudo -n systemctl restart market-tunnel.service >/dev/null 2>&1; then
+              echo "Restarted system market-tunnel.service"
+              sleep 3
+            else
+              echo "Tunnel restart was not permitted from the runner; status monitor will keep reporting the outage"
+            fi
+          fi
+
           echo "Instant snapshot path is ready"
           cat /tmp/k-market-health.json
           echo
