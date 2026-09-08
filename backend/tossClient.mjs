@@ -15,6 +15,7 @@ export class TossClient {
     this.clientSecret = clientSecret
     this.token = null
     this.tokenExpiresAt = 0
+    this.tokenPromise = null
   }
 
   get configured() {
@@ -24,7 +25,17 @@ export class TossClient {
   async getToken() {
     if (!this.configured) throw new TossApiError('TOSS_CLIENT_ID / TOSS_CLIENT_SECRET 환경변수가 없습니다.', 500, 'credentials-missing')
     if (this.token && Date.now() < this.tokenExpiresAt - 60_000) return this.token
+    if (this.tokenPromise) return this.tokenPromise
 
+    this.tokenPromise = this.issueToken()
+    try {
+      return await this.tokenPromise
+    } finally {
+      this.tokenPromise = null
+    }
+  }
+
+  async issueToken() {
     const body = new URLSearchParams({ grant_type: 'client_credentials', client_id: this.clientId, client_secret: this.clientSecret })
     const response = await fetch(`${BASE_URL}/oauth2/token`, {
       method: 'POST',
