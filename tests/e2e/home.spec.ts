@@ -2,6 +2,10 @@ import { expect, test } from '@playwright/test'
 
 test('money flow dashboard renders and drills into sectors', async ({ page }, testInfo) => {
   await page.goto('/')
+  await expect(page.getByTestId('top-flow-board')).toBeVisible()
+  await expect(page.getByRole('heading', { name: '거래대금 상위 종목 자금 이동 비교' })).toBeVisible()
+  await expect(page.getByTestId('top100-ranking')).toBeVisible()
+  await expect(page.getByRole('heading', { name: '거래대금 TOP100' })).toBeVisible()
   await expect(page.getByTestId('moneyflow-dashboard')).toBeVisible()
   await expect(page.getByRole('heading', { name: '한국 시장 전체 Heatmap' })).toBeVisible()
   await expect(page.getByText('Money Flow', { exact: false }).first()).toBeVisible()
