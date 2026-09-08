@@ -91,11 +91,16 @@ function send(response, status, payload) {
   response.end(JSON.stringify(payload))
 }
 
-server.listen(port, '0.0.0.0', async () => {
+server.listen(port, '0.0.0.0', () => {
   console.log(`[market-backend] listening on :${port}`)
-  await collector.start()
-  await history.maybeAppend(collector.snapshot).catch(() => {})
-  void themeFlow.start()
+
+  // Keep the HTTP server responsive immediately. Market/Toss initialization runs
+  // asynchronously so Docker liveness checks can succeed while data is loading.
+  void collector.start()
+    .then(() => history.maybeAppend(collector.snapshot).catch(() => {}))
+    .then(() => themeFlow.start())
+    .catch((error) => console.error('[market-backend] initialization failed', error))
+
   historyTimer = setInterval(() => history.maybeAppend(collector.snapshot).catch(() => {}), 60000)
   historyTimer.unref?.()
 })
