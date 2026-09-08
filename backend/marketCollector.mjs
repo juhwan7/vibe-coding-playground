@@ -107,7 +107,7 @@ function rankingItem(item) {
 }
 
 export class MarketCollector {
-  constructor(client, { fastMs = 5000, slowMs = 60000 } = {}) {
+  constructor(client, { fastMs = 60000, slowMs = 60000 } = {}) {
     this.client = client
     this.fastMs = fastMs
     this.slowMs = slowMs
@@ -138,11 +138,11 @@ export class MarketCollector {
   schedule() {
     if (!this.running) return
     const { hour } = kstParts()
-    const active = hour >= 7 && hour <= 20
+    const active = hour >= 8 && hour <= 20
     this.timer = setTimeout(async () => {
       await this.refresh().catch(() => {})
       this.schedule()
-    }, active ? this.fastMs : 60000)
+    }, active ? this.fastMs : 300000)
   }
 
   async refresh() {
@@ -160,7 +160,7 @@ export class MarketCollector {
       const symbols = encodeURIComponent(WATCH_SYMBOLS.join(','))
       const [pricesPayload, rankingPayload, indicesPayload] = await Promise.all([
         this.client.request(`/api/v1/prices?symbols=${symbols}`),
-        this.client.request('/api/v1/rankings?type=MARKET_TRADING_AMOUNT&marketCountry=KR&duration=realtime&count=100'),
+        this.client.request('/api/v1/rankings?type=MARKET_TRADING_AMOUNT&marketCountry=KR&duration=1d&count=100'),
         this.client.request('/api/v1/market-indicators/prices?symbols=KOSPI%2CKOSDAQ'),
       ])
 
@@ -196,7 +196,7 @@ export class MarketCollector {
           foreignNetBuyVolume: flow?.foreigner ?? null,
           institutionNetBuyVolume: flow?.institution ?? null,
           updatedAt: price?.timestamp ?? daily?.timestamp ?? null,
-          tradingAmountSource: exactTradingAmount != null ? 'ranking' : tradingAmount != null ? 'ohlcv-estimate' : null,
+          tradingAmountSource: exactTradingAmount != null ? 'market-ranking-1d' : tradingAmount != null ? 'ohlcv-estimate' : null,
         }
       }
 
@@ -232,7 +232,7 @@ export class MarketCollector {
         stocks,
         topRankings: rankings.map(rankingItem).filter((item) => item.symbol),
         marketTradingAmount: rankings.reduce((sum, item) => sum + (number(item.tradingAmount) ?? 0), 0),
-        marketTradingAmountCoverage: 'top100',
+        marketTradingAmountCoverage: 'top100-1d',
         marketInvestors: this.marketInvestors,
         programSummary,
         futures: {
@@ -245,6 +245,7 @@ export class MarketCollector {
           foreignNetContracts: null,
           institutionNetContracts: null,
         },
+        rankingDuration: '1d',
         rankedAt: rankingPayload?.result?.rankedAt ?? null,
       }
       return this.snapshot
@@ -270,10 +271,11 @@ export class MarketCollector {
       stocks: {},
       topRankings: [],
       marketTradingAmount: null,
-      marketTradingAmountCoverage: 'top100',
+      marketTradingAmountCoverage: 'top100-1d',
       marketInvestors: this.marketInvestors,
       programSummary: null,
       futures: { available: false, source: null },
+      rankingDuration: '1d',
       rankedAt: null,
     }
   }
