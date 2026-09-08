@@ -33,6 +33,22 @@ jobs:
         run: npm test
       - name: Backend tests
         run: node --test backend/*.test.mjs
+      - name: Backend HTTP smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT=18787 node backend/server.mjs >/tmp/market-backend-smoke.log 2>&1 &
+          PID=$!
+          trap 'kill "$PID" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 20); do
+            if curl --fail --silent http://127.0.0.1:18787/api/health >/tmp/market-health.json; then
+              cat /tmp/market-health.json
+              exit 0
+            fi
+            sleep 0.5
+          done
+          cat /tmp/market-backend-smoke.log || true
+          exit 1
       - name: Production build
         run: npm run build
 
