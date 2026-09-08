@@ -69,6 +69,7 @@ export class SnapshotStore {
     this.retainDays = retainDays
     this.lastMinute = null
     this.lastPruneDay = null
+    this.readCache = new Map()
     this.ready = Promise.all([
       mkdir(dirname(filePath), { recursive: true }),
       mkdir(dirname(latestPath), { recursive: true }),
@@ -106,6 +107,7 @@ export class SnapshotStore {
     await this.ready
     const compact = compactSnapshot(snapshot)
     await appendFile(this.filePath, `${JSON.stringify(compact)}\n`, 'utf8')
+    this.readCache.clear()
     await this.writeLatest(compact).catch(() => {})
 
     const day = kstParts(snapshot.updatedAt).day
@@ -120,8 +122,16 @@ export class SnapshotStore {
     await this.ready
     const safeDays = Math.max(1, Math.min(35, Number(days) || 5))
     const safeResolution = Math.max(1, Math.min(30, Number(resolutionMinutes) || 5))
+    const cacheKey = `${safeDays}:${safeResolution}`
+    const cached = this.readCache.get(cacheKey)
+    if (cached) return cached
+
     let text = ''
-    try { text = await readFile(this.filePath, 'utf8') } catch { return { days: safeDays, resolutionMinutes: safeResolution, tradingDays: 0, samples: [] } }
+    try { text = await readFile(this.filePath, 'utf8') } catch {
+      const empty = { days: safeDays, resolutionMinutes: safeResolution, tradingDays: 0, samples: [] }
+      this.readCache.set(cacheKey, empty)
+      return empty
+    }
     const cutoff = Date.now() - safeDays * 24 * 60 * 60 * 1000
     const buckets = new Map()
     const tradingDays = new Set()
@@ -143,7 +153,9 @@ export class SnapshotStore {
       }
     }
     const samples = [...buckets.values()].sort((a, b) => Date.parse(a.updatedAt) - Date.parse(b.updatedAt))
-    return { days: safeDays, resolutionMinutes: safeResolution, tradingDays: tradingDays.size, samples }
+    const result = { days: safeDays, resolutionMinutes: safeResolution, tradingDays: tradingDays.size, samples }
+    this.readCache.set(cacheKey, result)
+    return result
   }
 
   async prune() {
@@ -164,5 +176,6 @@ export class SnapshotStore {
       } catch {}
     }
     await writeFile(this.filePath, kept.length ? `${kept.join('\n')}\n` : '', 'utf8')
+    this.readCache.clear()
   }
 }
