@@ -6,10 +6,13 @@ services:
     environment:
       TOSS_CLIENT_ID: ${TOSS_CLIENT_ID:-}
       TOSS_CLIENT_SECRET: ${TOSS_CLIENT_SECRET:-}
+      DATA_GO_KR_SERVICE_KEY: ${DATA_GO_KR_SERVICE_KEY:-}
       PORT: 8787
-      POLL_MS: ${POLL_MS:-5000}
+      POLL_MS: ${POLL_MS:-60000}
       SLOW_POLL_MS: ${SLOW_POLL_MS:-60000}
+      THEME_FLOW_REFRESH_MS: ${THEME_FLOW_REFRESH_MS:-60000}
       MARKET_HISTORY_PATH: /app/data/market-history.jsonl
+      THEME_CANDLE_CACHE_PATH: /app/data/theme-candles.json
     volumes:
       - market-history:/app/data
     restart: unless-stopped
