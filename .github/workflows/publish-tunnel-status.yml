@@ -29,7 +29,7 @@ jobs:
     timeout-minutes: 3
 
     steps:
-      - name: Detect and publish current Quick Tunnel URL
+      - name: Detect, recover and publish current Quick Tunnel URL
         env:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
@@ -42,51 +42,135 @@ jobs:
           STATUS_PATH=CURRENT_TUNNEL.md
           API="https://api.github.com/repos/$REPOSITORY"
           RAW="https://raw.githubusercontent.com/$REPOSITORY/$STATUS_BRANCH/$STATUS_PATH"
+          RECOVERY_DIR="$HOME/.cache/market-flow"
+          RECOVERY_MARKER="$RECOVERY_DIR/quick-tunnel-restart"
+          RECOVERY_COOLDOWN_SECONDS=900
 
-          unit_state="$(systemctl is-active "$SERVICE" 2>/dev/null || true)"
-          unit_scope=system
-          if [ "$unit_state" != active ]; then
+          detect_unit() {
+            local system_state user_state
+            system_state="$(systemctl is-active "$SERVICE" 2>/dev/null || true)"
+            if [ "$system_state" = active ]; then
+              printf 'system|active'
+              return
+            fi
             user_state="$(systemctl --user is-active "$SERVICE" 2>/dev/null || true)"
             if [ "$user_state" = active ]; then
-              unit_state=active
-              unit_scope=user
+              printf 'user|active'
+              return
             fi
-          fi
-
-          # If the tunnel service stopped entirely, make one non-interactive recovery
-          # attempt. Failure is harmless; the published status will simply say offline.
-          if [ "$unit_state" != active ]; then
-            if systemctl --user restart "$SERVICE" >/dev/null 2>&1; then
-              unit_scope=user
-              sleep 4
-            elif sudo -n systemctl restart "$SERVICE" >/dev/null 2>&1; then
-              unit_scope=system
-              sleep 4
-            fi
-            if [ "$unit_scope" = user ]; then
-              unit_state="$(systemctl --user is-active "$SERVICE" 2>/dev/null || true)"
-            else
-              unit_state="$(systemctl is-active "$SERVICE" 2>/dev/null || true)"
-            fi
-          fi
+            printf 'system|${system_state:-inactive}'
+          }
 
           collect_logs() {
-            journalctl -u "$SERVICE" --no-pager -n 800 --since '2 days ago' 2>/dev/null || true
+            journalctl -u "$SERVICE" --no-pager -n 1000 --since '2 days ago' 2>/dev/null || true
             systemctl status "$SERVICE" --no-pager -l 2>/dev/null || true
-            journalctl --user -u "$SERVICE" --no-pager -n 800 --since '2 days ago' 2>/dev/null || true
+            journalctl --user -u "$SERVICE" --no-pager -n 1000 --since '2 days ago' 2>/dev/null || true
             systemctl --user status "$SERVICE" --no-pager -l 2>/dev/null || true
           }
 
-          tunnel_url="$(collect_logs | grep -Eo 'https://[a-z0-9-]+\.trycloudflare\.com' | tail -n 1 || true)"
+          detect_url() {
+            collect_logs | grep -Eo 'https://[a-z0-9-]+\.trycloudflare\.com' | tail -n 1 || true
+          }
+
+          check_url() {
+            local url="$1"
+            [ -n "$url" ] || return 1
+            curl --fail --silent --show-error --connect-timeout 3 --max-time 6 \
+              "$url/api/health" >/tmp/tunnel-health.json 2>/dev/null
+          }
+
+          restart_tunnel() {
+            local scope="$1"
+            if [ "$scope" = user ]; then
+              systemctl --user restart "$SERVICE" >/dev/null 2>&1
+            else
+              sudo -n systemctl restart "$SERVICE" >/dev/null 2>&1
+            fi
+          }
+
+          unit_info="$(detect_unit)"
+          unit_scope="${unit_info%%|*}"
+          unit_state="${unit_info#*|}"
+          tunnel_url="$(detect_url)"
           reachable=false
-          if [ -n "$tunnel_url" ]; then
-            for attempt in 1 2 3; do
-              if curl --fail --silent --show-error --connect-timeout 4 --max-time 8 "$tunnel_url/api/health" >/tmp/tunnel-health.json 2>/dev/null; then
-                reachable=true
-                break
+          if check_url "$tunnel_url"; then
+            reachable=true
+          fi
+
+          # An active cloudflared process can keep running after its Quick Tunnel URL
+          # has expired. In that case the service looks healthy locally while the public
+          # hostname is dead. Recover by restarting cloudflared once, then detect the new
+          # URL from fresh journal entries. A 15-minute cooldown prevents restart loops
+          # during a broader Cloudflare outage.
+          needs_recovery=false
+          if [ "$unit_state" != active ] || { [ -n "$tunnel_url" ] && [ "$reachable" != true ]; }; then
+            needs_recovery=true
+          fi
+
+          if [ "$needs_recovery" = true ]; then
+            mkdir -p "$RECOVERY_DIR"
+            now_epoch="$(date +%s)"
+            last_restart=0
+            if [ -e "$RECOVERY_MARKER" ]; then
+              last_restart="$(stat -c %Y "$RECOVERY_MARKER" 2>/dev/null || echo 0)"
+            fi
+            age=$((now_epoch - last_restart))
+
+            if [ "$age" -ge "$RECOVERY_COOLDOWN_SECONDS" ]; then
+              echo "Quick Tunnel is not publicly reachable; attempting one controlled restart"
+              old_url="$tunnel_url"
+
+              # Prefer the detected scope. If it was not active, try user then system.
+              restarted=false
+              if [ "$unit_state" = active ]; then
+                if restart_tunnel "$unit_scope"; then restarted=true; fi
+              else
+                if restart_tunnel user; then
+                  unit_scope=user
+                  restarted=true
+                elif restart_tunnel system; then
+                  unit_scope=system
+                  restarted=true
+                fi
               fi
-              sleep 2
-            done
+
+              if [ "$restarted" = true ]; then
+                touch "$RECOVERY_MARKER"
+                reachable=false
+                # Quick Tunnel allocation and DNS can take several seconds. Wait for a
+                # fresh URL and stop as soon as the public health endpoint answers.
+                for attempt in $(seq 1 12); do
+                  sleep 2
+                  unit_info="$(detect_unit)"
+                  unit_scope="${unit_info%%|*}"
+                  unit_state="${unit_info#*|}"
+                  candidate="$(detect_url)"
+                  if [ -n "$candidate" ]; then
+                    tunnel_url="$candidate"
+                    if check_url "$tunnel_url"; then
+                      reachable=true
+                      break
+                    fi
+                  fi
+                done
+                echo "Tunnel restart finished: ${old_url:-none} -> ${tunnel_url:-none}"
+              else
+                echo "Tunnel restart was not permitted; publishing current offline state"
+              fi
+            else
+              echo "Recovery cooldown active (${age}s/${RECOVERY_COOLDOWN_SECONDS}s); not restarting again"
+            fi
+          fi
+
+          # Refresh final state after any recovery attempt.
+          unit_info="$(detect_unit)"
+          unit_scope="${unit_info%%|*}"
+          unit_state="${unit_info#*|}"
+          tunnel_url="$(detect_url)"
+          if check_url "$tunnel_url"; then
+            reachable=true
+          else
+            reachable=false
           fi
 
           if [ -z "$tunnel_url" ]; then
@@ -124,7 +208,7 @@ jobs:
 
           **[$tunnel_url]($tunnel_url)**
 
-          이 파일은 Raspberry Pi가 5분마다 Cloudflare Quick Tunnel 주소를 확인해 자동 갱신합니다. 배포 직후에도 즉시 다시 확인합니다.
+          이 파일은 Raspberry Pi가 5분마다 Cloudflare Quick Tunnel 주소를 확인해 자동 갱신합니다. 배포 직후에도 즉시 다시 확인합니다. 공개 주소가 만료됐는데 cloudflared 프로세스만 살아 있는 경우에는 15분 쿨다운을 두고 터널을 한 번 자동 재시작합니다.
           EOF
           else
             cat >/tmp/current-tunnel.md <<EOF
