@@ -37,7 +37,8 @@ const server = http.createServer(async (request, response) => {
 
   if (url.pathname === '/api/market/history') {
     const days = Math.max(1, Math.min(35, Number(url.searchParams.get('days') || 5)))
-    const payload = await history.read({ days })
+    const resolutionMinutes = Math.max(1, Math.min(30, Number(url.searchParams.get('resolution') || 5)))
+    const payload = await history.read({ days, resolutionMinutes })
     return send(response, 200, payload)
   }
 
