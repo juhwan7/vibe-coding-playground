@@ -1,0 +1,176 @@
+.liquidity-page {
+  width: min(1960px, calc(100% - 36px));
+  margin: 0 auto;
+  padding: 24px 0 84px;
+  color: #e8f0f5;
+  font-family: "Segoe UI", "Malgun Gothic", Arial, sans-serif;
+  font-variant-numeric: tabular-nums;
+  text-rendering: auto;
+}
+
+.liquidity-hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 28px;
+  padding: 26px 28px;
+  border: 1px solid #203341;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #0d1a24, #09131c);
+  box-shadow: 0 16px 38px rgba(0,0,0,.18);
+}
+.liquidity-hero p,
+.liquidity-section-head p { margin: 0 0 7px; color: #7190a4; font-size: 12px; font-weight: 900; letter-spacing: .13em; }
+.liquidity-hero h1 { margin: 0; font-size: 34px; line-height: 1.2; letter-spacing: -.03em; }
+.liquidity-hero small { display: block; max-width: 980px; margin-top: 10px; color: #8aa0ae; font-size: 14px; line-height: 1.6; }
+.liquidity-update { min-width: 220px; display: grid; justify-items: end; gap: 6px; }
+.liquidity-update b { color: #3ee59a; font-size: 13px; }
+.liquidity-update span { font-size: 18px; font-weight: 800; }
+.liquidity-update small { margin: 0; font-size: 11px; }
+
+.liquidity-section {
+  margin-top: 16px;
+  padding: 20px;
+  border: 1px solid #203341;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #0c1822, #09131c);
+}
+.liquidity-section-head { display: flex; align-items: end; justify-content: space-between; gap: 18px; margin-bottom: 16px; }
+.liquidity-section-head h2 { margin: 0; font-size: 24px; }
+.liquidity-section-head > span { color: #8298a6; font-size: 12px; font-weight: 800; }
+
+.liquidity-primary-grid { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 12px; }
+.liquidity-card,
+.funding-card,
+.liquidity-flow-panel {
+  border: 1px solid #203746;
+  border-radius: 10px;
+  background: #0a1620;
+}
+.liquidity-card { min-height: 126px; padding: 18px 19px; }
+.liquidity-card.primary { box-shadow: inset 0 3px 0 #39a0ff; }
+.liquidity-card > span,
+.funding-card > span { display: block; color: #8398a6; font-size: 12px; font-weight: 800; }
+.liquidity-card > strong,
+.funding-card > strong { display: block; margin-top: 12px; color: #f3f8fb; font-size: 28px; line-height: 1.15; }
+.liquidity-card > small,
+.funding-card > small { display: block; margin-top: 9px; color: #718795; font-size: 11px; line-height: 1.4; }
+
+.liquidity-live-grid { display: grid; grid-template-columns: 1.45fr .75fr; gap: 12px; margin-top: 12px; }
+.liquidity-flow-panel { padding: 18px; min-height: 210px; }
+.liquidity-panel-head { display: flex; justify-content: space-between; gap: 14px; align-items: start; }
+.liquidity-panel-head span { display: block; color: #dce7ed; font-size: 15px; font-weight: 900; }
+.liquidity-panel-head b { display: block; margin-top: 4px; color: #708795; font-size: 11px; }
+.liquidity-panel-head small { color: #6f8593; font-size: 11px; }
+.liquidity-spark { display: block; width: 100%; height: 116px; margin-top: 18px; }
+.liquidity-spark path { fill: none; stroke: #39a0ff; stroke-width: 2.4; vector-effect: non-scaling-stroke; stroke-linecap: round; stroke-linejoin: round; }
+.liquidity-spark-empty { display: grid; place-items: center; height: 116px; margin-top: 18px; color: #6f8593; font-size: 12px; }
+.liquidity-chart-foot { display: flex; justify-content: space-between; gap: 10px; margin-top: 7px; color: #78909e; font-size: 11px; }
+.investor-bars { display: grid; gap: 10px; margin-top: 18px; }
+.investor-bars > div { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 13px 14px; border: 1px solid #1d3442; border-radius: 8px; background: #0c1a24; }
+.investor-bars span { color: #91a4b0; font-size: 13px; font-weight: 800; }
+.investor-bars strong { font-size: 20px; }
+
+.liquidity-secondary-grid { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 12px; margin-top: 12px; }
+.liquidity-card.compact { min-height: 100px; padding: 15px 17px; }
+.liquidity-card.compact > strong { margin-top: 7px; font-size: 22px; }
+.liquidity-card.compact > small { margin-top: 5px; }
+
+.funding-section { margin-top: 16px; }
+.source-ready { color: #3ee59a !important; }
+.source-wait { color: #f0bc55 !important; }
+.funding-grid { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 12px; }
+.funding-card { min-height: 130px; padding: 18px 19px; }
+.funding-card.ratio { border-style: dashed; }
+.funding-source-note { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 6px 20px; margin-top: 12px; padding: 14px 16px; border: 1px solid #203746; border-radius: 9px; background: #09151e; }
+.funding-source-note b { font-size: 13px; }
+.funding-source-note span { color: #8298a6; font-size: 11px; text-align: right; }
+.funding-source-note small { grid-column: 1 / -1; color: #718795; font-size: 11px; }
+
+.liquidity-page .up { color: #ff5575 !important; }
+.liquidity-page .down { color: #4d95ff !important; }
+
+/* Light theme: force high contrast rather than inheriting dark text on light cards. */
+:root[data-theme='light'] .liquidity-page,
+:root:not([data-theme='dark']) .liquidity-page { color: #0b1526; }
+:root[data-theme='light'] .liquidity-hero,
+:root:not([data-theme='dark']) .liquidity-hero,
+:root[data-theme='light'] .liquidity-section,
+:root:not([data-theme='dark']) .liquidity-section { border-color: #cfd8e3; background: #ffffff; box-shadow: 0 8px 24px rgba(26,48,78,.06); }
+:root[data-theme='light'] .liquidity-hero h1,
+:root:not([data-theme='dark']) .liquidity-hero h1,
+:root[data-theme='light'] .liquidity-section-head h2,
+:root:not([data-theme='dark']) .liquidity-section-head h2 { color: #0b1526; }
+:root[data-theme='light'] .liquidity-hero p,
+:root:not([data-theme='dark']) .liquidity-hero p,
+:root[data-theme='light'] .liquidity-section-head p,
+:root:not([data-theme='dark']) .liquidity-section-head p { color: #42617a; }
+:root[data-theme='light'] .liquidity-hero small,
+:root:not([data-theme='dark']) .liquidity-hero small,
+:root[data-theme='light'] .liquidity-section-head > span,
+:root:not([data-theme='dark']) .liquidity-section-head > span { color: #516579; }
+:root[data-theme='light'] .liquidity-update span,
+:root:not([data-theme='dark']) .liquidity-update span { color: #0b1526; }
+:root[data-theme='light'] .liquidity-card,
+:root:not([data-theme='dark']) .liquidity-card,
+:root[data-theme='light'] .funding-card,
+:root:not([data-theme='dark']) .funding-card,
+:root[data-theme='light'] .liquidity-flow-panel,
+:root:not([data-theme='dark']) .liquidity-flow-panel { border-color: #d5dee8; background: #f8fafc; }
+:root[data-theme='light'] .liquidity-card > span,
+:root:not([data-theme='dark']) .liquidity-card > span,
+:root[data-theme='light'] .funding-card > span,
+:root:not([data-theme='dark']) .funding-card > span { color: #43586f; }
+:root[data-theme='light'] .liquidity-card > strong,
+:root:not([data-theme='dark']) .liquidity-card > strong,
+:root[data-theme='light'] .funding-card > strong,
+:root:not([data-theme='dark']) .funding-card > strong { color: #0a1424; }
+:root[data-theme='light'] .liquidity-card > small,
+:root:not([data-theme='dark']) .liquidity-card > small,
+:root[data-theme='light'] .funding-card > small,
+:root:not([data-theme='dark']) .funding-card > small { color: #5d7186; }
+:root[data-theme='light'] .liquidity-panel-head span,
+:root:not([data-theme='dark']) .liquidity-panel-head span { color: #172238; }
+:root[data-theme='light'] .liquidity-panel-head b,
+:root:not([data-theme='dark']) .liquidity-panel-head b,
+:root[data-theme='light'] .liquidity-panel-head small,
+:root:not([data-theme='dark']) .liquidity-panel-head small,
+:root[data-theme='light'] .liquidity-chart-foot,
+:root:not([data-theme='dark']) .liquidity-chart-foot { color: #536b80; }
+:root[data-theme='light'] .investor-bars > div,
+:root:not([data-theme='dark']) .investor-bars > div { border-color: #d8e0e8; background: #ffffff; }
+:root[data-theme='light'] .investor-bars span,
+:root:not([data-theme='dark']) .investor-bars span { color: #344a61; }
+:root[data-theme='light'] .funding-source-note,
+:root:not([data-theme='dark']) .funding-source-note { border-color: #d5dee8; background: #f5f7fa; }
+:root[data-theme='light'] .funding-source-note b,
+:root:not([data-theme='dark']) .funding-source-note b { color: #172238; }
+:root[data-theme='light'] .funding-source-note span,
+:root:not([data-theme='dark']) .funding-source-note span,
+:root[data-theme='light'] .funding-source-note small,
+:root:not([data-theme='dark']) .funding-source-note small { color: #52677d; }
+
+@media (min-width: 2500px) {
+  .liquidity-page { width: min(2200px, calc(100% - 64px)); }
+  .liquidity-hero h1 { font-size: 38px; }
+  .liquidity-section-head h2 { font-size: 27px; }
+  .liquidity-card > strong, .funding-card > strong { font-size: 32px; }
+}
+
+@media (max-width: 1100px) {
+  .liquidity-primary-grid, .liquidity-secondary-grid { grid-template-columns: 1fr 1fr; }
+  .liquidity-live-grid { grid-template-columns: 1fr; }
+  .funding-grid { grid-template-columns: 1fr 1fr; }
+}
+
+@media (max-width: 680px) {
+  .liquidity-page { width: calc(100% - 12px); padding-top: 10px; }
+  .liquidity-hero { display: grid; padding: 18px 16px; }
+  .liquidity-hero h1 { font-size: 27px; }
+  .liquidity-update { min-width: 0; justify-items: start; }
+  .liquidity-section { padding: 12px; }
+  .liquidity-section-head { align-items: start; }
+  .liquidity-primary-grid, .liquidity-secondary-grid, .funding-grid { grid-template-columns: 1fr; }
+  .funding-source-note { grid-template-columns: 1fr; }
+  .funding-source-note span { text-align: left; }
+}
