@@ -11,7 +11,7 @@ describe('money flow score', () => {
   })
 })
 
-describe('index stock quiz', () => {
+describe('index company-description quiz', () => {
   const pool = [
     { code: '005930', name: '삼성전자' },
     { code: '000660', name: 'SK하이닉스' },
@@ -20,14 +20,22 @@ describe('index stock quiz', () => {
     { code: '035420', name: 'NAVER' },
   ]
 
-  it('builds questions with four choices from the selected index pool', () => {
-    const questions = buildQuizRound(pool, 4)
-    expect(questions).toHaveLength(4)
-    expect(questions.every((question) => question.choices.length === 4)).toBe(true)
+  it('uses every available index stock by default and gives four company options', () => {
+    const questions = buildQuizRound(pool)
+    expect(questions).toHaveLength(pool.length)
+    expect(questions.every((question) => question.options.length === 4)).toBe(true)
+    expect(new Set(questions.map((question) => question.stock.code)).size).toBe(pool.length)
   })
 
-  it('marks only the configured answer as correct', () => {
+  it('can limit a round without inventing stocks', () => {
+    const questions = buildQuizRound(pool, 4)
+    expect(questions).toHaveLength(4)
+    expect(questions.every((question) => pool.some((stock) => stock.code === question.stock.code))).toBe(true)
+  })
+
+  it('marks only the configured company description option as correct', () => {
     const [question] = buildQuizRound(pool, 1)
+    expect(question.options[question.correct].code).toBe(question.stock.code)
     expect(answerIsCorrect(question, question.correct)).toBe(true)
     expect(answerIsCorrect(question, (question.correct + 1) % 4)).toBe(false)
   })
