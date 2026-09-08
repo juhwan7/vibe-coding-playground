@@ -119,6 +119,7 @@ export class MarketCollector {
     this.snapshot = null
     this.lastError = null
     this.lastSlowAt = 0
+    this.slowRefreshing = false
     this.running = false
     this.timer = null
   }
@@ -145,6 +146,15 @@ export class MarketCollector {
     }, active ? this.fastMs : 300000)
   }
 
+  triggerSlowRefresh() {
+    if (this.slowRefreshing || Date.now() - this.lastSlowAt <= this.slowMs) return
+    this.slowRefreshing = true
+    this.lastSlowAt = Date.now()
+    void this.refreshSlow()
+      .catch(() => {})
+      .finally(() => { this.slowRefreshing = false })
+  }
+
   async refresh() {
     if (!this.client.configured) {
       this.lastError = 'TOSS_CLIENT_ID / TOSS_CLIENT_SECRET 환경변수가 없습니다.'
@@ -153,10 +163,6 @@ export class MarketCollector {
     }
 
     try {
-      if (Date.now() - this.lastSlowAt > this.slowMs) {
-        await this.refreshSlow()
-        this.lastSlowAt = Date.now()
-      }
       const symbols = encodeURIComponent(WATCH_SYMBOLS.join(','))
       const [pricesPayload, rankingPayload, indicesPayload] = await Promise.all([
         this.client.request(`/api/v1/prices?symbols=${symbols}`),
@@ -248,6 +254,10 @@ export class MarketCollector {
         rankingDuration: '1d',
         rankedAt: rankingPayload?.result?.rankedAt ?? null,
       }
+
+      // Publish the fast snapshot immediately. Slower daily/investor/program data
+      // is collected in the background and will be folded into the next 1-minute snapshot.
+      this.triggerSlowRefresh()
       return this.snapshot
     } catch (error) {
       this.lastError = formatApiError(error)
