@@ -5,14 +5,15 @@ test('money flow dashboard renders and drills into sectors', async ({ page }, te
   await expect(page.getByTestId('moneyflow-dashboard')).toBeVisible()
   await expect(page.getByRole('heading', { name: '한국 시장 전체 Heatmap' })).toBeVisible()
   await expect(page.getByText('Money Flow', { exact: false }).first()).toBeVisible()
+  await expect(page.getByText('08:00 → 20:00 · KRX + NXT 통합 흐름')).toBeVisible()
 
   await page.getByRole('button', { name: /원전·전력/ }).first().click()
   await expect(page.getByRole('heading', { name: /원전·전력 → 세부테마 → 종목/ })).toBeVisible()
   await expect(page.getByText('두산에너빌리티')).toBeVisible()
 
   const replay = page.getByRole('slider', { name: '시장 시간 재생' })
-  await replay.fill('180')
-  await expect(page.getByText('12:00').first()).toBeVisible()
+  await replay.fill('240')
+  await expect(page.getByTestId('timeline-current')).toHaveText('12:00')
 
   await page.screenshot({ path: testInfo.outputPath('money-flow-dashboard.png'), fullPage: true })
 })
