@@ -1,10 +1,15 @@
 import { describe, expect, it } from 'vitest'
-import { clampTilt } from './App'
+import { isCorrectAnswer, quizItems } from './App'
 
-describe('clampTilt', () => {
-  it('limits values to the allowed 3D tilt range', () => {
-    expect(clampTilt(25)).toBe(10)
-    expect(clampTilt(-20)).toBe(-10)
-    expect(clampTilt(4)).toBe(4)
+describe('stock company quiz', () => {
+  it('marks the configured company description as correct', () => {
+    const item = quizItems[0]
+    expect(isCorrectAnswer(item, item.correct)).toBe(true)
+  })
+
+  it('rejects an incorrect company description', () => {
+    const item = quizItems[0]
+    const wrongChoice = item.correct === 0 ? 1 : 0
+    expect(isCorrectAnswer(item, wrongChoice)).toBe(false)
   })
 })
