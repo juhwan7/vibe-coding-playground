@@ -38,6 +38,7 @@ jobs:
           set -euo pipefail
 
           SERVICE=market-tunnel.service
+          FALLBACK_SERVICE=market-tunnel-fallback.service
           STATUS_BRANCH=tunnel-status
           STATUS_PATH=CURRENT_TUNNEL.md
           API="https://api.github.com/repos/$REPOSITORY"
@@ -47,7 +48,12 @@ jobs:
           RECOVERY_COOLDOWN_SECONDS=900
 
           detect_unit() {
-            local system_state user_state
+            local fallback_state system_state user_state
+            fallback_state="$(systemctl --user is-active "$FALLBACK_SERVICE" 2>/dev/null || true)"
+            if [ "$fallback_state" = active ]; then
+              printf 'fallback|active'
+              return
+            fi
             system_state="$(systemctl is-active "$SERVICE" 2>/dev/null || true)"
             if [ "$system_state" = active ]; then
               printf 'system|active'
@@ -66,6 +72,10 @@ jobs:
             systemctl status "$SERVICE" --no-pager -l 2>/dev/null || true
             journalctl --user -u "$SERVICE" --no-pager -n 1000 --since '2 days ago' 2>/dev/null || true
             systemctl --user status "$SERVICE" --no-pager -l 2>/dev/null || true
+            # Put fallback logs last so a newly allocated fallback URL wins over
+            # an older dead system-service URL when we select the final match.
+            journalctl --user -u "$FALLBACK_SERVICE" --no-pager -n 1000 --since '2 days ago' 2>/dev/null || true
+            systemctl --user status "$FALLBACK_SERVICE" --no-pager -l 2>/dev/null || true
           }
 
           detect_url() {
@@ -81,11 +91,57 @@ jobs:
 
           restart_tunnel() {
             local scope="$1"
-            if [ "$scope" = user ]; then
-              systemctl --user restart "$SERVICE" >/dev/null 2>&1
-            else
-              sudo -n systemctl restart "$SERVICE" >/dev/null 2>&1
+            case "$scope" in
+              fallback) systemctl --user restart "$FALLBACK_SERVICE" >/dev/null 2>&1 ;;
+              user) systemctl --user restart "$SERVICE" >/dev/null 2>&1 ;;
+              system) sudo -n systemctl restart "$SERVICE" >/dev/null 2>&1 ;;
+              *) return 1 ;;
+            esac
+          }
+
+          start_user_fallback() {
+            local cloudflared_bin=''
+            for candidate in "$(command -v cloudflared 2>/dev/null || true)" /usr/local/bin/cloudflared /usr/bin/cloudflared; do
+              if [ -n "$candidate" ] && [ -x "$candidate" ]; then
+                cloudflared_bin="$candidate"
+                break
+              fi
+            done
+            if [ -z "$cloudflared_bin" ]; then
+              echo 'cloudflared executable not found; cannot create user fallback tunnel'
+              return 1
             fi
+
+            # Only create the fallback when the local app itself is healthy. This avoids
+            # publishing a fresh public hostname that merely points at a broken origin.
+            if ! curl --fail --silent --show-error --connect-timeout 2 --max-time 5 \
+              http://127.0.0.1:8080/api/health >/tmp/local-origin-health.json; then
+              echo 'Local app is not healthy; refusing to create fallback tunnel'
+              return 1
+            fi
+
+            mkdir -p "$HOME/.config/systemd/user"
+            cat >"$HOME/.config/systemd/user/$FALLBACK_SERVICE" <<EOF
+          [Unit]
+          Description=MARKET FLOW user Quick Tunnel fallback
+          After=network-online.target
+
+          [Service]
+          Type=simple
+          ExecStart=$cloudflared_bin tunnel --no-autoupdate --url http://127.0.0.1:8080
+          Restart=always
+          RestartSec=5
+
+          [Install]
+          WantedBy=default.target
+          EOF
+            sed -i 's/^          //' "$HOME/.config/systemd/user/$FALLBACK_SERVICE"
+
+            systemctl --user daemon-reload >/dev/null 2>&1 || return 1
+            systemctl --user enable "$FALLBACK_SERVICE" >/dev/null 2>&1 || true
+            systemctl --user restart "$FALLBACK_SERVICE" >/dev/null 2>&1 || return 1
+            echo "Started $FALLBACK_SERVICE with $cloudflared_bin"
+            return 0
           }
 
           unit_info="$(detect_unit)"
@@ -98,10 +154,9 @@ jobs:
           fi
 
           # An active cloudflared process can keep running after its Quick Tunnel URL
-          # has expired. In that case the service looks healthy locally while the public
-          # hostname is dead. Recover by restarting cloudflared once, then detect the new
-          # URL from fresh journal entries. A 15-minute cooldown prevents restart loops
-          # during a broader Cloudflare outage.
+          # has expired. First try a normal restart. If the system unit is root-managed
+          # and the runner cannot restart it, create a separate user-scoped cloudflared
+          # unit. That gives the runner a recoverable tunnel without granting broad sudo.
           needs_recovery=false
           if [ "$unit_state" != active ] || { [ -n "$tunnel_url" ] && [ "$reachable" != true ]; }; then
             needs_recovery=true
@@ -117,29 +172,22 @@ jobs:
             age=$((now_epoch - last_restart))
 
             if [ "$age" -ge "$RECOVERY_COOLDOWN_SECONDS" ]; then
-              echo "Quick Tunnel is not publicly reachable; attempting one controlled restart"
+              echo "Quick Tunnel is not publicly reachable; attempting controlled recovery"
               old_url="$tunnel_url"
-
-              # Prefer the detected scope. If it was not active, try user then system.
               restarted=false
-              if [ "$unit_state" = active ]; then
-                if restart_tunnel "$unit_scope"; then restarted=true; fi
-              else
-                if restart_tunnel user; then
-                  unit_scope=user
-                  restarted=true
-                elif restart_tunnel system; then
-                  unit_scope=system
-                  restarted=true
-                fi
+
+              if [ "$unit_state" = active ] && restart_tunnel "$unit_scope"; then
+                restarted=true
+              elif start_user_fallback; then
+                unit_scope=fallback
+                unit_state=active
+                restarted=true
               fi
 
               if [ "$restarted" = true ]; then
                 touch "$RECOVERY_MARKER"
                 reachable=false
-                # Quick Tunnel allocation and DNS can take several seconds. Wait for a
-                # fresh URL and stop as soon as the public health endpoint answers.
-                for attempt in $(seq 1 12); do
+                for attempt in $(seq 1 18); do
                   sleep 2
                   unit_info="$(detect_unit)"
                   unit_scope="${unit_info%%|*}"
@@ -153,9 +201,9 @@ jobs:
                     fi
                   fi
                 done
-                echo "Tunnel restart finished: ${old_url:-none} -> ${tunnel_url:-none}"
+                echo "Tunnel recovery finished: ${old_url:-none} -> ${tunnel_url:-none}"
               else
-                echo "Tunnel restart was not permitted; publishing current offline state"
+                echo "Tunnel recovery was not permitted or fallback startup failed"
               fi
             else
               echo "Recovery cooldown active (${age}s/${RECOVERY_COOLDOWN_SECONDS}s); not restarting again"
@@ -202,13 +250,13 @@ jobs:
 
           - 상태: \`$status\`
           - 갱신 시각: \`$changed_at\`
-          - Raspberry Pi tunnel service: \`${unit_state:-unknown}\`
+          - Raspberry Pi tunnel service: \`${unit_state:-unknown}\` (\`$unit_scope\`)
 
           ## 접속
 
           **[$tunnel_url]($tunnel_url)**
 
-          이 파일은 Raspberry Pi가 5분마다 Cloudflare Quick Tunnel 주소를 확인해 자동 갱신합니다. 배포 직후에도 즉시 다시 확인합니다. 공개 주소가 만료됐는데 cloudflared 프로세스만 살아 있는 경우에는 15분 쿨다운을 두고 터널을 한 번 자동 재시작합니다.
+          이 파일은 Raspberry Pi가 5분마다 Cloudflare Quick Tunnel 주소를 확인해 자동 갱신합니다. 기존 system 서비스가 만료됐고 runner가 재시작 권한이 없으면 sudo 권한을 넓히지 않고 user-scoped fallback 터널을 자동으로 생성합니다.
           EOF
           else
             cat >/tmp/current-tunnel.md <<EOF
@@ -216,13 +264,12 @@ jobs:
 
           - 상태: \`$status\`
           - 갱신 시각: \`$changed_at\`
-          - Raspberry Pi tunnel service: \`${unit_state:-unknown}\`
+          - Raspberry Pi tunnel service: \`${unit_state:-unknown}\` (\`$unit_scope\`)
 
           현재 유효한 \`trycloudflare.com\` 주소를 감지하지 못했습니다. 이 파일은 5분 안에 다시 자동 확인합니다.
           EOF
           fi
 
-          # Remove the YAML block indentation from the generated Markdown.
           sed -i 's/^          //' /tmp/current-tunnel.md
           encoded="$(base64 -w 0 /tmp/current-tunnel.md)"
 
