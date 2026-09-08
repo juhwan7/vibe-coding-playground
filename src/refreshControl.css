@@ -1,0 +1,34 @@
+.manual-refresh {
+  height: 34px;
+  padding: 0 12px;
+  border: 1px solid #2d4352;
+  border-radius: 9px;
+  background: #0d1b25;
+  color: #dce7ed;
+  font-family: "Segoe UI", "Malgun Gothic", Arial, sans-serif;
+  font-size: 12px;
+  font-weight: 900;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color .16s ease, background .16s ease, transform .16s ease, opacity .16s ease;
+}
+.manual-refresh:hover:not(:disabled) { transform: translateY(-1px); border-color: #557387; background: #122532; }
+.manual-refresh:disabled { cursor: wait; opacity: .65; }
+.manual-refresh.failed { border-color: #b45b67; color: #ff9aa8; }
+
+:root:not([data-theme='dark']) .manual-refresh,
+:root[data-theme='light'] .manual-refresh {
+  border-color: #d6e0e9;
+  background: #ffffff;
+  color: #284257;
+  box-shadow: 0 3px 12px rgba(42,59,83,.06);
+}
+:root:not([data-theme='dark']) .manual-refresh:hover:not(:disabled),
+:root[data-theme='light'] .manual-refresh:hover:not(:disabled) { border-color: #8ba6ba; background: #f7fafc; }
+:root:not([data-theme='dark']) .manual-refresh.failed,
+:root[data-theme='light'] .manual-refresh.failed { border-color: #d798a1; color: #a63c4a; }
+
+@media (max-width: 680px) {
+  .manual-refresh { height: 32px; padding-inline: 8px; font-size: 11px; }
+  .live-dot { display: none; }
+}

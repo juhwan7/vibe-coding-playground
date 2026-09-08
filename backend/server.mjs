@@ -15,7 +15,7 @@ const client = new TossClient({
 })
 const collector = new MarketCollector(client, {
   fastMs: Number(process.env.POLL_MS || 60000),
-  slowMs: Number(process.env.SLOW_POLL_MS || 60000),
+  slowMs: Number(process.env.SLOW_POLL_MS || 180000),
 })
 const history = new SnapshotStore()
 const themeFlow = new ThemeFlowService(client, () => collector.snapshot, {
@@ -28,8 +28,11 @@ const usThemeFlow = new UsThemeFlowService(client, {
 })
 const quizUniverse = new QuizUniverseService({ cachePath: process.env.QUIZ_UNIVERSE_CACHE_PATH || '/app/data/quiz-universe.json' })
 const quizDescriptions = new QuizDescriptionService({ cachePath: process.env.QUIZ_DESCRIPTION_CACHE_PATH || '/app/data/quiz-descriptions.json' })
-const featureNews = new FeatureNewsService({ refreshMs: 60000 })
+const featureNews = new FeatureNewsService({ refreshMs: Number(process.env.FEATURE_NEWS_REFRESH_MS || 180000) })
 let historyTimer = null
+let krThemeStartTimer = null
+let usThemeStartTimer = null
+let manualRefreshPromise = null
 
 function fundingStatus() {
   const configured = Boolean(process.env.DATA_GO_KR_SERVICE_KEY)
@@ -50,6 +53,23 @@ function fundingStatus() {
   }
 }
 
+async function refreshPrimaryMarket() {
+  if (manualRefreshPromise) return manualRefreshPromise
+  const startedAt = Date.now()
+  manualRefreshPromise = collector.refresh()
+    .then(async (snapshot) => {
+      await history.maybeAppend(snapshot).catch(() => {})
+      return {
+        ok: Boolean(snapshot?.ok),
+        updatedAt: snapshot?.updatedAt ?? null,
+        elapsedMs: Date.now() - startedAt,
+        snapshot,
+      }
+    })
+    .finally(() => { manualRefreshPromise = null })
+  return manualRefreshPromise
+}
+
 const server = http.createServer(async (request, response) => {
   const url = new URL(request.url || '/', `http://${request.headers.host || 'localhost'}`)
   if (request.method === 'OPTIONS') return send(response, 204, null)
@@ -59,6 +79,7 @@ const server = http.createServer(async (request, response) => {
       ok: true,
       configured: client.configured,
       marketReady: Boolean(collector.snapshot?.ok),
+      marketMode: collector.snapshot?.mode ?? null,
       themeFlowReady: Boolean(themeFlow.payload?.ok),
       usThemeFlowReady: Boolean(usThemeFlow.payload?.ok),
       lastError: collector.lastError,
@@ -68,18 +89,41 @@ const server = http.createServer(async (request, response) => {
       usThemeRankingAttempts: usThemeFlow.payload?.rankingAttempts ?? [],
       updatedAt: collector.snapshot?.updatedAt ?? null,
       historyEnabled: true,
+      startupSnapshotEnabled: true,
       themeHistoryPersisted: true,
       usThemeHistoryPersisted: true,
       quizUniverseCached: true,
       quizDescriptionsCached: true,
       featureNewsEnabled: true,
-      refreshSeconds: 60,
+      refreshPolicy: {
+        primaryMarketSeconds: 60,
+        slowMarketSeconds: 180,
+        featureNewsSeconds: 180,
+        themeChartSeconds: 60,
+        offSessionSeconds: 300,
+      },
+      requestScheduler: client.schedulerStats(),
+      startupPriority: ['domestic-primary', 'domestic-theme', 'us-theme'],
     })
   }
 
   if (url.pathname === '/api/market/snapshot') {
     if (!collector.snapshot) return send(response, 503, { ok: false, error: '시장 데이터 초기화 중입니다.' })
     return send(response, 200, collector.snapshot)
+  }
+
+  if (url.pathname === '/api/market/refresh' && request.method === 'POST') {
+    try {
+      const result = await refreshPrimaryMarket()
+      return send(response, result.ok ? 200 : 503, {
+        ok: result.ok,
+        updatedAt: result.updatedAt,
+        elapsedMs: result.elapsedMs,
+        note: '첫 화면 핵심 데이터만 우선 갱신했습니다. 테마·종목별 상세 데이터는 분산 수집 큐에서 계속 갱신됩니다.',
+      })
+    } catch (error) {
+      return send(response, 503, { ok: false, error: error instanceof Error ? error.message : String(error) })
+    }
   }
 
   if (url.pathname === '/api/market/theme-flow') {
@@ -125,6 +169,7 @@ function send(response, status, payload) {
   response.statusCode = status
   response.setHeader('Access-Control-Allow-Origin', '*')
   response.setHeader('Access-Control-Allow-Headers', 'Content-Type, Accept')
+  response.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
   response.setHeader('Cache-Control', 'no-store')
   if (payload == null) return response.end()
   response.setHeader('Content-Type', 'application/json; charset=utf-8')
@@ -134,15 +179,34 @@ function send(response, status, payload) {
 server.listen(port, '0.0.0.0', () => {
   console.log(`[market-backend] listening on :${port}`)
 
-  // Only market collectors are started here. Quiz-universe, quiz descriptions and
-  // feature-news are lazy so optional public sources cannot block backend liveness.
-  void collector.start()
+  // Restore the last small snapshot first so a restart does not produce a blank page.
+  // It stays ok:false until a fresh Toss snapshot arrives, so health/deploy checks still
+  // wait for real live data instead of mistaking cached data for a successful refresh.
+  void history.latest({ maxAgeHours: 36 })
+    .then((cached) => {
+      if (cached && !collector.snapshot) {
+        collector.snapshot = {
+          ...cached,
+          ok: false,
+          mode: 'startup-cache',
+          error: '마지막 저장값 표시 중 · 최신 시장 데이터 우선 갱신 중',
+        }
+      }
+      return collector.start()
+    })
     .then(() => history.maybeAppend(collector.snapshot).catch(() => {}))
-    .then(() => themeFlow.start())
-    .catch((error) => console.error('[market-backend] KR initialization failed', error))
+    .then(() => {
+      krThemeStartTimer = setTimeout(() => {
+        void themeFlow.start().catch((error) => console.error('[market-backend] KR theme initialization failed', error))
+      }, Number(process.env.KR_THEME_START_DELAY_MS || 3000))
+      krThemeStartTimer.unref?.()
 
-  void usThemeFlow.start()
-    .catch((error) => console.error('[market-backend] US initialization failed', error))
+      usThemeStartTimer = setTimeout(() => {
+        void usThemeFlow.start().catch((error) => console.error('[market-backend] US initialization failed', error))
+      }, Number(process.env.US_THEME_START_DELAY_MS || 8000))
+      usThemeStartTimer.unref?.()
+    })
+    .catch((error) => console.error('[market-backend] KR initialization failed', error))
 
   historyTimer = setInterval(() => history.maybeAppend(collector.snapshot).catch(() => {}), 60000)
   historyTimer.unref?.()
@@ -153,6 +217,8 @@ const shutdown = () => {
   themeFlow.stop()
   usThemeFlow.stop()
   if (historyTimer) clearInterval(historyTimer)
+  if (krThemeStartTimer) clearTimeout(krThemeStartTimer)
+  if (usThemeStartTimer) clearTimeout(usThemeStartTimer)
   server.close(() => process.exit(0))
   setTimeout(() => process.exit(1), 3000).unref()
 }

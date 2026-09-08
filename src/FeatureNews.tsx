@@ -38,26 +38,43 @@ export default function FeatureNews() {
 
   useEffect(() => {
     const controller = new AbortController()
-    let timer: number | undefined
-    const load = async () => {
+    let newsTimer: number | undefined
+    let snapshotTimer: number | undefined
+    let startupTimer: number | undefined
+
+    const loadNews = async () => {
       try {
-        const [newsResponse, snapshotResponse] = await Promise.all([
-          fetch('/api/market/feature-news', { signal: controller.signal, headers: { Accept: 'application/json' } }).catch(() => null),
-          fetch('/api/market/snapshot', { signal: controller.signal, headers: { Accept: 'application/json' } }).catch(() => null),
-        ])
-        if (newsResponse) {
-          const payload = await newsResponse.json().catch(() => null) as NewsPayload | null
+        const response = await fetch('/api/market/feature-news', { signal: controller.signal, headers: { Accept: 'application/json' } }).catch(() => null)
+        if (response) {
+          const payload = await response.json().catch(() => null) as NewsPayload | null
           if (payload) setNews(payload)
         }
-        if (snapshotResponse?.ok) setSnapshot(await snapshotResponse.json() as Snapshot)
       } catch (error) {
         if ((error as Error).name === 'AbortError') return
       } finally {
-        timer = window.setTimeout(load, 60000)
+        if (!controller.signal.aborted) newsTimer = window.setTimeout(loadNews, 180000)
       }
     }
-    void load()
-    return () => { controller.abort(); if (timer) window.clearTimeout(timer) }
+
+    const loadSnapshot = async () => {
+      try {
+        const response = await fetch('/api/market/snapshot', { signal: controller.signal, headers: { Accept: 'application/json' } }).catch(() => null)
+        if (response?.ok) setSnapshot(await response.json() as Snapshot)
+      } catch (error) {
+        if ((error as Error).name === 'AbortError') return
+      } finally {
+        if (!controller.signal.aborted) snapshotTimer = window.setTimeout(loadSnapshot, 60000)
+      }
+    }
+
+    void loadNews()
+    startupTimer = window.setTimeout(() => { void loadSnapshot() }, 250)
+    return () => {
+      controller.abort()
+      if (newsTimer) window.clearTimeout(newsTimer)
+      if (snapshotTimer) window.clearTimeout(snapshotTimer)
+      if (startupTimer) window.clearTimeout(startupTimer)
+    }
   }, [])
 
   const topStocks = useMemo(() => (snapshot.topRankings ?? []).slice(0, 50).filter((item) => item.name), [snapshot.topRankings])
@@ -74,7 +91,7 @@ export default function FeatureNews() {
   return <section className="feature-news-shell" data-testid="feature-news">
     <header className="feature-news-head">
       <div><p>FEATURE STOCK NEWS / MONEY FLOW CONTEXT</p><h2>특징주 이슈</h2><small>거래대금 TOP50 종목명이 기사 제목에 있으면 먼저 올려서, 돈이 몰린 종목과 당일 이슈를 같은 화면에서 확인합니다.</small></div>
-      <div><b>{news.ok ? '● 1분 최신화' : '● 뉴스 연결 중'}</b><span>{displayTime(news.updatedAt)}</span></div>
+      <div><b>{news.ok ? '● 뉴스 3분 최신화' : '● 뉴스 연결 중'}</b><span>{displayTime(news.updatedAt)}</span></div>
     </header>
     <div className="feature-news-list">
       {items.map((item, index) => <a className="feature-news-item" href={item.link} target="_blank" rel="noreferrer" key={`${item.link}-${index}`}>

@@ -5,6 +5,7 @@ test('domestic liquidity dashboard is the first page and light theme is default'
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
   await expect(page.getByTestId('liquidity-dashboard')).toBeVisible()
   await expect(page.getByRole('heading', { name: '국내 증시 자금 상태' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '시장 데이터 수동 새로고침' })).toBeVisible()
   await expect(page.getByText('TOP100 누적 거래대금', { exact: true }).first()).toBeVisible()
   await expect(page.getByRole('heading', { name: '증시 주변자금 · 대기자금 · 레버리지' })).toBeVisible()
   await expect(page.getByText('투자자예탁금', { exact: true })).toBeVisible()
