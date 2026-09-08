@@ -1,7 +1,8 @@
 import { expect, test } from '@playwright/test'
 
-test('domestic liquidity dashboard is the first page', async ({ page }, testInfo) => {
+test('domestic liquidity dashboard is the first page and light theme is default', async ({ page }, testInfo) => {
   await page.goto('/')
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
   await expect(page.getByTestId('liquidity-dashboard')).toBeVisible()
   await expect(page.getByRole('heading', { name: '국내 증시 자금 상태' })).toBeVisible()
   await expect(page.getByText('TOP100 누적 거래대금', { exact: true }).first()).toBeVisible()
@@ -11,9 +12,11 @@ test('domestic liquidity dashboard is the first page', async ({ page }, testInfo
   await page.screenshot({ path: testInfo.outputPath('liquidity-dashboard.png'), fullPage: true })
 })
 
-test('domestic theme flow board and top100 rail render', async ({ page }, testInfo) => {
+test('domestic theme flow board, feature news and top100 rail render', async ({ page }, testInfo) => {
   await page.goto('/')
   await page.getByRole('button', { name: '국내 테마 흐름' }).click()
+  await expect(page.getByTestId('feature-news')).toBeVisible()
+  await expect(page.getByRole('heading', { name: '특징주 이슈' })).toBeVisible()
   await expect(page.getByTestId('theme-strength-board')).toBeVisible()
   await expect(page.getByRole('heading', { name: /테마 강도 비교/ })).toBeVisible()
   await expect(page.getByText('TOP50 내 3종+')).toBeVisible()
@@ -40,16 +43,18 @@ test('US theme flow page is available', async ({ page }, testInfo) => {
   await page.screenshot({ path: testInfo.outputPath('us-theme-flow-dashboard.png'), fullPage: true })
 })
 
-test('stock quiz remains available from top navigation', async ({ page }) => {
+test('stock quiz separates KOSPI200 and KOSDAQ150 pools', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('button', { name: '종목 퀴즈' }).click()
-  await expect(page.getByRole('heading', { name: /이 종목, 무슨 회사일까/ })).toBeVisible()
-  await expect(page.getByTestId('question-card')).toContainText('삼성전자')
+  await expect(page.getByTestId('index-quiz')).toBeVisible()
+  await expect(page.getByRole('heading', { name: /어느 시장 종목을 얼마나 알고 있을까/ })).toBeVisible()
+  await expect(page.getByTestId('quiz-pool-kospi200')).toContainText('KOSPI 200')
+  await expect(page.getByTestId('quiz-pool-kosdaq150')).toContainText('KOSDAQ 150')
+  await expect(page.getByText('ETF 제외', { exact: true })).toBeVisible()
 
-  const choices = page.locator('.choice-card')
-  await expect(choices).toHaveCount(4)
-  await choices.nth(1).click()
-  await expect(page.getByText('정답입니다.')).toBeVisible()
+  await page.getByTestId('quiz-pool-kospi200').click()
+  await expect(page.getByTestId('question-card')).toBeVisible()
+  await expect(page.locator('.index-quiz-choices button')).toHaveCount(4)
 })
 
 test('pages have no horizontal overflow', async ({ page }) => {
@@ -60,6 +65,9 @@ test('pages have no horizontal overflow', async ({ page }) => {
   sizes = await page.evaluate(() => ({ scrollWidth: document.documentElement.scrollWidth, clientWidth: document.documentElement.clientWidth }))
   expect(sizes.scrollWidth).toBeLessThanOrEqual(sizes.clientWidth + 1)
   await page.getByRole('button', { name: '미국 테마 흐름' }).click()
+  sizes = await page.evaluate(() => ({ scrollWidth: document.documentElement.scrollWidth, clientWidth: document.documentElement.clientWidth }))
+  expect(sizes.scrollWidth).toBeLessThanOrEqual(sizes.clientWidth + 1)
+  await page.getByRole('button', { name: '종목 퀴즈' }).click()
   sizes = await page.evaluate(() => ({ scrollWidth: document.documentElement.scrollWidth, clientWidth: document.documentElement.clientWidth }))
   expect(sizes.scrollWidth).toBeLessThanOrEqual(sizes.clientWidth + 1)
 })
