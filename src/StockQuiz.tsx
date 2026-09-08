@@ -49,6 +49,61 @@ const FALLBACK: Record<QuizPool, QuizStock[]> = {
   ],
 }
 
+let universeCache: UniversePayload | null = null
+let universeRequest: Promise<UniversePayload | null> | null = null
+const descriptionMemory = new Map<string, DescriptionItem>()
+const descriptionBatchRequests = new Map<string, Promise<DescriptionPayload>>()
+
+export function warmQuizUniverse() {
+  if (universeCache) return Promise.resolve(universeCache)
+  if (universeRequest) return universeRequest
+  universeRequest = fetch('/api/quiz/universe', { headers: { Accept: 'application/json' } })
+    .then(async (response) => response.ok ? await response.json() as UniversePayload : null)
+    .then((payload) => {
+      if (payload) universeCache = payload
+      return payload
+    })
+    .catch(() => null)
+    .finally(() => { universeRequest = null })
+  return universeRequest
+}
+
+function descriptionSnapshot() {
+  return Object.fromEntries(descriptionMemory.entries()) as Record<string, DescriptionItem>
+}
+
+async function fetchDescriptionBatch(stocks: QuizStock[]) {
+  const codes = [...new Set(stocks.map((stock) => stock.code).filter((code) => /^\d{6}$/.test(code)))]
+  if (!codes.length) return { ok: false, items: [] } satisfies DescriptionPayload
+
+  const missingCodes = codes.filter((code) => !descriptionMemory.get(code)?.description)
+  if (!missingCodes.length) {
+    return { ok: true, items: codes.map((code) => descriptionMemory.get(code)).filter(Boolean) as DescriptionItem[] } satisfies DescriptionPayload
+  }
+
+  const key = [...missingCodes].sort().join(',')
+  let request = descriptionBatchRequests.get(key)
+  if (!request) {
+    request = fetch(`/api/quiz/descriptions?codes=${encodeURIComponent(missingCodes.join(','))}`, { headers: { Accept: 'application/json' } })
+      .then(async (response) => {
+        const payload = await response.json().catch(() => null) as DescriptionPayload | null
+        if (!payload) throw new Error('기업 설명 응답을 읽지 못했습니다.')
+        for (const item of payload.items ?? []) {
+          if (item.description) descriptionMemory.set(item.code, item)
+        }
+        return payload
+      })
+      .finally(() => { descriptionBatchRequests.delete(key) })
+    descriptionBatchRequests.set(key, request)
+  }
+
+  const payload = await request
+  return {
+    ...payload,
+    items: codes.map((code) => descriptionMemory.get(code) ?? payload.items?.find((item) => item.code === code)).filter(Boolean) as DescriptionItem[],
+  }
+}
+
 function shuffled<T>(values: T[]) {
   const copy = [...values]
   for (let index = copy.length - 1; index > 0; index -= 1) {
@@ -94,28 +149,27 @@ function scrubCompanyNames(description: string, candidates: QuizStock[]) {
 }
 
 export default function StockQuiz() {
-  const [universe, setUniverse] = useState<UniversePayload | null>(null)
-  const [universeLoading, setUniverseLoading] = useState(true)
+  const [universe, setUniverse] = useState<UniversePayload | null>(() => universeCache)
+  const [universeLoading, setUniverseLoading] = useState(() => !universeCache)
   const [pool, setPool] = useState<QuizPool | null>(null)
   const [questions, setQuestions] = useState<QuizQuestion[]>([])
+  const [preparedRounds, setPreparedRounds] = useState<Partial<Record<QuizPool, QuizQuestion[]>>>({})
   const [questionIndex, setQuestionIndex] = useState(0)
   const [selected, setSelected] = useState<number | null>(null)
   const [score, setScore] = useState(0)
   const [finished, setFinished] = useState(false)
-  const [descriptions, setDescriptions] = useState<Record<string, DescriptionItem>>({})
+  const [descriptions, setDescriptions] = useState<Record<string, DescriptionItem>>(() => descriptionSnapshot())
   const [descriptionLoading, setDescriptionLoading] = useState(false)
   const [descriptionError, setDescriptionError] = useState<string | null>(null)
   const [descriptionAttempt, setDescriptionAttempt] = useState(0)
 
   useEffect(() => {
-    const controller = new AbortController()
-    setUniverseLoading(true)
-    void fetch('/api/quiz/universe', { signal: controller.signal, headers: { Accept: 'application/json' } })
-      .then(async (response) => response.ok ? await response.json() as UniversePayload : null)
-      .then((payload) => { if (payload) setUniverse(payload) })
-      .catch(() => {})
-      .finally(() => setUniverseLoading(false))
-    return () => controller.abort()
+    let active = true
+    if (!universeCache) setUniverseLoading(true)
+    void warmQuizUniverse()
+      .then((payload) => { if (active && payload) setUniverse(payload) })
+      .finally(() => { if (active) setUniverseLoading(false) })
+    return () => { active = false }
   }, [])
 
   const livePools = useMemo(() => ({
@@ -133,52 +187,79 @@ export default function StockQuiz() {
     kosdaq150: livePools.kosdaq150.length < 4,
   }), [livePools])
 
+  useEffect(() => {
+    if (universeLoading) return
+    const nextRounds: Record<QuizPool, QuizQuestion[]> = {
+      kospi200: buildQuizRound(pools.kospi200.slice(0, 200), Math.min(200, pools.kospi200.length)),
+      kosdaq150: buildQuizRound(pools.kosdaq150.slice(0, 150), Math.min(150, pools.kosdaq150.length)),
+    }
+    setPreparedRounds(nextRounds)
+    for (const nextPool of ['kospi200', 'kosdaq150'] as QuizPool[]) {
+      const first = nextRounds[nextPool][0]
+      if (first) void fetchDescriptionBatch(first.options).catch(() => {})
+    }
+  }, [pools, universeLoading])
+
   const start = (nextPool: QuizPool) => {
     const selectedPool = pools[nextPool].slice(0, poolLimit(nextPool))
+    const round = preparedRounds[nextPool]?.length ? preparedRounds[nextPool]! : buildQuizRound(selectedPool, selectedPool.length)
     setPool(nextPool)
-    setQuestions(buildQuizRound(selectedPool, selectedPool.length))
+    setQuestions(round)
     setQuestionIndex(0)
     setSelected(null)
     setScore(0)
     setFinished(false)
-    setDescriptions({})
+    setDescriptions(descriptionSnapshot())
     setDescriptionError(null)
     setDescriptionAttempt(0)
+    if (round[0]) void fetchDescriptionBatch(round[0].options).catch(() => {})
   }
 
   const question = questions[questionIndex]
 
   useEffect(() => {
     if (!question) return
-    const needed = question.options.filter((option) => !descriptions[option.code]?.description)
+    let active = true
+    setDescriptions((current) => ({ ...current, ...descriptionSnapshot() }))
+    const needed = question.options.filter((option) => !descriptionMemory.get(option.code)?.description)
     if (!needed.length) {
       setDescriptionLoading(false)
       setDescriptionError(null)
       return
     }
 
-    const controller = new AbortController()
     setDescriptionLoading(true)
     setDescriptionError(null)
-    const codes = needed.map((option) => option.code).join(',')
-    void fetch(`/api/quiz/descriptions?codes=${encodeURIComponent(codes)}`, { signal: controller.signal, headers: { Accept: 'application/json' } })
-      .then(async (response) => {
-        const payload = await response.json().catch(() => null) as DescriptionPayload | null
-        if (!payload) throw new Error('기업 설명 응답을 읽지 못했습니다.')
-        setDescriptions((current) => {
-          const next = { ...current }
-          for (const item of payload.items ?? []) next[item.code] = item
-          return next
-        })
+    void fetchDescriptionBatch(question.options)
+      .then((payload) => {
+        if (!active) return
+        setDescriptions((current) => ({ ...current, ...descriptionSnapshot() }))
         const missing = needed.filter((option) => !(payload.items ?? []).some((item) => item.code === option.code && item.description))
         if (missing.length) throw new Error(`${missing.map((item) => item.name).join(', ')} 기업 설명을 아직 불러오지 못했습니다.`)
       })
       .catch((error) => {
-        if ((error as Error).name !== 'AbortError') setDescriptionError(error instanceof Error ? error.message : String(error))
+        if (active) setDescriptionError(error instanceof Error ? error.message : String(error))
       })
-      .finally(() => setDescriptionLoading(false))
-    return () => controller.abort()
+      .finally(() => { if (active) setDescriptionLoading(false) })
+    return () => { active = false }
   }, [question, descriptionAttempt])
+
+  useEffect(() => {
+    const upcoming = questions[questionIndex + 1]
+    if (!upcoming) return
+    let active = true
+    const timer = window.setTimeout(() => {
+      void fetchDescriptionBatch(upcoming.options)
+        .then(() => {
+          if (active) setDescriptions((current) => ({ ...current, ...descriptionSnapshot() }))
+        })
+        .catch(() => {})
+    }, 0)
+    return () => {
+      active = false
+      window.clearTimeout(timer)
+    }
+  }, [questionIndex, questions])
 
   const choiceDescriptions = useMemo(() => {
     if (!question) return []
@@ -207,7 +288,7 @@ export default function StockQuiz() {
     <section className="index-quiz-select">
       <p className="index-quiz-eyebrow">STOCK COMPANY QUIZ</p>
       <h1>어느 시장의 기업을 더 많이 알고 있을까?</h1>
-      <p className="index-quiz-lead">KOSPI 200과 KOSDAQ 150을 따로 선택합니다. 종목코드를 외우는 문제가 아니라, 종목명을 보고 실제 기업개요에 맞는 설명을 고르는 방식입니다.</p>
+      <p className="index-quiz-lead">KOSPI 200과 KOSDAQ 150을 따로 선택합니다. 종목명 목록은 미리 준비하고, 기업 설명은 현재 문제와 다음 문제에 필요한 4개씩만 앞서 불러옵니다.</p>
       <div className="index-pool-grid">
         <button onClick={() => start('kospi200')} data-testid="quiz-pool-kospi200" disabled={universeLoading && livePools.kospi200.length < 4}><span>KOSPI</span><strong>KOSPI 200</strong><em>{livePools.kospi200.length || pools.kospi200.length}개 종목 전체 출제</em><small>{usingFallback.kospi200 ? 'KRX 연결 전 임시 목록' : '현재 KRX 지수 구성종목 기준'}</small></button>
         <button onClick={() => start('kosdaq150')} data-testid="quiz-pool-kosdaq150" disabled={universeLoading && livePools.kosdaq150.length < 4}><span>KOSDAQ</span><strong>KOSDAQ 150</strong><em>{livePools.kosdaq150.length || pools.kosdaq150.length}개 종목 전체 출제</em><small>{usingFallback.kosdaq150 ? 'KRX 연결 전 임시 목록' : '현재 KRX 지수 구성종목 기준'}</small></button>
@@ -233,7 +314,7 @@ export default function StockQuiz() {
         <p>아래 4개 기업 설명 중 이 종목에 해당하는 설명을 선택하세요.</p>
       </article>
 
-      {descriptionLoading && !ready && <div className="index-description-state"><strong>기업개요 불러오는 중</strong><span>실제 기업 설명을 준비하고 있습니다.</span></div>}
+      {descriptionLoading && !ready && <div className="index-description-state"><strong>기업개요 불러오는 중</strong><span>이 문제에 필요한 4개 설명만 준비하고 있습니다. 다음 문제 설명은 뒤에서 미리 불러옵니다.</span></div>}
       {descriptionError && !ready && <div className="index-description-state error"><strong>기업개요를 아직 불러오지 못했습니다.</strong><span>{descriptionError}</span><button onClick={() => setDescriptionAttempt((value) => value + 1)}>다시 불러오기</button></div>}
 
       <div className="index-quiz-choices description-choices">
