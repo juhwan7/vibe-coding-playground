@@ -1,4 +1,4 @@
-const CACHE_NAME = 'market-flow-live-v1'
+const CACHE_NAME = 'market-flow-live-v2'
 const DATA_PATHS = new Set([
   '/api/market/snapshot',
   '/api/market/history',
@@ -7,6 +7,7 @@ const DATA_PATHS = new Set([
   '/api/market/feature-news',
   '/api/market/funding',
 ])
+const FAST_NETWORK_BUDGET_MS = 250
 
 self.addEventListener('install', () => self.skipWaiting())
 self.addEventListener('activate', (event) => {
@@ -33,6 +34,10 @@ async function updateCache(request, cache) {
   }
 }
 
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(() => resolve(null), ms))
+}
+
 self.addEventListener('fetch', (event) => {
   if (!shouldCache(event.request)) return
 
@@ -42,6 +47,10 @@ self.addEventListener('fetch', (event) => {
     const networkPromise = updateCache(event.request, cache)
 
     if (cached) {
+      // Prepared Nginx JSON normally wins within 250ms and is shown fresh.
+      // If Pi/network is slower, show the last good browser copy immediately.
+      const fastNetwork = await Promise.race([networkPromise, delay(FAST_NETWORK_BUDGET_MS)])
+      if (fastNetwork?.ok) return fastNetwork
       event.waitUntil(networkPromise)
       return cached
     }
