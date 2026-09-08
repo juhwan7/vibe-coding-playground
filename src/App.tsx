@@ -4,6 +4,7 @@ import MarketWorkspace from './MarketWorkspace'
 import UsMarketWorkspace from './UsMarketWorkspace'
 import './liveMarket.css'
 import './theme.css'
+import './usMarketWorkspace.css'
 export { moneyFlowScore } from './marketData'
 
 type Theme = 'light' | 'dark'
