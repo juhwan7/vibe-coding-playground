@@ -43,17 +43,18 @@ test('US theme flow page is available', async ({ page }, testInfo) => {
   await page.screenshot({ path: testInfo.outputPath('us-theme-flow-dashboard.png'), fullPage: true })
 })
 
-test('stock quiz separates KOSPI200 and KOSDAQ150 pools', async ({ page }) => {
+test('stock quiz separates full KOSPI200 and KOSDAQ150 company-description pools', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('button', { name: '종목 퀴즈' }).click()
   await expect(page.getByTestId('index-quiz')).toBeVisible()
-  await expect(page.getByRole('heading', { name: /어느 시장 종목을 얼마나 알고 있을까/ })).toBeVisible()
+  await expect(page.getByRole('heading', { name: /어느 시장의 기업을 더 많이 알고 있을까/ })).toBeVisible()
   await expect(page.getByTestId('quiz-pool-kospi200')).toContainText('KOSPI 200')
   await expect(page.getByTestId('quiz-pool-kosdaq150')).toContainText('KOSDAQ 150')
-  await expect(page.getByText('ETF 제외', { exact: true })).toBeVisible()
+  await expect(page.getByText('ETF·ETN 제외', { exact: true })).toBeVisible()
 
   await page.getByTestId('quiz-pool-kospi200').click()
   await expect(page.getByTestId('question-card')).toBeVisible()
+  await expect(page.getByTestId('question-card')).toContainText('기업 설명')
   await expect(page.locator('.index-quiz-choices button')).toHaveCount(4)
 })
 
