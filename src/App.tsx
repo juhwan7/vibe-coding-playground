@@ -44,19 +44,20 @@ export default function App() {
   const [page, setPage] = useState<'flow' | 'quiz'>('flow')
   const [theme, setTheme] = useState<Theme>(() => {
     try {
-      return localStorage.getItem('k-market-theme') === 'dark' ? 'dark' : 'light'
+      const saved = localStorage.getItem('k-market-theme-v2')
+      return saved === 'light' ? 'light' : 'dark'
     } catch {
-      return 'light'
+      return 'dark'
     }
   })
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme
     document.documentElement.style.colorScheme = theme
-    try { localStorage.setItem('k-market-theme', theme) } catch { /* storage can be unavailable */ }
+    try { localStorage.setItem('k-market-theme-v2', theme) } catch { /* storage can be unavailable */ }
   }, [theme])
 
   const toggleTheme = () => setTheme((current) => current === 'light' ? 'dark' : 'light')
 
-  return <div className="app-root"><nav className="global-nav"><button className="brand" onClick={() => setPage('flow')}>K-MARKET FLOW</button><div><button className={page === 'flow' ? 'active' : ''} onClick={() => setPage('flow')}>머니플로우</button><button className={page === 'quiz' ? 'active' : ''} onClick={() => setPage('quiz')}>종목 퀴즈</button></div><aside className="nav-actions"><span className="live-dot">● MARKET LAB</span><button className="theme-toggle" type="button" onClick={toggleTheme} aria-label={theme === 'light' ? '다크 테마로 전환' : '화이트 테마로 전환'} title={theme === 'light' ? '다크 테마' : '화이트 테마'}><span className="theme-icon" aria-hidden="true">☀</span><span className="toggle-track"><span className="toggle-knob" /></span><span className="theme-icon moon" aria-hidden="true">☾</span></button></aside></nav>{page === 'flow' ? <MarketWorkspace /> : <StockQuiz />}</div>
+  return <div className="app-root"><nav className="global-nav"><button className="brand" onClick={() => setPage('flow')}>K-MARKET FLOW</button><div><button className={page === 'flow' ? 'active' : ''} onClick={() => setPage('flow')}>테마 흐름</button><button className={page === 'quiz' ? 'active' : ''} onClick={() => setPage('quiz')}>종목 퀴즈</button></div><aside className="nav-actions"><span className="live-dot">● MARKET LAB</span><button className="theme-toggle" type="button" onClick={toggleTheme} aria-label={theme === 'light' ? '다크 테마로 전환' : '화이트 테마로 전환'} title={theme === 'light' ? '다크 테마' : '화이트 테마'}><span className="theme-icon" aria-hidden="true">☀</span><span className="toggle-track"><span className="toggle-knob" /></span><span className="theme-icon moon" aria-hidden="true">☾</span></button></aside></nav>{page === 'flow' ? <MarketWorkspace /> : <StockQuiz />}</div>
 }
