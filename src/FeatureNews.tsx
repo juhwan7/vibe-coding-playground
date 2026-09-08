@@ -76,8 +76,8 @@ export default function FeatureNews() {
         <h3>{item.title}</h3>
         <div className="feature-news-tags">{item.matches.map((stock) => <span key={stock.symbol ?? stock.name ?? ''}>{stock.name}</span>)}{item.theme && <em>{item.theme}</em>}</div>
       </a>)}
-      {!items.length && <div className="feature-news-empty"><strong>특징주 뉴스를 불러오는 중입니다.</strong><span>기사 제목·언론사·발행시각·원문 링크만 표시하고 임의의 이슈는 만들지 않습니다.</span>{news.error && <small>{news.error}</small>}</div>}
+      {!items.length && <div className="feature-news-empty"><strong>특징주 뉴스를 불러오는 중입니다.</strong><span>기사 제목·언론사·발행시각·기사 링크만 표시하고 임의의 이슈는 만들지 않습니다.</span>{news.error && <small>{news.error}</small>}</div>}
     </div>
-    <footer>기사 클릭 시 원문 기사 경로가 새 창에서 열립니다. 뉴스와 주가의 인과관계는 자동으로 판단하지 않습니다.</footer>
+    <footer>기사 클릭 시 해당 뉴스의 기사 페이지가 새 창에서 열립니다. 뉴스와 주가의 인과관계는 자동으로 판단하지 않습니다.</footer>
   </section>
 }
