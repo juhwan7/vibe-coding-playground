@@ -5,6 +5,19 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { SnapshotStore } from './snapshotStore.mjs'
 
+function sample(updatedAt, marketTradingAmount) {
+  return {
+    ok: true,
+    updatedAt,
+    marketSession: 'KRX + NXT · 통합 장중',
+    marketTradingAmount,
+    marketTradingAmountCoverage: 'top100-1d',
+    indices: { KOSPI: { lastPrice: 3300 } },
+    topRankings: [{ symbol: '005930', name: '삼성전자', tradingAmount: 1000 }],
+    stocks: {},
+  }
+}
+
 test('persists a compact latest snapshot for fast startup restore', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'market-snapshot-'))
   try {
@@ -12,20 +25,32 @@ test('persists a compact latest snapshot for fast startup restore', async () => 
       filePath: join(dir, 'history.jsonl'),
       latestPath: join(dir, 'latest.json'),
     })
-    const snapshot = {
-      ok: true,
-      updatedAt: '2026-09-09T00:30:00.000Z',
-      marketSession: 'KRX + NXT · 통합 장중',
-      marketTradingAmount: 123456,
-      marketTradingAmountCoverage: 'top100-1d',
-      indices: { KOSPI: { lastPrice: 3300 } },
-      topRankings: [{ symbol: '005930', name: '삼성전자', tradingAmount: 1000 }],
-      stocks: {},
-    }
+    const snapshot = sample('2026-09-09T00:30:00.000Z', 123456)
     assert.equal(await store.maybeAppend(snapshot), true)
     const latest = await store.latest({ maxAgeHours: 48 })
     assert.equal(latest.marketTradingAmount, 123456)
     assert.equal(latest.topRankings[0].name, '삼성전자')
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('keeps an already loaded one-minute history cache updated incrementally', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'market-history-cache-'))
+  try {
+    const store = new SnapshotStore({
+      filePath: join(dir, 'history.jsonl'),
+      latestPath: join(dir, 'latest.json'),
+    })
+    const initial = await store.read({ days: 8, resolutionMinutes: 1 })
+    assert.equal(initial.samples.length, 0)
+
+    await store.maybeAppend(sample('2026-09-09T00:30:00.000Z', 100))
+    await store.maybeAppend(sample('2026-09-09T00:31:00.000Z', 120))
+
+    const updated = await store.read({ days: 8, resolutionMinutes: 1 })
+    assert.equal(updated.samples.length, 2)
+    assert.deepEqual(updated.samples.map((item) => item.marketTradingAmount), [100, 120])
   } finally {
     await rm(dir, { recursive: true, force: true })
   }
