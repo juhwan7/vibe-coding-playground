@@ -41,12 +41,68 @@ function extractDaily(candlesPayload) {
   const close = number(current.closePrice)
   const volume = number(current.volume)
   const previousClose = previous ? number(previous.closePrice) : null
-  const avgPrice = [open, high, low, close].filter((value) => value != null).reduce((sum, value) => sum + value, 0) / Math.max(1, [open, high, low, close].filter((value) => value != null).length)
+  const prices = [open, high, low, close].filter((value) => value != null)
+  const avgPrice = prices.reduce((sum, value) => sum + value, 0) / Math.max(1, prices.length)
   return {
     previousClose,
     volume,
     estimatedTradingAmount: volume != null && Number.isFinite(avgPrice) ? volume * avgPrice : null,
     timestamp: current.timestamp ?? null,
+  }
+}
+
+function firstRecord(payload) {
+  const result = payload?.result
+  if (Array.isArray(result)) return result[0] ?? null
+  if (Array.isArray(result?.records)) return result.records[0] ?? null
+  if (Array.isArray(result?.items)) return result.items[0] ?? null
+  return result ?? null
+}
+
+function pickNumber(object, keys) {
+  if (!object || typeof object !== 'object') return null
+  for (const key of keys) {
+    const value = number(object[key])
+    if (value != null) return value
+  }
+  return null
+}
+
+function investorValue(record, side, unit) {
+  const group = record?.[side]
+  const amountKeys = ['netBuyAmount', 'netPurchaseAmount', 'netAmount', 'netBuyingAmount']
+  const volumeKeys = ['netBuyVolume', 'netPurchaseVolume', 'netVolume', 'netBuyingVolume']
+  const direct = unit === 'amount'
+    ? [`${side}NetBuyAmount`, `${side}NetPurchaseAmount`]
+    : [`${side}NetBuyVolume`, `${side}NetPurchaseVolume`]
+  return pickNumber(group, unit === 'amount' ? amountKeys : volumeKeys) ?? pickNumber(record, direct)
+}
+
+function programValue(record, side) {
+  const candidates = side === 'nonArbitrage'
+    ? ['nonArbitrage', 'nonarbitrage', 'nonArb', 'nonArbitrageTrading']
+    : ['arbitrage', 'arb', 'arbitrageTrading']
+  for (const key of candidates) {
+    const group = record?.[key]
+    const value = pickNumber(group, ['netBuyVolume', 'netVolume', 'netPurchaseVolume'])
+    if (value != null) return value
+  }
+  const directKeys = side === 'nonArbitrage'
+    ? ['nonArbitrageNetBuyVolume', 'nonArbitrageNetVolume']
+    : ['arbitrageNetBuyVolume', 'arbitrageNetVolume']
+  return pickNumber(record, directKeys)
+}
+
+function rankingItem(item) {
+  const rate = item?.price?.changeRate != null ? number(item.price.changeRate) : number(item?.changeRate)
+  return {
+    symbol: item?.symbol ?? item?.stock?.symbol ?? null,
+    name: item?.name ?? item?.stockName ?? item?.stock?.name ?? null,
+    market: item?.market ?? item?.stock?.market ?? null,
+    lastPrice: number(item?.price?.lastPrice ?? item?.lastPrice),
+    changeRate: rate != null ? rate * (Math.abs(rate) <= 1 ? 100 : 1) : null,
+    tradingAmount: number(item?.tradingAmount),
+    tradingVolume: number(item?.tradingVolume),
   }
 }
 
@@ -58,6 +114,8 @@ export class MarketCollector {
     this.daily = new Map()
     this.investor = new Map()
     this.indexDaily = new Map()
+    this.marketInvestors = { KOSPI: null, KOSDAQ: null, total: null }
+    this.program = new Map()
     this.snapshot = null
     this.lastError = null
     this.lastSlowAt = 0
@@ -154,6 +212,15 @@ export class MarketCollector {
         }
       }
 
+      const programValues = [...this.program.values()]
+      const programSummary = {
+        arbitrageNetBuyVolume: programValues.reduce((sum, item) => sum + (item.arbitrage ?? 0), 0),
+        nonArbitrageNetBuyVolume: programValues.reduce((sum, item) => sum + (item.nonArbitrage ?? 0), 0),
+        symbolCount: programValues.length,
+        coverage: `tracked-${WATCH_SYMBOLS.length}`,
+        unit: 'shares',
+      }
+
       this.lastError = null
       this.snapshot = {
         ok: true,
@@ -163,8 +230,21 @@ export class MarketCollector {
         error: null,
         indices: indexResult,
         stocks,
+        topRankings: rankings.map(rankingItem).filter((item) => item.symbol),
         marketTradingAmount: rankings.reduce((sum, item) => sum + (number(item.tradingAmount) ?? 0), 0),
         marketTradingAmountCoverage: 'top100',
+        marketInvestors: this.marketInvestors,
+        programSummary,
+        futures: {
+          available: false,
+          source: null,
+          priceChangeRate: null,
+          tradingStrength: null,
+          tradingVolume: null,
+          openInterest: null,
+          foreignNetContracts: null,
+          institutionNetContracts: null,
+        },
         rankedAt: rankingPayload?.result?.rankedAt ?? null,
       }
       return this.snapshot
@@ -188,8 +268,12 @@ export class MarketCollector {
       error: this.lastError,
       indices: {},
       stocks: {},
+      topRankings: [],
       marketTradingAmount: null,
       marketTradingAmountCoverage: 'top100',
+      marketInvestors: this.marketInvestors,
+      programSummary: null,
+      futures: { available: false, source: null },
       rankedAt: null,
     }
   }
@@ -216,14 +300,53 @@ export class MarketCollector {
     for (const symbol of WATCH_SYMBOLS) {
       try {
         const payload = await this.client.request(`/api/v1/stocks/${symbol}/investor-trading?count=1`)
-        const record = payload?.result?.records?.[0]
+        const record = firstRecord(payload)
         this.investor.set(symbol, {
-          foreigner: number(record?.foreigner?.netBuyVolume),
-          institution: number(record?.institution?.netBuyVolume),
-          updatedAt: record?.updatedAt ?? null,
+          foreigner: investorValue(record, 'foreigner', 'volume'),
+          institution: investorValue(record, 'institution', 'volume'),
+          updatedAt: record?.updatedAt ?? record?.date ?? null,
         })
       } catch {
-        // 수급은 일부 시점에 잠정치가 없을 수 있으므로 시세 수집은 계속 유지한다.
+        // 일부 시점에 잠정치가 없더라도 시세 수집은 계속한다.
+      }
+      await sleep(120)
+    }
+
+    for (const symbol of ['KOSPI', 'KOSDAQ']) {
+      try {
+        const payload = await this.client.request(`/api/v1/market-indicators/${symbol}/investor-trading?count=1`)
+        const record = firstRecord(payload)
+        this.marketInvestors[symbol] = {
+          foreignerNetBuyAmount: investorValue(record, 'foreigner', 'amount'),
+          institutionNetBuyAmount: investorValue(record, 'institution', 'amount'),
+          individualNetBuyAmount: investorValue(record, 'individual', 'amount'),
+          updatedAt: record?.updatedAt ?? record?.date ?? null,
+        }
+      } catch {
+        this.marketInvestors[symbol] = this.marketInvestors[symbol] ?? null
+      }
+      await sleep(120)
+    }
+
+    const investorMarkets = ['KOSPI', 'KOSDAQ'].map((symbol) => this.marketInvestors[symbol]).filter(Boolean)
+    this.marketInvestors.total = investorMarkets.length ? {
+      foreignerNetBuyAmount: investorMarkets.reduce((sum, item) => sum + (item.foreignerNetBuyAmount ?? 0), 0),
+      institutionNetBuyAmount: investorMarkets.reduce((sum, item) => sum + (item.institutionNetBuyAmount ?? 0), 0),
+      individualNetBuyAmount: investorMarkets.reduce((sum, item) => sum + (item.individualNetBuyAmount ?? 0), 0),
+      coverage: investorMarkets.length === 2 ? 'KOSPI+KOSDAQ' : 'partial',
+    } : null
+
+    for (const symbol of WATCH_SYMBOLS) {
+      try {
+        const payload = await this.client.request(`/api/v1/stocks/${symbol}/program-trades?count=1`)
+        const record = firstRecord(payload)
+        this.program.set(symbol, {
+          arbitrage: programValue(record, 'arbitrage'),
+          nonArbitrage: programValue(record, 'nonArbitrage'),
+          updatedAt: record?.updatedAt ?? record?.date ?? null,
+        })
+      } catch {
+        // 프로그램매매 데이터가 없는 종목은 집계에서 제외한다.
       }
       await sleep(120)
     }
