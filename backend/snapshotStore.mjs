@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile, appendFile, stat } from 'node:fs/promises'
+import { mkdir, readFile, writeFile, appendFile, stat, rename } from 'node:fs/promises'
 import { dirname } from 'node:path'
 
 function minuteKey(iso) {
@@ -59,12 +59,39 @@ function compactSnapshot(snapshot) {
 }
 
 export class SnapshotStore {
-  constructor({ filePath = process.env.MARKET_HISTORY_PATH || '/app/data/market-history.jsonl', retainDays = 35 } = {}) {
+  constructor({
+    filePath = process.env.MARKET_HISTORY_PATH || '/app/data/market-history.jsonl',
+    latestPath = process.env.MARKET_LATEST_PATH || '/app/data/latest-market-snapshot.json',
+    retainDays = 35,
+  } = {}) {
     this.filePath = filePath
+    this.latestPath = latestPath
     this.retainDays = retainDays
     this.lastMinute = null
     this.lastPruneDay = null
-    this.ready = mkdir(dirname(filePath), { recursive: true }).catch(() => {})
+    this.ready = Promise.all([
+      mkdir(dirname(filePath), { recursive: true }),
+      mkdir(dirname(latestPath), { recursive: true }),
+    ]).catch(() => {})
+  }
+
+  async writeLatest(compact) {
+    const temp = `${this.latestPath}.tmp`
+    await writeFile(temp, JSON.stringify(compact), 'utf8')
+    await rename(temp, this.latestPath)
+  }
+
+  async latest({ maxAgeHours = 36 } = {}) {
+    await this.ready
+    try {
+      const item = JSON.parse(await readFile(this.latestPath, 'utf8'))
+      const time = Date.parse(item?.updatedAt)
+      if (!Number.isFinite(time)) return null
+      if (Date.now() - time > Math.max(1, Number(maxAgeHours) || 36) * 60 * 60 * 1000) return null
+      return item
+    } catch {
+      return null
+    }
   }
 
   async maybeAppend(snapshot) {
@@ -77,7 +104,9 @@ export class SnapshotStore {
     if (!key || key === this.lastMinute) return false
     this.lastMinute = key
     await this.ready
-    await appendFile(this.filePath, `${JSON.stringify(compactSnapshot(snapshot))}\n`, 'utf8')
+    const compact = compactSnapshot(snapshot)
+    await appendFile(this.filePath, `${JSON.stringify(compact)}\n`, 'utf8')
+    await this.writeLatest(compact).catch(() => {})
 
     const day = kstParts(snapshot.updatedAt).day
     if (day && day !== this.lastPruneDay) {
