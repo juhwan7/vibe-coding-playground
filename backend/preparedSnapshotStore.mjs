@@ -2,19 +2,31 @@ import { createHash } from 'node:crypto'
 import { mkdir, rename, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 
+function payloadVersion(payload) {
+  return payload?.updatedAt ?? payload?.sourceUpdatedAt ?? null
+}
+
 export class PreparedSnapshotStore {
   constructor({ directory = process.env.PREPARED_DATA_DIR || '/app/public-data' } = {}) {
     this.directory = directory
     this.hashes = new Map()
+    this.versions = new Map()
     this.ready = mkdir(directory, { recursive: true }).catch(() => {})
   }
 
   async write(name, payload) {
     if (!name || payload == null) return false
     await this.ready
+
+    const version = payloadVersion(payload)
+    if (version && this.versions.get(name) === version) return false
+
     const json = JSON.stringify(payload)
     const hash = createHash('sha1').update(json).digest('hex')
-    if (this.hashes.get(name) === hash) return false
+    if (this.hashes.get(name) === hash) {
+      if (version) this.versions.set(name, version)
+      return false
+    }
 
     const target = join(this.directory, name)
     await mkdir(dirname(target), { recursive: true })
@@ -22,6 +34,7 @@ export class PreparedSnapshotStore {
     await writeFile(temp, json, 'utf8')
     await rename(temp, target)
     this.hashes.set(name, hash)
+    if (version) this.versions.set(name, version)
     return true
   }
 }
