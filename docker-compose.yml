@@ -9,10 +9,12 @@ services:
       DATA_GO_KR_SERVICE_KEY: ${DATA_GO_KR_SERVICE_KEY:-}
       PORT: 8787
       POLL_MS: ${POLL_MS:-60000}
-      SLOW_POLL_MS: ${SLOW_POLL_MS:-60000}
+      SLOW_POLL_MS: ${SLOW_POLL_MS:-180000}
       THEME_FLOW_REFRESH_MS: ${THEME_FLOW_REFRESH_MS:-60000}
       US_THEME_FLOW_REFRESH_MS: ${US_THEME_FLOW_REFRESH_MS:-60000}
+      FEATURE_NEWS_REFRESH_MS: ${FEATURE_NEWS_REFRESH_MS:-180000}
       MARKET_HISTORY_PATH: /app/data/market-history.jsonl
+      MARKET_LATEST_PATH: /app/data/latest-market-snapshot.json
       THEME_CANDLE_CACHE_PATH: /app/data/theme-candles.json
       US_THEME_CANDLE_CACHE_PATH: /app/data/us-theme-candles.json
       QUIZ_UNIVERSE_CACHE_PATH: /app/data/quiz-universe.json
