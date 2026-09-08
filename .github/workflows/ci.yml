@@ -52,7 +52,7 @@ jobs:
       - name: Production build
         run: npm run build
       - name: Validate runtime frontend image
-        run: docker build -f Dockerfile.frontend -t market-flow-frontend-ci .
+        run: docker build -f Dockerfile.frontend.runtime -t market-flow-frontend-ci .
       - name: Upload frontend deploy artifact
         uses: actions/upload-artifact@v4
         with:
