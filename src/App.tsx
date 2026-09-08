@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import MarketDashboard from './MarketDashboard'
+import './liveMarket.css'
 export { moneyFlowScore } from './marketData'
 
 type QuizItem = {
