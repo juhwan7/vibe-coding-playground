@@ -15,6 +15,7 @@ services:
       MARKET_HISTORY_PATH: /app/data/market-history.jsonl
       THEME_CANDLE_CACHE_PATH: /app/data/theme-candles.json
       US_THEME_CANDLE_CACHE_PATH: /app/data/us-theme-candles.json
+      QUIZ_UNIVERSE_CACHE_PATH: /app/data/quiz-universe.json
     volumes:
       - market-history:/app/data
     restart: unless-stopped
@@ -27,7 +28,7 @@ services:
       - "8080:80"
     depends_on:
       backend:
-        condition: service_healthy
+        condition: service_started
     restart: unless-stopped
 
 volumes:
