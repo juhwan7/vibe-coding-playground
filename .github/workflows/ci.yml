@@ -5,9 +5,14 @@ on:
     branches: ["main"]
   pull_request:
     branches: ["main"]
+  workflow_dispatch:
 
 permissions:
   contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   verify:
@@ -24,22 +29,50 @@ jobs:
           node-version: 22
 
       - name: Install dependencies
+        id: install
         run: npm install
 
       - name: Type check
+        id: typecheck
         run: npm run check
 
       - name: Unit tests
+        id: unit
         run: npm test
 
       - name: Build
+        id: build
         run: npm run build
 
       - name: Install Playwright Chromium
+        id: playwright_install
         run: npx playwright install --with-deps chromium
 
       - name: Browser tests
+        id: e2e
         run: npm run test:e2e
+
+      - name: Write AI run summary
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p ai-run
+          cat > ai-run/summary.json <<EOF
+          {
+            "repository": "${{ github.repository }}",
+            "ref": "${{ github.ref }}",
+            "commit": "${{ github.sha }}",
+            "run_id": "${{ github.run_id }}",
+            "run_number": "${{ github.run_number }}",
+            "event": "${{ github.event_name }}",
+            "install": "${{ steps.install.outcome }}",
+            "typecheck": "${{ steps.typecheck.outcome }}",
+            "unit": "${{ steps.unit.outcome }}",
+            "build": "${{ steps.build.outcome }}",
+            "playwright_install": "${{ steps.playwright_install.outcome }}",
+            "e2e": "${{ steps.e2e.outcome }}"
+          }
+          EOF
 
       - name: Upload browser test artifacts
         if: always()
@@ -49,5 +82,6 @@ jobs:
           path: |
             playwright-report/
             test-results/
+            ai-run/
           if-no-files-found: ignore
           retention-days: 7
