@@ -59,6 +59,22 @@ function validCode(code) {
   return /^\d{6}$/.test(String(code ?? ''))
 }
 
+async function decodeResponse(response) {
+  const bytes = new Uint8Array(await response.arrayBuffer())
+  const contentType = response.headers.get('content-type') ?? ''
+  const declared = contentType.match(/charset\s*=\s*([^;\s]+)/i)?.[1]?.replace(/["']/g, '').toLowerCase()
+  const candidates = [declared, 'euc-kr', 'utf-8'].filter(Boolean)
+  for (const charset of [...new Set(candidates)]) {
+    try {
+      const text = new TextDecoder(charset).decode(bytes)
+      if (text.includes('기업개요') || charset === candidates.at(-1)) return text
+    } catch {
+      // Try the next decoder supported by this Node build.
+    }
+  }
+  return new TextDecoder().decode(bytes)
+}
+
 async function mapLimit(items, limit, worker) {
   const queue = [...items]
   const workers = Array.from({ length: Math.min(limit, queue.length) }, async () => {
@@ -107,7 +123,7 @@ export class QuizDescriptionService {
       signal: AbortSignal.timeout(10000),
     })
     if (!response.ok) throw new Error(`기업개요 조회 실패 (${response.status})`)
-    const html = await response.text()
+    const html = await decodeResponse(response)
     const description = extractCompanyOverview(html)
     if (!description) throw new Error('기업개요 본문을 찾지 못했습니다.')
     const item = {
