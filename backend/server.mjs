@@ -79,6 +79,7 @@ const server = http.createServer(async (request, response) => {
       ok: true,
       configured: client.configured,
       marketReady: Boolean(collector.snapshot?.ok),
+      marketMode: collector.snapshot?.mode ?? null,
       themeFlowReady: Boolean(themeFlow.payload?.ok),
       usThemeFlowReady: Boolean(usThemeFlow.payload?.ok),
       lastError: collector.lastError,
@@ -88,6 +89,7 @@ const server = http.createServer(async (request, response) => {
       usThemeRankingAttempts: usThemeFlow.payload?.rankingAttempts ?? [],
       updatedAt: collector.snapshot?.updatedAt ?? null,
       historyEnabled: true,
+      startupSnapshotEnabled: true,
       themeHistoryPersisted: true,
       usThemeHistoryPersisted: true,
       quizUniverseCached: true,
@@ -177,9 +179,21 @@ function send(response, status, payload) {
 server.listen(port, '0.0.0.0', () => {
   console.log(`[market-backend] listening on :${port}`)
 
-  // Boot order is intentional: the page users see first receives the API budget first.
-  // Theme services start only after the first domestic snapshot has been published.
-  void collector.start()
+  // Restore the last small snapshot first so a restart does not produce a blank page.
+  // It stays ok:false until a fresh Toss snapshot arrives, so health/deploy checks still
+  // wait for real live data instead of mistaking cached data for a successful refresh.
+  void history.latest({ maxAgeHours: 36 })
+    .then((cached) => {
+      if (cached && !collector.snapshot) {
+        collector.snapshot = {
+          ...cached,
+          ok: false,
+          mode: 'startup-cache',
+          error: '마지막 저장값 표시 중 · 최신 시장 데이터 우선 갱신 중',
+        }
+      }
+      return collector.start()
+    })
     .then(() => history.maybeAppend(collector.snapshot).catch(() => {}))
     .then(() => {
       krThemeStartTimer = setTimeout(() => {
