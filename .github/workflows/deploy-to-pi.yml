@@ -1,0 +1,57 @@
+name: Deploy to Raspberry Pi
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-pi
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    # Public-repo safety: never execute pull-request code on the Pi.
+    # Only a successful CI run for a direct push to main may reach this runner.
+    if: >-
+      ${{ github.event.workflow_run.conclusion == 'success' &&
+          github.event.workflow_run.event == 'push' &&
+          github.event.workflow_run.head_branch == 'main' &&
+          github.event.workflow_run.head_repository.full_name == github.repository }}
+    runs-on: [self-hosted, linux, ARM64, k-market-pi]
+    timeout-minutes: 15
+
+    steps:
+      - name: Deploy exact verified commit
+        env:
+          VERIFIED_SHA: ${{ github.event.workflow_run.head_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP="$HOME/vibe-coding-playground"
+          cd "$APP"
+
+          # Never overwrite the Pi-local .env/secrets. The repository is public.
+          test -f .env || { echo "Missing $APP/.env; refusing deployment"; exit 1; }
+
+          git fetch --prune origin main
+          git checkout --detach "$VERIFIED_SHA"
+
+          docker compose up -d --build --remove-orphans
+
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent --show-error http://localhost:8080/api/health >/tmp/k-market-health.json; then
+              cat /tmp/k-market-health.json
+              echo "Deployed verified commit: $VERIFIED_SHA"
+              exit 0
+            fi
+            sleep 2
+          done
+
+          echo "Health check failed after deployment"
+          docker compose ps
+          docker compose logs --tail=120
+          exit 1
