@@ -37,7 +37,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          PORT=18787 node backend/server.mjs >/tmp/market-backend-smoke.log 2>&1 &
+          PORT=18787 PREPARED_DATA_DIR=/tmp/market-prepared node backend/server.mjs >/tmp/market-backend-smoke.log 2>&1 &
           PID=$!
           trap 'kill "$PID" 2>/dev/null || true' EXIT
           for attempt in $(seq 1 20); do
@@ -51,6 +51,15 @@ jobs:
           exit 1
       - name: Production build
         run: npm run build
+      - name: Validate runtime frontend image
+        run: docker build -f Dockerfile.frontend -t market-flow-frontend-ci .
+      - name: Upload frontend deploy artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: dist/
+          if-no-files-found: error
+          retention-days: 3
 
   docker:
     runs-on: ubuntu-latest
@@ -58,8 +67,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Docker compose build
-        run: docker compose build
+      - name: Build backend container
+        run: docker compose build backend
 
   browser:
     runs-on: ubuntu-latest
