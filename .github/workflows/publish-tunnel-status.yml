@@ -1,0 +1,177 @@
+name: Publish Quick Tunnel Status
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_run:
+    workflows: ["Deploy to Raspberry Pi"]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-quick-tunnel-status
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    # Public-repo safety: this self-hosted job never runs pull-request code.
+    # It only runs on a timer, an explicit manual dispatch, or after a successful
+    # main-branch Pi deployment.
+    if: >-
+      ${{ github.event_name != 'workflow_run' ||
+          (github.event.workflow_run.conclusion == 'success' &&
+           github.event.workflow_run.head_branch == 'main' &&
+           github.event.workflow_run.head_repository.full_name == github.repository) }}
+    runs-on: [self-hosted, linux, ARM64, k-market-pi]
+    timeout-minutes: 3
+
+    steps:
+      - name: Detect and publish current Quick Tunnel URL
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          SERVICE=market-tunnel.service
+          STATUS_BRANCH=tunnel-status
+          STATUS_PATH=CURRENT_TUNNEL.md
+          API="https://api.github.com/repos/$REPOSITORY"
+          RAW="https://raw.githubusercontent.com/$REPOSITORY/$STATUS_BRANCH/$STATUS_PATH"
+
+          unit_state="$(systemctl is-active "$SERVICE" 2>/dev/null || true)"
+          unit_scope=system
+          if [ "$unit_state" != active ]; then
+            user_state="$(systemctl --user is-active "$SERVICE" 2>/dev/null || true)"
+            if [ "$user_state" = active ]; then
+              unit_state=active
+              unit_scope=user
+            fi
+          fi
+
+          # If the tunnel service stopped entirely, make one non-interactive recovery
+          # attempt. Failure is harmless; the published status will simply say offline.
+          if [ "$unit_state" != active ]; then
+            if systemctl --user restart "$SERVICE" >/dev/null 2>&1; then
+              unit_scope=user
+              sleep 4
+            elif sudo -n systemctl restart "$SERVICE" >/dev/null 2>&1; then
+              unit_scope=system
+              sleep 4
+            fi
+            if [ "$unit_scope" = user ]; then
+              unit_state="$(systemctl --user is-active "$SERVICE" 2>/dev/null || true)"
+            else
+              unit_state="$(systemctl is-active "$SERVICE" 2>/dev/null || true)"
+            fi
+          fi
+
+          collect_logs() {
+            journalctl -u "$SERVICE" --no-pager -n 800 --since '2 days ago' 2>/dev/null || true
+            systemctl status "$SERVICE" --no-pager -l 2>/dev/null || true
+            journalctl --user -u "$SERVICE" --no-pager -n 800 --since '2 days ago' 2>/dev/null || true
+            systemctl --user status "$SERVICE" --no-pager -l 2>/dev/null || true
+          }
+
+          tunnel_url="$(collect_logs | grep -Eo 'https://[a-z0-9-]+\.trycloudflare\.com' | tail -n 1 || true)"
+          reachable=false
+          if [ -n "$tunnel_url" ]; then
+            for attempt in 1 2 3; do
+              if curl --fail --silent --show-error --connect-timeout 4 --max-time 8 "$tunnel_url/api/health" >/tmp/tunnel-health.json 2>/dev/null; then
+                reachable=true
+                break
+              fi
+              sleep 2
+            done
+          fi
+
+          if [ -z "$tunnel_url" ]; then
+            status=offline
+          elif [ "$reachable" = true ]; then
+            status=online
+          else
+            status=unreachable
+          fi
+
+          old="$(curl --fail --silent --show-error --max-time 8 "$RAW" 2>/dev/null || true)"
+          old_url="$(printf '%s' "$old" | grep -Eo 'https://[a-z0-9-]+\.trycloudflare\.com' | head -n 1 || true)"
+          old_status="$(printf '%s' "$old" | sed -n 's/^- 상태: `\([^`]*\)`.*/\1/p' | head -n 1)"
+
+          echo "Tunnel service: ${unit_state:-unknown} ($unit_scope)"
+          echo "Detected URL: ${tunnel_url:-none}"
+          echo "Reachability: $status"
+
+          # Avoid a commit every five minutes. Publish only when URL/status changes.
+          if [ "$old_url" = "$tunnel_url" ] && [ "$old_status" = "$status" ]; then
+            echo "Tunnel address/status unchanged; registry already current"
+            exit 0
+          fi
+
+          changed_at="$(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+          if [ -n "$tunnel_url" ]; then
+            cat >/tmp/current-tunnel.md <<EOF
+          # MARKET FLOW 현재 접속 주소
+
+          - 상태: \`$status\`
+          - 갱신 시각: \`$changed_at\`
+          - Raspberry Pi tunnel service: \`${unit_state:-unknown}\`
+
+          ## 접속
+
+          **[$tunnel_url]($tunnel_url)**
+
+          이 파일은 Raspberry Pi가 5분마다 Cloudflare Quick Tunnel 주소를 확인해 자동 갱신합니다. 배포 직후에도 즉시 다시 확인합니다.
+          EOF
+          else
+            cat >/tmp/current-tunnel.md <<EOF
+          # MARKET FLOW 현재 접속 주소
+
+          - 상태: \`$status\`
+          - 갱신 시각: \`$changed_at\`
+          - Raspberry Pi tunnel service: \`${unit_state:-unknown}\`
+
+          현재 유효한 \`trycloudflare.com\` 주소를 감지하지 못했습니다. 이 파일은 5분 안에 다시 자동 확인합니다.
+          EOF
+          fi
+
+          # Remove the YAML block indentation from the generated Markdown.
+          sed -i 's/^          //' /tmp/current-tunnel.md
+          encoded="$(base64 -w 0 /tmp/current-tunnel.md)"
+
+          meta_file=/tmp/tunnel-meta.json
+          http_code="$(curl --silent --show-error -o "$meta_file" -w '%{http_code}' \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'Accept: application/vnd.github+json' \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "$API/contents/$STATUS_PATH?ref=$STATUS_BRANCH")"
+
+          sha=''
+          if [ "$http_code" = 200 ]; then
+            sha="$(tr -d '\n' <"$meta_file" | sed -n 's/.*"sha":[[:space:]]*"\([^"]*\)".*/\1/p')"
+          elif [ "$http_code" != 404 ]; then
+            cat "$meta_file" || true
+            echo "Unable to read tunnel registry metadata (HTTP $http_code)"
+            exit 1
+          fi
+
+          if [ -n "$sha" ]; then
+            printf '{"message":"chore: update current Quick Tunnel address","content":"%s","branch":"%s","sha":"%s"}' \
+              "$encoded" "$STATUS_BRANCH" "$sha" >/tmp/tunnel-update.json
+          else
+            printf '{"message":"chore: publish current Quick Tunnel address","content":"%s","branch":"%s"}' \
+              "$encoded" "$STATUS_BRANCH" >/tmp/tunnel-update.json
+          fi
+
+          curl --fail --silent --show-error \
+            -X PUT \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'Accept: application/vnd.github+json' \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "$API/contents/$STATUS_PATH" \
+            --data-binary @/tmp/tunnel-update.json >/tmp/tunnel-publish-result.json
+
+          echo "Published current tunnel status to $STATUS_BRANCH/$STATUS_PATH"
