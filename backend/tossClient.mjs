@@ -64,11 +64,12 @@ export class RequestScheduler {
 
   scheduleWake(delayMs) {
     if (this.timer) return
+    // This timer deliberately remains referenced. Queued API calls are real work;
+    // allowing Node to exit while they are waiting would strand their promises.
     this.timer = setTimeout(() => {
       this.timer = null
       this.pump()
     }, Math.max(5, delayMs))
-    this.timer.unref?.()
   }
 
   pump() {
