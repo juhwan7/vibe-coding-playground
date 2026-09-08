@@ -11,8 +11,10 @@ services:
       POLL_MS: ${POLL_MS:-60000}
       SLOW_POLL_MS: ${SLOW_POLL_MS:-60000}
       THEME_FLOW_REFRESH_MS: ${THEME_FLOW_REFRESH_MS:-60000}
+      US_THEME_FLOW_REFRESH_MS: ${US_THEME_FLOW_REFRESH_MS:-60000}
       MARKET_HISTORY_PATH: /app/data/market-history.jsonl
       THEME_CANDLE_CACHE_PATH: /app/data/theme-candles.json
+      US_THEME_CANDLE_CACHE_PATH: /app/data/us-theme-candles.json
     volumes:
       - market-history:/app/data
     restart: unless-stopped
