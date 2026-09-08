@@ -15,14 +15,17 @@ services:
       FEATURE_NEWS_REFRESH_MS: ${FEATURE_NEWS_REFRESH_MS:-180000}
       MARKET_HISTORY_PATH: /app/data/market-history.jsonl
       MARKET_LATEST_PATH: /app/data/latest-market-snapshot.json
+      PREPARED_DATA_DIR: /app/public-data
       THEME_CANDLE_CACHE_PATH: /app/data/theme-candles.json
       US_THEME_CANDLE_CACHE_PATH: /app/data/us-theme-candles.json
       QUIZ_UNIVERSE_CACHE_PATH: /app/data/quiz-universe.json
     volumes:
       - market-history:/app/data
+      - dashboard-cache:/app/public-data
     restart: unless-stopped
 
   frontend:
+    image: vibe-coding-playground-frontend:latest
     build:
       context: .
       dockerfile: Dockerfile.frontend
@@ -31,7 +34,10 @@ services:
     depends_on:
       backend:
         condition: service_started
+    volumes:
+      - dashboard-cache:/usr/share/nginx/html/data:ro
     restart: unless-stopped
 
 volumes:
   market-history:
+  dashboard-cache:

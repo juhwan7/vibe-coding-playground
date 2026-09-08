@@ -20,8 +20,12 @@ if (-not (Test-Path '.env')) {
   @(
     "TOSS_CLIENT_ID=$clientId"
     "TOSS_CLIENT_SECRET=$clientSecret"
-    'POLL_MS=5000'
-    'SLOW_POLL_MS=60000'
+    'POLL_MS=60000'
+    'SLOW_POLL_MS=180000'
+    'FEATURE_NEWS_REFRESH_MS=180000'
+    'TOSS_MAX_CONCURRENT=2'
+    'TOSS_REQUEST_BATCH_SIZE=5'
+    'TOSS_REQUEST_WINDOW_MS=2000'
   ) | Set-Content -Path '.env' -Encoding UTF8
   Write-Host '.env 생성 완료' -ForegroundColor Green
 }

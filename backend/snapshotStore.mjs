@@ -17,6 +17,16 @@ function kstParts(iso) {
   }
 }
 
+function bucketInfo(iso, resolutionMinutes) {
+  const { day, hour, minute } = kstParts(iso)
+  const marketMinute = hour * 60 + minute
+  if (marketMinute < 480 || marketMinute > 1200) return null
+  return {
+    day,
+    bucket: Math.floor((marketMinute - 480) / resolutionMinutes),
+  }
+}
+
 function compactStock(stock) {
   return {
     symbol: stock.symbol,
@@ -95,6 +105,37 @@ export class SnapshotStore {
     }
   }
 
+  updateReadCaches(compact) {
+    const time = Date.parse(compact?.updatedAt)
+    if (!Number.isFinite(time)) return
+
+    for (const [cacheKey, result] of this.readCache.entries()) {
+      const [daysText, resolutionText] = cacheKey.split(':')
+      const days = Number(daysText) || 5
+      const resolutionMinutes = Number(resolutionText) || 5
+      const cutoff = Date.now() - days * 24 * 60 * 60 * 1000
+      if (time < cutoff) continue
+
+      const info = bucketInfo(compact.updatedAt, resolutionMinutes)
+      if (!info) continue
+      const bucketKey = `${info.day}:${info.bucket}`
+      let replaced = false
+      for (let index = result.samples.length - 1; index >= 0; index -= 1) {
+        const sample = result.samples[index]
+        if (Date.parse(sample.updatedAt) < cutoff) break
+        const sampleInfo = bucketInfo(sample.updatedAt, resolutionMinutes)
+        if (`${sampleInfo?.day}:${sampleInfo?.bucket}` === bucketKey) {
+          result.samples[index] = compact
+          replaced = true
+          break
+        }
+      }
+      if (!replaced) result.samples.push(compact)
+      result.samples = result.samples.filter((sample) => Date.parse(sample.updatedAt) >= cutoff)
+      result.tradingDays = new Set(result.samples.map((sample) => kstParts(sample.updatedAt).day)).size
+    }
+  }
+
   async maybeAppend(snapshot) {
     if (!snapshot?.ok || !snapshot.updatedAt) return false
     const { hour, minute } = kstParts(snapshot.updatedAt)
@@ -107,7 +148,7 @@ export class SnapshotStore {
     await this.ready
     const compact = compactSnapshot(snapshot)
     await appendFile(this.filePath, `${JSON.stringify(compact)}\n`, 'utf8')
-    this.readCache.clear()
+    this.updateReadCaches(compact)
     await this.writeLatest(compact).catch(() => {})
 
     const day = kstParts(snapshot.updatedAt).day
@@ -141,13 +182,10 @@ export class SnapshotStore {
         const item = JSON.parse(line)
         const time = Date.parse(item.updatedAt)
         if (!Number.isFinite(time) || time < cutoff) continue
-        const { day, hour, minute } = kstParts(item.updatedAt)
-        const marketMinute = hour * 60 + minute
-        if (marketMinute < 480 || marketMinute > 1200) continue
-        const relativeMinute = marketMinute - 480
-        const bucket = Math.floor(relativeMinute / safeResolution)
-        buckets.set(`${day}:${bucket}`, item)
-        tradingDays.add(day)
+        const info = bucketInfo(item.updatedAt, safeResolution)
+        if (!info) continue
+        buckets.set(`${info.day}:${info.bucket}`, item)
+        tradingDays.add(info.day)
       } catch {
         // 손상된 한 줄은 건너뛰고 나머지 히스토리는 유지한다.
       }

@@ -2,7 +2,7 @@
 
 # MARKET FLOW
 
-### 한국·미국 시장의 자금 흐름과 테마 회전을 한 화면에서 보는 개인 Market Lab
+### 한국·미국 시장의 자금 흐름과 테마 회전을 1초 안에 훑어보는 개인 Market Lab
 
 [![CI](https://github.com/juhwan7/vibe-coding-playground/actions/workflows/ci.yml/badge.svg)](https://github.com/juhwan7/vibe-coding-playground/actions/workflows/ci.yml)
 [![Raspberry Pi Deploy](https://github.com/juhwan7/vibe-coding-playground/actions/workflows/deploy-to-pi.yml/badge.svg)](https://github.com/juhwan7/vibe-coding-playground/actions/workflows/deploy-to-pi.yml)
@@ -18,7 +18,7 @@
 
 ## 이 프로젝트는 무엇인가요?
 
-`MARKET FLOW`는 단순 종목 시세표가 아니라 **시장에서 돈이 어디에 모이고 어디로 이동하는지** 빠르게 확인하기 위해 만든 취미용 전광판입니다.
+`MARKET FLOW`는 단순 종목 시세표가 아니라 **시장에서 돈이 어디에 모이고 어디로 이동하는지 아주 짧은 시간에 확인하기 위해 만든 취미용 전광판**입니다.
 
 한국 시장과 미국 시장의 거래대금 상위 종목을 가져오고, 같은 테마의 종목이 거래대금 상위권에 여러 개 등장하면 하나의 테마로 묶어 **전일 + 오늘 3분 평균 차트**로 비교합니다. 시장 해석 문구를 자동으로 붙이기보다 실제 값과 흐름을 그대로 보여주는 것을 우선합니다.
 
@@ -56,6 +56,40 @@
 
 ---
 
+## 1초 안에 보이게 만드는 구조
+
+이 사이트에서는 **사용자 접속이 데이터 수집의 시작점이 아닙니다.** Raspberry Pi는 사용자가 아무도 없을 때도 데이터를 계속 수집하고 화면에 필요한 계산까지 끝낸 뒤 마지막 정상 결과를 준비합니다.
+
+```text
+Toss / 뉴스 / 시장 데이터
+          ↓
+Raspberry Pi 백그라운드 수집
+          ↓
+테마 계산 · TOP100 · 히스토리 정리
+          ↓
+완성된 JSON을 원자적으로 교체
+          ↓
+Nginx가 JSON 파일을 직접 제공
+          ↓
+사용자 접속
+```
+
+준비되는 핵심 파일은 다음과 같습니다.
+
+```text
+market-snapshot.json
+market-history.json
+kr-theme-flow.json
+us-theme-flow.json
+feature-news.json
+```
+
+새 수집이 실패하거나 진행 중이어도 기존 정상 파일을 지우지 않습니다. 새 결과가 완전히 준비됐을 때만 파일을 교체합니다. 따라서 방문자는 데이터 수집을 기다리지 않고 **마지막 정상 화면을 먼저 즉시 확인**할 수 있습니다.
+
+브라우저에는 Service Worker 기반의 마지막 정상 API 응답 캐시도 둡니다. 재방문 때 Pi나 네트워크 응답이 잠시 느려도 이전 정상 화면부터 먼저 표시하고, 최신 응답은 뒤에서 갱신합니다.
+
+---
+
 ## Raspberry Pi 최적화
 
 이 프로젝트는 고성능 서버보다 **저전력 Raspberry Pi**에서 계속 켜두는 것을 전제로 합니다. 그래서 모든 요청을 매분 한꺼번에 실행하지 않습니다.
@@ -75,6 +109,7 @@
 - 외국인·기관·프로그램 등 상대적으로 느린 데이터: **180초**
 - 특징주 뉴스: **180초**
 - 테마 차트: 장중 **60초**
+- 준비된 화면용 JSON 확인/교체: 최대 **2초 단위**, 내용이 바뀐 경우에만 실제 디스크 기록
 - 장 외 시간: 최대 **5분** 간격으로 완화
 - Toss API 요청: 기본 **동시 2개 이하**, **2초 동안 최대 5개 요청 시작**
 - 동일 API 요청이 동시에 겹치면 하나의 요청을 공유해 중복 호출 제거
@@ -82,7 +117,7 @@
 - 서버 재시작 직후에는 마지막 정상 스냅샷을 먼저 표시하고 최신 데이터를 뒤에서 갱신
 - 국내 첫 화면 → 국내 테마 → 미국 테마 순으로 초기화해 시작 순간의 API 폭주 방지
 
-상단의 **`↻ 새로고침`** 버튼을 누르면 전체 종목을 동시에 다시 긁지 않고, 사용자가 바로 확인할 핵심 시장 데이터를 최우선 큐로 갱신합니다. 상세 데이터는 기존 분산 큐에서 계속 채워집니다.
+상단의 **`↻ 새로고침`** 버튼을 누르면 화면을 비우지 않습니다. 현재 숫자를 그대로 유지한 상태에서 핵심 시장 데이터를 최우선 큐로 갱신하고, 완료된 새 값만 교체합니다.
 
 환경변수로 속도를 조절할 수도 있습니다.
 
@@ -99,6 +134,29 @@ US_THEME_START_DELAY_MS=8000
 
 ---
 
+## 빠른 자동배포
+
+프론트엔드는 더 이상 Raspberry Pi에서 React/TypeScript/Vite를 다시 컴파일하지 않습니다.
+
+```text
+GitHub-hosted CI
+  ├─ TypeScript 검사
+  ├─ 테스트
+  ├─ npm run build
+  └─ 검증된 dist artifact 생성
+                ↓
+Raspberry Pi runner
+  ├─ dist 다운로드
+  ├─ Nginx runtime image에 복사
+  └─ Docker Compose 재기동
+```
+
+Pi는 정적 파일을 Nginx 이미지에 넣는 작업만 하므로, 프론트 수정마다 저전력 Pi에서 수분 동안 TypeScript/Vite 빌드를 반복하지 않습니다. 백엔드가 바뀌지 않았다면 백엔드 이미지도 재빌드하지 않습니다.
+
+배포 성공 판정도 `최신 시장 데이터 수집 완료`를 기다리지 않습니다. **HTTP 서버와 마지막 정상 스냅샷이 즉시 제공되는지** 확인하면 배포는 완료되고, 새로운 시장 데이터 수집은 뒤에서 계속 진행됩니다.
+
+---
+
 ## 시스템 구조
 
 ```text
@@ -111,9 +169,11 @@ US_THEME_START_DELAY_MS=8000
                  GitHub Actions CI
           ┌────────────┼────────────┐
           │            │            │
-      TypeScript    Docker      Playwright
-          │            │            │
-          └────────────┴────────────┘
+      TypeScript    Backend      Playwright
+          │         Docker           │
+          └────────────┴─────────────┘
+                       │
+              prebuilt frontend dist
                        │ CI 성공
                        ▼
           Raspberry Pi self-hosted runner
@@ -121,17 +181,17 @@ US_THEME_START_DELAY_MS=8000
                  Docker Compose
                ┌───────┴────────┐
                │                │
-         React + Nginx      Node backend
+             Nginx          Node backend
                │                │
-               └────── /api ────┘
-                                │
-                  Toss Securities Open API
-                  KRX / 공개 뉴스·기업정보
-                       │
-                       ▼
-                persistent cache
+               │          Toss / KRX / 뉴스
+               │                │
+               │       persistent market data
+               │                │
+               └──── shared prepared JSON
                        │
                  Cloudflare Tunnel
+                       │
+                     사용자
 ```
 
 Raspberry Pi의 `.env`와 API 비밀키는 Git에 올라가지 않습니다. 공개 저장소의 PR 코드가 Pi self-hosted runner에서 직접 실행되지 않도록 실제 배포 workflow는 **성공한 `main` push의 검증된 commit만** 허용합니다.
@@ -218,8 +278,9 @@ GitHub Actions에서는 다음 검사를 병렬로 수행합니다.
 - 프론트 단위 테스트
 - 백엔드 Node 테스트
 - 백엔드 HTTP smoke test
-- 프로덕션 빌드
-- Docker Compose build
+- 프로덕션 빌드 + 배포용 `dist` artifact
+- 백엔드 Docker build
+- Nginx runtime frontend image build
 - Playwright 데스크톱/모바일 브라우저 테스트
 
 CI가 성공한 `main` commit만 Raspberry Pi 자동배포 대상으로 넘어갑니다.
