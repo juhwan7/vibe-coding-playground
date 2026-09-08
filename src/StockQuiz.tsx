@@ -5,8 +5,7 @@ export type QuizStock = { code: string; name: string }
 export type QuizPool = 'kospi200' | 'kosdaq150'
 export type QuizQuestion = {
   stock: QuizStock
-  promptMode: 'name-to-code' | 'code-to-name'
-  choices: string[]
+  options: QuizStock[]
   correct: number
 }
 
@@ -20,6 +19,21 @@ type UniversePayload = {
   kosdaq150?: QuizStock[]
   counts?: { kospi200?: number; kosdaq150?: number }
   error?: string | null
+}
+
+type DescriptionItem = {
+  code: string
+  description: string | null
+  source?: string | null
+  sourceUrl?: string | null
+  stale?: boolean
+  error?: string | null
+}
+
+type DescriptionPayload = {
+  ok?: boolean
+  source?: string | null
+  items?: DescriptionItem[]
 }
 
 const FALLBACK: Record<QuizPool, QuizStock[]> = {
@@ -44,15 +58,22 @@ function shuffled<T>(values: T[]) {
   return copy
 }
 
-export function buildQuizRound(pool: QuizStock[], count = 20): QuizQuestion[] {
-  const clean = pool.filter((item, index, all) => /^\d{6}$/.test(item.code) && item.name && all.findIndex((candidate) => candidate.code === item.code) === index)
+function cleanPool(pool: QuizStock[], maxCount = Infinity) {
+  const seen = new Set<string>()
+  return pool.filter((item) => {
+    if (!/^\d{6}$/.test(item.code) || !item.name || seen.has(item.code)) return false
+    seen.add(item.code)
+    return true
+  }).slice(0, maxCount)
+}
+
+export function buildQuizRound(pool: QuizStock[], count = pool.length): QuizQuestion[] {
+  const clean = cleanPool(pool)
   if (clean.length < 4) return []
-  return shuffled(clean).slice(0, Math.min(count, clean.length)).map((stock, index) => {
-    const promptMode: QuizQuestion['promptMode'] = index % 2 === 0 ? 'name-to-code' : 'code-to-name'
+  return shuffled(clean).slice(0, Math.min(count, clean.length)).map((stock) => {
     const distractors = shuffled(clean.filter((candidate) => candidate.code !== stock.code)).slice(0, 3)
-    const answer = promptMode === 'name-to-code' ? stock.code : stock.name
-    const choices = shuffled([answer, ...distractors.map((item) => promptMode === 'name-to-code' ? item.code : item.name)])
-    return { stock, promptMode, choices, correct: choices.indexOf(answer) }
+    const options = shuffled([stock, ...distractors])
+    return { stock, options, correct: options.findIndex((option) => option.code === stock.code) }
   })
 }
 
@@ -61,92 +82,173 @@ export function answerIsCorrect(question: QuizQuestion, selected: number) {
 }
 
 function poolLabel(pool: QuizPool) { return pool === 'kospi200' ? 'KOSPI 200' : 'KOSDAQ 150' }
+function poolLimit(pool: QuizPool) { return pool === 'kospi200' ? 200 : 150 }
+
+function scrubCompanyNames(description: string, candidates: QuizStock[]) {
+  let value = description
+  for (const candidate of [...candidates].sort((a, b) => b.name.length - a.name.length)) {
+    if (candidate.name.length < 2) continue
+    value = value.split(candidate.name).join('동사')
+  }
+  return value
+}
 
 export default function StockQuiz() {
   const [universe, setUniverse] = useState<UniversePayload | null>(null)
+  const [universeLoading, setUniverseLoading] = useState(true)
   const [pool, setPool] = useState<QuizPool | null>(null)
   const [questions, setQuestions] = useState<QuizQuestion[]>([])
   const [questionIndex, setQuestionIndex] = useState(0)
   const [selected, setSelected] = useState<number | null>(null)
   const [score, setScore] = useState(0)
   const [finished, setFinished] = useState(false)
+  const [descriptions, setDescriptions] = useState<Record<string, DescriptionItem>>({})
+  const [descriptionLoading, setDescriptionLoading] = useState(false)
+  const [descriptionError, setDescriptionError] = useState<string | null>(null)
+  const [descriptionAttempt, setDescriptionAttempt] = useState(0)
 
   useEffect(() => {
     const controller = new AbortController()
+    setUniverseLoading(true)
     void fetch('/api/quiz/universe', { signal: controller.signal, headers: { Accept: 'application/json' } })
       .then(async (response) => response.ok ? await response.json() as UniversePayload : null)
       .then((payload) => { if (payload) setUniverse(payload) })
       .catch(() => {})
+      .finally(() => setUniverseLoading(false))
     return () => controller.abort()
   }, [])
 
-  const pools = useMemo(() => ({
-    kospi200: universe?.kospi200?.length && universe.kospi200.length >= 4 ? universe.kospi200 : FALLBACK.kospi200,
-    kosdaq150: universe?.kosdaq150?.length && universe.kosdaq150.length >= 4 ? universe.kosdaq150 : FALLBACK.kosdaq150,
+  const livePools = useMemo(() => ({
+    kospi200: cleanPool(universe?.kospi200 ?? [], 200),
+    kosdaq150: cleanPool(universe?.kosdaq150 ?? [], 150),
   }), [universe])
 
+  const pools = useMemo(() => ({
+    kospi200: livePools.kospi200.length >= 4 ? livePools.kospi200 : FALLBACK.kospi200,
+    kosdaq150: livePools.kosdaq150.length >= 4 ? livePools.kosdaq150 : FALLBACK.kosdaq150,
+  }), [livePools])
+
+  const usingFallback = useMemo(() => ({
+    kospi200: livePools.kospi200.length < 4,
+    kosdaq150: livePools.kosdaq150.length < 4,
+  }), [livePools])
+
   const start = (nextPool: QuizPool) => {
+    const selectedPool = pools[nextPool].slice(0, poolLimit(nextPool))
     setPool(nextPool)
-    setQuestions(buildQuizRound(pools[nextPool], 20))
+    setQuestions(buildQuizRound(selectedPool, selectedPool.length))
     setQuestionIndex(0)
     setSelected(null)
     setScore(0)
     setFinished(false)
+    setDescriptions({})
+    setDescriptionError(null)
+    setDescriptionAttempt(0)
   }
 
+  const question = questions[questionIndex]
+
+  useEffect(() => {
+    if (!question) return
+    const needed = question.options.filter((option) => !descriptions[option.code]?.description)
+    if (!needed.length) {
+      setDescriptionLoading(false)
+      setDescriptionError(null)
+      return
+    }
+
+    const controller = new AbortController()
+    setDescriptionLoading(true)
+    setDescriptionError(null)
+    const codes = needed.map((option) => option.code).join(',')
+    void fetch(`/api/quiz/descriptions?codes=${encodeURIComponent(codes)}`, { signal: controller.signal, headers: { Accept: 'application/json' } })
+      .then(async (response) => {
+        const payload = await response.json().catch(() => null) as DescriptionPayload | null
+        if (!payload) throw new Error('기업 설명 응답을 읽지 못했습니다.')
+        setDescriptions((current) => {
+          const next = { ...current }
+          for (const item of payload.items ?? []) next[item.code] = item
+          return next
+        })
+        const missing = needed.filter((option) => !(payload.items ?? []).some((item) => item.code === option.code && item.description))
+        if (missing.length) throw new Error(`${missing.map((item) => item.name).join(', ')} 기업 설명을 아직 불러오지 못했습니다.`)
+      })
+      .catch((error) => {
+        if ((error as Error).name !== 'AbortError') setDescriptionError(error instanceof Error ? error.message : String(error))
+      })
+      .finally(() => setDescriptionLoading(false))
+    return () => controller.abort()
+  }, [question, descriptionAttempt])
+
+  const choiceDescriptions = useMemo(() => {
+    if (!question) return []
+    return question.options.map((option) => {
+      const raw = descriptions[option.code]?.description
+      return raw ? scrubCompanyNames(raw, question.options) : null
+    })
+  }, [question, descriptions])
+
+  const ready = Boolean(question && choiceDescriptions.length === 4 && choiceDescriptions.every(Boolean))
+
   const choose = (choiceIndex: number) => {
-    if (selected !== null) return
+    if (selected !== null || !question || !ready) return
     setSelected(choiceIndex)
-    if (answerIsCorrect(questions[questionIndex], choiceIndex)) setScore((value) => value + 1)
+    if (answerIsCorrect(question, choiceIndex)) setScore((value) => value + 1)
   }
 
   const next = () => {
     if (questionIndex >= questions.length - 1) { setFinished(true); return }
     setQuestionIndex((value) => value + 1)
     setSelected(null)
+    setDescriptionError(null)
   }
 
   if (!pool) return <main className="index-quiz-shell" data-testid="index-quiz">
     <section className="index-quiz-select">
-      <p className="index-quiz-eyebrow">STOCK RECOGNITION QUIZ</p>
-      <h1>어느 시장 종목을 얼마나 알고 있을까?</h1>
-      <p className="index-quiz-lead">KOSPI 200과 KOSDAQ 150을 완전히 분리했습니다. ETF·ETN 등 상장지수상품은 제외하고 종목명 ↔ 종목코드를 맞히는 방식으로 출제합니다.</p>
+      <p className="index-quiz-eyebrow">STOCK COMPANY QUIZ</p>
+      <h1>어느 시장의 기업을 더 많이 알고 있을까?</h1>
+      <p className="index-quiz-lead">KOSPI 200과 KOSDAQ 150을 따로 선택합니다. 종목코드를 외우는 문제가 아니라, 종목명을 보고 실제 기업개요에 맞는 설명을 고르는 방식입니다.</p>
       <div className="index-pool-grid">
-        <button onClick={() => start('kospi200')} data-testid="quiz-pool-kospi200"><span>KOSPI</span><strong>KOSPI 200</strong><em>{universe?.counts?.kospi200 ?? pools.kospi200.length}개 종목 풀</em><small>대형·대표주 중심</small></button>
-        <button onClick={() => start('kosdaq150')} data-testid="quiz-pool-kosdaq150"><span>KOSDAQ</span><strong>KOSDAQ 150</strong><em>{universe?.counts?.kosdaq150 ?? pools.kosdaq150.length}개 종목 풀</em><small>성장·기술주 중심</small></button>
+        <button onClick={() => start('kospi200')} data-testid="quiz-pool-kospi200" disabled={universeLoading && livePools.kospi200.length < 4}><span>KOSPI</span><strong>KOSPI 200</strong><em>{livePools.kospi200.length || pools.kospi200.length}개 종목 전체 출제</em><small>{usingFallback.kospi200 ? 'KRX 연결 전 임시 목록' : '현재 KRX 지수 구성종목 기준'}</small></button>
+        <button onClick={() => start('kosdaq150')} data-testid="quiz-pool-kosdaq150" disabled={universeLoading && livePools.kosdaq150.length < 4}><span>KOSDAQ</span><strong>KOSDAQ 150</strong><em>{livePools.kosdaq150.length || pools.kosdaq150.length}개 종목 전체 출제</em><small>{usingFallback.kosdaq150 ? 'KRX 연결 전 임시 목록' : '현재 KRX 지수 구성종목 기준'}</small></button>
       </div>
-      <div className="index-quiz-source"><b>ETF 제외</b><span>{universe?.source ?? 'KRX 구성종목 데이터 연결 중'}{universe?.sourceDate ? ` · 기준 ${universe.sourceDate}` : ''}{universe?.stale ? ' · 저장된 최근 목록 사용 중' : ''}</span></div>
+      <div className="index-quiz-source"><b>ETF·ETN 제외</b><span>{universeLoading ? 'KRX 구성종목 확인 중' : universe?.source ?? 'KRX 연결 실패 · 임시 목록 사용'}{universe?.sourceDate ? ` · 기준 ${universe.sourceDate}` : ''}{universe?.stale ? ' · 저장된 최근 목록 사용 중' : ''}</span></div>
     </section>
   </main>
 
   if (finished) return <main className="index-quiz-shell"><section className="index-quiz-result">
-    <p className="index-quiz-eyebrow">{poolLabel(pool)} RESULT</p><h1>{score} / {questions.length}</h1><p>{poolLabel(pool)} 종목 인식 퀴즈 완료</p>
+    <p className="index-quiz-eyebrow">{poolLabel(pool)} RESULT</p><h1>{score} / {questions.length}</h1><p>{poolLabel(pool)} 기업 설명 퀴즈 완료</p>
     <div><button onClick={() => start(pool)}>같은 시장 다시 풀기</button><button onClick={() => setPool(null)}>시장 다시 선택</button></div>
   </section></main>
 
-  const question = questions[questionIndex]
   if (!question) return <main className="index-quiz-shell"><div className="index-quiz-loading">퀴즈 종목을 준비하고 있습니다.</div></main>
-  const correctLabel = question.promptMode === 'name-to-code' ? question.stock.code : question.stock.name
 
   return <main className="index-quiz-shell">
     <section className="index-quiz-board">
-      <header><div><p className="index-quiz-eyebrow">{poolLabel(pool)}</p><h1>종목 인식 퀴즈</h1></div><div className="index-quiz-score"><span>{questionIndex + 1} / {questions.length}</span><strong>{score}점</strong></div></header>
+      <header><div><p className="index-quiz-eyebrow">{poolLabel(pool)}</p><h1>기업 설명 맞히기</h1></div><div className="index-quiz-score"><span>{questionIndex + 1} / {questions.length}</span><strong>{score}점</strong></div></header>
       <div className="index-quiz-progress"><i style={{ width: `${((questionIndex + 1) / questions.length) * 100}%` }} /></div>
       <article className="index-question-card" data-testid="question-card">
-        <span>{question.promptMode === 'name-to-code' ? '종목명 → 코드' : '종목코드 → 종목명'}</span>
-        <h2>{question.promptMode === 'name-to-code' ? question.stock.name : question.stock.code}</h2>
-        <p>{question.promptMode === 'name-to-code' ? '이 종목의 6자리 종목코드는?' : '이 종목코드에 해당하는 회사는?'}</p>
+        <span>{poolLabel(pool)}</span>
+        <h2>{question.stock.name}</h2>
+        <p>아래 4개 기업 설명 중 이 종목에 해당하는 설명을 선택하세요.</p>
       </article>
-      <div className="index-quiz-choices">
-        {question.choices.map((choice, index) => {
+
+      {descriptionLoading && !ready && <div className="index-description-state"><strong>기업개요 불러오는 중</strong><span>실제 기업 설명을 준비하고 있습니다.</span></div>}
+      {descriptionError && !ready && <div className="index-description-state error"><strong>기업개요를 아직 불러오지 못했습니다.</strong><span>{descriptionError}</span><button onClick={() => setDescriptionAttempt((value) => value + 1)}>다시 불러오기</button></div>}
+
+      <div className="index-quiz-choices description-choices">
+        {question.options.map((option, index) => {
           const answered = selected !== null
           const correct = index === question.correct
           const picked = selected === index
           const state = answered ? correct ? 'correct' : picked ? 'wrong' : 'muted' : ''
-          return <button key={`${choice}-${index}`} className={state} onClick={() => choose(index)} disabled={answered}><b>{index + 1}</b><span>{choice}</span></button>
+          return <button key={`${option.code}-${index}`} className={state} onClick={() => choose(index)} disabled={answered || !ready}>
+            <b>{index + 1}</b><span>{choiceDescriptions[index] ?? '기업 설명을 불러오는 중입니다.'}</span>
+          </button>
         })}
       </div>
-      {selected !== null && <div className={`index-quiz-feedback ${answerIsCorrect(question, selected) ? 'success' : 'fail'}`}><div><strong>{answerIsCorrect(question, selected) ? '정답' : '오답'}</strong><span>{question.stock.name} · {question.stock.code}</span><small>정답: {correctLabel}</small></div><button onClick={next}>{questionIndex === questions.length - 1 ? '결과 보기' : '다음 문제'}</button></div>}
+
+      {selected !== null && <div className={`index-quiz-feedback ${answerIsCorrect(question, selected) ? 'success' : 'fail'}`}><div><strong>{answerIsCorrect(question, selected) ? '정답' : '오답'}</strong><span>{question.stock.name}</span><small>정답 설명: {choiceDescriptions[question.correct]}</small><small>출처: {descriptions[question.stock.code]?.source ?? '기업개요 데이터'}</small></div><button onClick={next}>{questionIndex === questions.length - 1 ? '결과 보기' : '다음 문제'}</button></div>}
       <button className="index-quiz-switch" onClick={() => setPool(null)}>KOSPI 200 / KOSDAQ 150 다시 선택</button>
     </section>
   </main>
