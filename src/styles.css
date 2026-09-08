@@ -1,0 +1,147 @@
+:root {
+  font-family: Inter, Pretendard, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #f4f7fb;
+  background: #090b10;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+button, input { font: inherit; }
+
+.stage {
+  position: relative;
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 50% 15%, rgba(102, 119, 255, .14), transparent 28rem),
+    linear-gradient(180deg, #0c0f17 0%, #080a0f 100%);
+}
+
+.hero {
+  position: relative;
+  z-index: 2;
+  width: min(1080px, calc(100% - 40px));
+  padding: 80px 0;
+}
+
+.eyebrow {
+  letter-spacing: .18em;
+  font-size: 12px;
+  opacity: .65;
+}
+
+h1 {
+  margin: 16px 0 18px;
+  max-width: 780px;
+  font-size: clamp(48px, 8vw, 104px);
+  line-height: .94;
+  letter-spacing: -.06em;
+}
+
+.description {
+  max-width: 680px;
+  margin-bottom: 48px;
+  color: rgba(244,247,251,.7);
+  line-height: 1.75;
+}
+
+.card-wrap {
+  perspective: 1000px;
+}
+
+.tilt-card {
+  position: relative;
+  max-width: 660px;
+  min-height: 300px;
+  padding: 34px;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 28px;
+  background: linear-gradient(135deg, rgba(255,255,255,.09), rgba(255,255,255,.025));
+  box-shadow: 0 30px 80px rgba(0,0,0,.35);
+  backdrop-filter: blur(18px);
+  transform-style: preserve-3d;
+  transition: transform 120ms ease-out;
+}
+
+.tilt-card h2 {
+  max-width: 380px;
+  margin: 70px 0 12px;
+  font-size: clamp(28px, 4vw, 48px);
+  letter-spacing: -.04em;
+  transform: translateZ(48px);
+}
+
+.tilt-card p {
+  position: relative;
+  z-index: 2;
+  max-width: 430px;
+  color: rgba(244,247,251,.7);
+  line-height: 1.7;
+  transform: translateZ(34px);
+}
+
+.chip {
+  display: inline-block;
+  padding: 8px 12px;
+  border: 1px solid rgba(255,255,255,.14);
+  border-radius: 999px;
+  font-size: 11px;
+  letter-spacing: .12em;
+  color: rgba(255,255,255,.72);
+  transform: translateZ(55px);
+}
+
+.orb {
+  position: absolute;
+  width: 250px;
+  height: 250px;
+  right: -50px;
+  top: -40px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #ffffff, #7d8cff 18%, #5444e8 43%, rgba(46,35,140,.15) 68%, transparent 72%);
+  filter: drop-shadow(0 22px 45px rgba(80,76,235,.4));
+  transform: translateZ(70px);
+}
+
+.glow {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  opacity: .25;
+  pointer-events: none;
+}
+
+.glow-one {
+  width: 360px;
+  height: 360px;
+  background: #5c55ff;
+  top: -120px;
+  right: 8%;
+}
+
+.glow-two {
+  width: 280px;
+  height: 280px;
+  background: #2fb7ff;
+  bottom: -130px;
+  left: 3%;
+}
+
+@media (max-width: 680px) {
+  .hero { padding: 54px 0; }
+  .tilt-card { min-height: 340px; padding: 24px; }
+  .tilt-card h2 { margin-top: 100px; }
+  .orb { width: 190px; height: 190px; right: -35px; top: -25px; }
+}
