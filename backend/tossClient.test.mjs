@@ -20,6 +20,8 @@ test('critical work jumps ahead of queued background work', async () => {
     order.push('background-1')
     await firstGate
   }, { priority: 'background' })
+  await new Promise((resolve) => setImmediate(resolve))
+
   const second = scheduler.enqueue(async () => { order.push('background-2') }, { priority: 'background' })
   const critical = scheduler.enqueue(async () => { order.push('critical') }, { priority: 'critical' })
 
@@ -29,10 +31,10 @@ test('critical work jumps ahead of queued background work', async () => {
 })
 
 test('scheduler spreads bursts across the configured request window', async () => {
-  const scheduler = new RequestScheduler({ maxConcurrent: 2, batchSize: 2, windowMs: 35 })
+  const scheduler = new RequestScheduler({ maxConcurrent: 2, batchSize: 2, windowMs: 100 })
   const starts = []
   const tasks = Array.from({ length: 4 }, () => scheduler.enqueue(async () => { starts.push(Date.now()) }))
   await Promise.all(tasks)
   assert.equal(starts.length, 4)
-  assert.ok(starts[2] - starts[0] >= 25, `expected a paced second batch, got ${starts[2] - starts[0]}ms`)
+  assert.ok(starts[2] - starts[0] >= 80, `expected a paced second batch, got ${starts[2] - starts[0]}ms`)
 })
