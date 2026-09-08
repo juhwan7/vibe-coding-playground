@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: deploy-pi
@@ -22,9 +23,18 @@ jobs:
           github.event.workflow_run.head_branch == 'main' &&
           github.event.workflow_run.head_repository.full_name == github.repository }}
     runs-on: [self-hosted, linux, ARM64, k-market-pi]
-    timeout-minutes: 15
+    timeout-minutes: 10
 
     steps:
+      - name: Download verified frontend artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: ${{ runner.temp }}/frontend-dist
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.event.workflow_run.id }}
+
       - name: Deploy exact verified commit
         env:
           VERIFIED_SHA: ${{ github.event.workflow_run.head_sha }}
@@ -49,7 +59,7 @@ jobs:
             if echo "$CHANGED" | grep -Eq '^(backend/|backend\.Dockerfile)'; then
               SERVICES="$SERVICES backend"
             fi
-            if echo "$CHANGED" | grep -Eq '^(src/|index\.html|Dockerfile\.frontend|docker/|vite\.config\.ts|package(-lock)?\.json|tsconfig.*\.json)'; then
+            if echo "$CHANGED" | grep -Eq '^(src/|public/|index\.html|Dockerfile\.frontend|docker/|vite\.config\.ts|package(-lock)?\.json|tsconfig.*\.json)'; then
               SERVICES="$SERVICES frontend"
             fi
           else
@@ -58,9 +68,13 @@ jobs:
 
           git checkout --detach "$VERIFIED_SHA"
 
-          # Build only images whose application/build inputs changed.
-          # Compose-only configuration changes are applied by `docker compose up`
-          # without recompiling React on the low-power Pi.
+          # React/TypeScript/Vite was already built and tested on GitHub-hosted CI.
+          # The Pi only receives the verified static dist artifact and wraps it in
+          # the tiny nginx runtime image; it never recompiles the frontend itself.
+          rm -rf "$APP/dist"
+          mkdir -p "$APP/dist"
+          cp -a "$RUNNER_TEMP/frontend-dist/." "$APP/dist/"
+
           if [ -n "$(echo "$SERVICES" | xargs)" ]; then
             UNIQUE_SERVICES="$(echo "$SERVICES" | xargs -n1 | sort -u | xargs)"
             echo "Rebuilding services: $UNIQUE_SERVICES"
@@ -76,14 +90,16 @@ jobs:
             exit 1
           fi
 
-          # Phase 1: verify the public nginx -> backend path is reachable.
+          # The deployment is considered available when nginx/backend answer and a
+          # last-known-good market snapshot can be served. Fresh collection continues
+          # in the background and must not keep users or deployments waiting.
           API_LIVE=0
-          for attempt in $(seq 1 45); do
+          for attempt in $(seq 1 30); do
             if curl --fail --silent --show-error http://localhost:8080/api/health >/tmp/k-market-health.json; then
               API_LIVE=1
               break
             fi
-            sleep 2
+            sleep 1
           done
 
           if [ "$API_LIVE" -ne 1 ]; then
@@ -93,29 +109,26 @@ jobs:
             exit 1
           fi
 
-          # Phase 2: do not depend on a host Node.js install. The self-hosted Pi
-          # runner intentionally only needs bash/curl/docker, so parse the compact
-          # JSON response with grep and finish as soon as real market data is ready.
-          for attempt in $(seq 1 90); do
-            if curl --fail --silent --show-error http://localhost:8080/api/health >/tmp/k-market-health.json; then
-              if grep -q '"marketReady":true' /tmp/k-market-health.json; then
-                cat /tmp/k-market-health.json
-                echo
-                echo "Market data is ready"
-                echo "Deployed verified commit: $VERIFIED_SHA"
-                exit 0
-              fi
-              if [ $((attempt % 10)) -eq 0 ]; then
-                echo "Waiting for market data (attempt $attempt/90)"
-                cat /tmp/k-market-health.json
-                echo
+          SNAPSHOT_READY=0
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent --show-error http://localhost:8080/api/market/snapshot >/tmp/k-market-snapshot.json; then
+              if grep -q '"updatedAt"' /tmp/k-market-snapshot.json; then
+                SNAPSHOT_READY=1
+                break
               fi
             fi
-            sleep 2
+            sleep 1
           done
 
-          echo "HTTP API is live but market data did not become ready in time"
-          cat /tmp/k-market-health.json 2>/dev/null || true
-          docker compose ps || true
-          docker compose logs --tail=220 backend frontend || true
-          exit 1
+          if [ "$SNAPSHOT_READY" -ne 1 ]; then
+            echo "No prepared or fresh market snapshot became available"
+            cat /tmp/k-market-health.json 2>/dev/null || true
+            docker compose ps || true
+            docker compose logs --tail=220 backend frontend || true
+            exit 1
+          fi
+
+          echo "Instant snapshot path is ready"
+          cat /tmp/k-market-health.json
+          echo
+          echo "Deployed verified commit: $VERIFIED_SHA"
