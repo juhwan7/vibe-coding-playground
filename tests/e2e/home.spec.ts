@@ -10,7 +10,7 @@ test('theme flow board and top100 rail render', async ({ page }, testInfo) => {
   await expect(page.getByRole('heading', { name: '거래대금 TOP100' })).toBeVisible()
 
   const details = page.locator('.deep-market-details')
-  await details.locator('summary').click()
+  await details.locator(':scope > summary').click()
   await expect(page.getByTestId('moneyflow-dashboard')).toBeVisible()
   await expect(page.getByRole('heading', { name: '한국 시장 전체 Heatmap' })).toBeVisible()
 
