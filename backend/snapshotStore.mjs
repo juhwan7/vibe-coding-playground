@@ -5,6 +5,18 @@ function minuteKey(iso) {
   return String(iso || '').slice(0, 16)
 }
 
+function kstParts(iso) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false,
+  }).formatToParts(new Date(iso))
+  const get = (type) => parts.find((part) => part.type === type)?.value ?? ''
+  return {
+    day: `${get('year')}-${get('month')}-${get('day')}`,
+    hour: Number(get('hour')),
+    minute: Number(get('minute')),
+  }
+}
+
 function compactStock(stock) {
   return {
     symbol: stock.symbol,
@@ -29,7 +41,7 @@ function compactSnapshot(snapshot) {
     marketInvestors: snapshot.marketInvestors ?? null,
     programSummary: snapshot.programSummary ?? null,
     futures: snapshot.futures ?? null,
-    topRankings: (snapshot.topRankings ?? []).slice(0, 100),
+    topRankings: (snapshot.topRankings ?? []).slice(0, 10),
     stocks: Object.fromEntries(Object.entries(snapshot.stocks ?? {}).map(([symbol, stock]) => [symbol, compactStock(stock)])),
   }
 }
@@ -45,13 +57,17 @@ export class SnapshotStore {
 
   async maybeAppend(snapshot) {
     if (!snapshot?.ok || !snapshot.updatedAt) return false
+    const { hour, minute } = kstParts(snapshot.updatedAt)
+    const marketMinute = hour * 60 + minute
+    if (marketMinute < 480 || marketMinute > 1200) return false
+
     const key = minuteKey(snapshot.updatedAt)
     if (!key || key === this.lastMinute) return false
     this.lastMinute = key
     await this.ready
     await appendFile(this.filePath, `${JSON.stringify(compactSnapshot(snapshot))}\n`, 'utf8')
 
-    const day = String(snapshot.updatedAt).slice(0, 10)
+    const day = kstParts(snapshot.updatedAt).day
     if (day && day !== this.lastPruneDay) {
       this.lastPruneDay = day
       await this.prune().catch(() => {})
@@ -59,13 +75,14 @@ export class SnapshotStore {
     return true
   }
 
-  async read({ days = 5 } = {}) {
+  async read({ days = 5, resolutionMinutes = 5 } = {}) {
     await this.ready
     const safeDays = Math.max(1, Math.min(35, Number(days) || 5))
+    const safeResolution = Math.max(1, Math.min(30, Number(resolutionMinutes) || 5))
     let text = ''
-    try { text = await readFile(this.filePath, 'utf8') } catch { return { days: safeDays, tradingDays: 0, samples: [] } }
+    try { text = await readFile(this.filePath, 'utf8') } catch { return { days: safeDays, resolutionMinutes: safeResolution, tradingDays: 0, samples: [] } }
     const cutoff = Date.now() - safeDays * 24 * 60 * 60 * 1000
-    const samples = []
+    const buckets = new Map()
     const tradingDays = new Set()
     for (const line of text.split('\n')) {
       if (!line) continue
@@ -73,13 +90,19 @@ export class SnapshotStore {
         const item = JSON.parse(line)
         const time = Date.parse(item.updatedAt)
         if (!Number.isFinite(time) || time < cutoff) continue
-        samples.push(item)
-        tradingDays.add(new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul' }).format(new Date(time)))
+        const { day, hour, minute } = kstParts(item.updatedAt)
+        const marketMinute = hour * 60 + minute
+        if (marketMinute < 480 || marketMinute > 1200) continue
+        const relativeMinute = marketMinute - 480
+        const bucket = Math.floor(relativeMinute / safeResolution)
+        buckets.set(`${day}:${bucket}`, item)
+        tradingDays.add(day)
       } catch {
         // 손상된 한 줄은 건너뛰고 나머지 히스토리는 유지한다.
       }
     }
-    return { days: safeDays, tradingDays: tradingDays.size, samples }
+    const samples = [...buckets.values()].sort((a, b) => Date.parse(a.updatedAt) - Date.parse(b.updatedAt))
+    return { days: safeDays, resolutionMinutes: safeResolution, tradingDays: tradingDays.size, samples }
   }
 
   async prune() {
