@@ -1,5 +1,11 @@
 # MARKET FLOW 현재 접속 주소
 
-현재 Cloudflare Quick Tunnel 주소를 아직 자동 감지하기 전입니다.
+- 상태: `unreachable`
+- 갱신 시각: `2026-09-08 22:58:50 UTC`
+- Raspberry Pi tunnel service: `active`
 
-이 파일은 Raspberry Pi에서 5분마다 `market-tunnel.service`의 최신 `trycloudflare.com` 주소를 확인해 자동으로 갱신됩니다. 배포가 끝난 직후에도 한 번 더 확인합니다.
+## 접속
+
+**[https://logged-knee-yard-library.trycloudflare.com](https://logged-knee-yard-library.trycloudflare.com)**
+
+이 파일은 Raspberry Pi가 5분마다 Cloudflare Quick Tunnel 주소를 확인해 자동 갱신합니다. 배포 직후에도 즉시 다시 확인합니다.
