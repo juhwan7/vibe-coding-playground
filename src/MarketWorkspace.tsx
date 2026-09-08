@@ -12,33 +12,49 @@ type RankingItem = {
   tradingVolume: number | null
 }
 
+type IndexPoint = { lastPrice?: number | null; changeRate?: number | null }
+type InvestorTotal = { foreignerNetBuyAmount?: number | null; institutionNetBuyAmount?: number | null }
+
 type Snapshot = {
   ok?: boolean
   updatedAt?: string
   topRankings?: RankingItem[]
   marketTradingAmount?: number | null
+  indices?: { KOSPI?: IndexPoint; KOSDAQ?: IndexPoint }
+  marketInvestors?: { total?: InvestorTotal | null } | null
 }
 
-type HistorySample = {
-  updatedAt: string
+type ThemePoint = {
+  timestamp: string
+  value: number
+  volume: number
+  memberCount: number
+  day: string
+}
+
+type ThemeGroup = {
+  name: string
+  tradingAmount: number
+  memberCount: number
+  members: RankingItem[]
+  points: ThemePoint[]
+  currentValue: number | null
+  change1h: number | null
+  change3h: number | null
+  startDay: string | null
+  endDay: string | null
+}
+
+type ThemeFlowResponse = {
+  ok?: boolean
+  updatedAt?: string | null
+  sourceUpdatedAt?: string | null
   topRankings?: RankingItem[]
-  marketTradingAmount?: number | null
+  themes?: ThemeGroup[]
+  error?: string | null
 }
 
-type HistoryResponse = {
-  samples?: HistorySample[]
-}
-
-type FlowRow = {
-  item: RankingItem
-  rank: number
-  share: number | null
-  increase10m: number | null
-  increase30m: number | null
-  previousRank30m: number | null
-  rankMove30m: number | null
-  spark: number[]
-}
+const ACCENTS = ['#ff4d6d', '#39a0ff', '#37d67a', '#9d6cff', '#ff9a3d', '#31c6d4', '#f6d365']
 
 function fmtAmount(value: number | null | undefined) {
   if (value == null || !Number.isFinite(value)) return '-'
@@ -53,193 +69,204 @@ function fmtRate(value: number | null | undefined) {
   return `${value > 0 ? '+' : ''}${value.toFixed(2)}%`
 }
 
-function fmtSignedAmount(value: number | null | undefined) {
+function fmtWon(value: number | null | undefined) {
   if (value == null || !Number.isFinite(value)) return '-'
-  const prefix = value > 0 ? '+' : value < 0 ? '-' : ''
-  return `${prefix}${fmtAmount(Math.abs(value))}`
+  const sign = value > 0 ? '+' : value < 0 ? '-' : ''
+  const abs = Math.abs(value)
+  if (abs >= 1_000_000_000_000) return `${sign}${(abs / 1_000_000_000_000).toFixed(2)}조`
+  if (abs >= 100_000_000) return `${sign}${Math.round(abs / 100_000_000).toLocaleString()}억`
+  return `${sign}${Math.round(abs).toLocaleString()}원`
 }
 
-function dateKey(iso: string) {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(iso))
-}
-
-function minuteFromIso(iso: string) {
-  const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(new Date(iso))
-  const hour = Number(parts.find((part) => part.type === 'hour')?.value ?? 8)
-  const minute = Number(parts.find((part) => part.type === 'minute')?.value ?? 0)
-  return Math.max(0, Math.min(720, (hour - 8) * 60 + minute))
-}
-
-function displayTime(iso?: string) {
+function displayTime(iso?: string | null) {
   if (!iso) return '-'
   return new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).format(new Date(iso))
 }
 
-function itemForSymbol(sample: HistorySample, symbol: string) {
-  return sample.topRankings?.find((item) => item.symbol === symbol) ?? null
+function compactDay(day?: string | null) {
+  if (!day) return '-'
+  const [, month, date] = day.split('-')
+  return `${month}/${date}`
 }
 
-function rankForSymbol(sample: HistorySample, symbol: string) {
-  const index = sample.topRankings?.findIndex((item) => item.symbol === symbol) ?? -1
-  return index >= 0 ? index + 1 : null
+function themeIcon(name: string) {
+  if (name === '반도체') return '▦'
+  if (name === '원전') return '◉'
+  if (name === '전력기기') return 'ϟ'
+  if (name === '2차전지') return '▣'
+  if (name === '바이오') return '◆'
+  if (name === '방산') return '✦'
+  if (name === '조선') return '◈'
+  if (name === '자동차') return '◇'
+  if (name === '금융') return '▥'
+  if (name === '로봇') return '⌘'
+  return '●'
 }
 
-function nearestAtOrBefore(samples: HistorySample[], targetMinute: number) {
-  const candidates = samples.filter((sample) => minuteFromIso(sample.updatedAt) <= targetMinute)
-  if (!candidates.length) return null
-  return candidates.reduce((best, item) => minuteFromIso(item.updatedAt) > minuteFromIso(best.updatedAt) ? item : best)
-}
+function ThemeChart({ theme, accent }: { theme: ThemeGroup; accent: string }) {
+  const points = theme.points ?? []
+  if (points.length < 2) return <div className="theme-chart-empty">3분봉 데이터 수집 중</div>
 
-function sparkPath(values: number[], width = 176, height = 44) {
-  if (values.length < 2) return ''
+  const width = 720
+  const height = 154
+  const chartTop = 10
+  const chartBottom = 116
+  const values = points.map((point) => point.value)
   const min = Math.min(...values)
   const max = Math.max(...values)
-  const range = Math.max(1, max - min)
-  return values.map((value, index) => {
-    const x = index / Math.max(1, values.length - 1) * width
-    const y = height - 4 - ((value - min) / range) * (height - 8)
-    return `${index === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`
-  }).join(' ')
+  const pad = Math.max(.35, (max - min) * .15)
+  const lo = min - pad
+  const hi = max + pad
+  const range = Math.max(.01, hi - lo)
+  const maxVolume = Math.max(1, ...points.map((point) => point.volume || 0))
+  const x = (index: number) => index / Math.max(1, points.length - 1) * width
+  const y = (value: number) => chartBottom - ((value - lo) / range) * (chartBottom - chartTop)
+  const path = points.map((point, index) => `${index === 0 ? 'M' : 'L'}${x(index).toFixed(1)},${y(point.value).toFixed(1)}`).join(' ')
+
+  const dayBreaks: Array<{ index: number; day: string }> = []
+  points.forEach((point, index) => {
+    if (index === 0 || point.day !== points[index - 1].day) dayBreaks.push({ index, day: point.day })
+  })
+
+  return <div className="theme-chart-wrap" style={{ ['--theme-accent' as string]: accent }}>
+    <div className="theme-chart-title">테마 평균 차트 <span>3분봉</span></div>
+    <svg className="theme-chart" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" role="img" aria-label={`${theme.name} 거래대금 상위50 포함종목 3분 평균 차트`}>
+      {[.25, .5, .75].map((ratio) => <line key={ratio} x1="0" x2={width} y1={chartTop + (chartBottom - chartTop) * ratio} y2={chartTop + (chartBottom - chartTop) * ratio} className="theme-chart-grid" />)}
+      {lo < 0 && hi > 0 && <line x1="0" x2={width} y1={y(0)} y2={y(0)} className="theme-zero-line" />}
+      {dayBreaks.slice(1).map(({ index, day }) => <g key={`${day}-${index}`}><line x1={x(index)} x2={x(index)} y1="0" y2={height} className="theme-day-line" /><text x={x(index) + 8} y="16" className="theme-day-label">{compactDay(day)}</text></g>)}
+      {points.map((point, index) => {
+        const barHeight = Math.max(1, (point.volume / maxVolume) * 26)
+        return <rect key={`${point.timestamp}-v`} x={Math.max(0, x(index) - 1)} y={height - barHeight} width="2.2" height={barHeight} className="theme-volume-bar" />
+      })}
+      <path d={path} className="theme-price-line" />
+      {points.filter((_, index) => index % Math.max(1, Math.floor(points.length / 70)) === 0).map((point, index) => <circle key={`${point.timestamp}-c`} cx={x(points.indexOf(point))} cy={y(point.value)} r="1.8" className="theme-price-dot" />)}
+    </svg>
+    <div className="theme-chart-axis"><span>{compactDay(points[0]?.day)}</span><span>전일 포함</span><span>{compactDay(points.at(-1)?.day)}</span></div>
+  </div>
+}
+
+function ThemeRow({ theme, rank }: { theme: ThemeGroup; rank: number }) {
+  const accent = ACCENTS[(rank - 1) % ACCENTS.length]
+  const members = [...theme.members].sort((a, b) => (b.tradingAmount ?? 0) - (a.tradingAmount ?? 0)).slice(0, 7)
+  return <article className="theme-strength-row" style={{ ['--theme-accent' as string]: accent }}>
+    <div className="theme-summary-cell">
+      <div className="theme-rank-line"><b>{rank}</b><span className="theme-icon">{themeIcon(theme.name)}</span><h2>{theme.name}</h2></div>
+      <p>{theme.memberCount}개 종목 · 거래대금 50위 내</p>
+      <strong className={(theme.currentValue ?? 0) >= 0 ? 'up' : 'down'}>{fmtRate(theme.currentValue)}</strong>
+      <div><span>거래대금 합계</span><b>{fmtAmount(theme.tradingAmount)}</b></div>
+    </div>
+
+    <div className="theme-members-cell">
+      <div className="theme-cell-title">포함 종목 <span>({theme.memberCount})</span></div>
+      <div className="theme-member-list">
+        {members.map((member, index) => <div key={member.symbol ?? index}><b>{index + 1}</b><span>{member.name ?? member.symbol}</span><strong>{fmtAmount(member.tradingAmount)}</strong></div>)}
+      </div>
+    </div>
+
+    <ThemeChart theme={theme} accent={accent} />
+
+    <div className="theme-window-stats">
+      <div><span>24H</span><strong className={(theme.currentValue ?? 0) >= 0 ? 'up' : 'down'}>{fmtRate(theme.currentValue)}</strong></div>
+      <div><span>3H</span><strong className={(theme.change3h ?? 0) >= 0 ? 'up' : 'down'}>{fmtRate(theme.change3h)}</strong></div>
+      <div><span>1H</span><strong className={(theme.change1h ?? 0) >= 0 ? 'up' : 'down'}>{fmtRate(theme.change1h)}</strong></div>
+    </div>
+  </article>
 }
 
 export default function MarketWorkspace() {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null)
-  const [history, setHistory] = useState<HistorySample[]>([])
-  const [visibleCount, setVisibleCount] = useState<10 | 20 | 30>(20)
-  const [sortMode, setSortMode] = useState<'amount' | 'recent'>('amount')
+  const [themeFlow, setThemeFlow] = useState<ThemeFlowResponse>({ ok: false, themes: [], topRankings: [] })
 
   useEffect(() => {
     const controller = new AbortController()
     let timer: number | undefined
-    let historyTick = 0
-
+    let themeTick = 0
     const load = async () => {
       try {
-        const response = await fetch('/api/market/snapshot', { signal: controller.signal, headers: { Accept: 'application/json' } })
-        if (response.ok) setSnapshot(await response.json() as Snapshot)
-        if (historyTick % 6 === 0) {
-          const historyResponse = await fetch('/api/market/history?days=2&resolution=5', { signal: controller.signal, headers: { Accept: 'application/json' } }).catch(() => null)
-          if (historyResponse?.ok) {
-            const payload = await historyResponse.json() as HistoryResponse
-            setHistory(payload.samples ?? [])
+        const snapshotResponse = await fetch('/api/market/snapshot', { signal: controller.signal, headers: { Accept: 'application/json' } })
+        if (snapshotResponse.ok) setSnapshot(await snapshotResponse.json() as Snapshot)
+        if (themeTick % 3 === 0) {
+          const themeResponse = await fetch('/api/market/theme-flow', { signal: controller.signal, headers: { Accept: 'application/json' } }).catch(() => null)
+          if (themeResponse) {
+            const payload = await themeResponse.json().catch(() => null) as ThemeFlowResponse | null
+            if (payload) setThemeFlow(payload)
           }
         }
-        historyTick += 1
+        themeTick += 1
       } catch (error) {
         if ((error as Error).name === 'AbortError') return
       } finally {
         timer = window.setTimeout(load, 5000)
       }
     }
-
     void load()
     return () => { controller.abort(); if (timer) window.clearTimeout(timer) }
   }, [])
 
-  const rankings = useMemo(() => (snapshot?.topRankings ?? []).filter((item): item is RankingItem & { symbol: string } => Boolean(item.symbol)), [snapshot])
-  const currentDay = snapshot?.updatedAt ? dateKey(snapshot.updatedAt) : ''
-  const currentMinute = snapshot?.updatedAt ? minuteFromIso(snapshot.updatedAt) : 0
-  const todayHistory = useMemo(() => history.filter((sample) => currentDay && dateKey(sample.updatedAt) === currentDay).sort((a, b) => Date.parse(a.updatedAt) - Date.parse(b.updatedAt)), [history, currentDay])
-  const totalAmount = snapshot?.marketTradingAmount ?? rankings.reduce((sum, item) => sum + (item.tradingAmount ?? 0), 0)
-
-  const flowRows = useMemo<FlowRow[]>(() => rankings.map((item, index) => {
-    const symbol = item.symbol as string
-    const before10 = nearestAtOrBefore(todayHistory, currentMinute - 10)
-    const before30 = nearestAtOrBefore(todayHistory, currentMinute - 30)
-    const amount10 = before10 ? itemForSymbol(before10, symbol)?.tradingAmount ?? null : null
-    const amount30 = before30 ? itemForSymbol(before30, symbol)?.tradingAmount ?? null : null
-    const currentAmount = item.tradingAmount ?? null
-    const previousRank30m = before30 ? rankForSymbol(before30, symbol) : null
-    const rank = index + 1
-    const recentSamples = todayHistory.filter((sample) => minuteFromIso(sample.updatedAt) >= Math.max(0, currentMinute - 90))
-    const spark = recentSamples.map((sample) => itemForSymbol(sample, symbol)?.tradingAmount ?? null).filter((value): value is number => value != null && Number.isFinite(value))
-    if (currentAmount != null && (spark.length === 0 || spark[spark.length - 1] !== currentAmount)) spark.push(currentAmount)
-
-    return {
-      item,
-      rank,
-      share: currentAmount != null && totalAmount > 0 ? currentAmount / totalAmount * 100 : null,
-      increase10m: currentAmount != null && amount10 != null ? currentAmount - amount10 : null,
-      increase30m: currentAmount != null && amount30 != null ? currentAmount - amount30 : null,
-      previousRank30m,
-      rankMove30m: previousRank30m != null ? previousRank30m - rank : null,
-      spark,
-    }
-  }), [rankings, todayHistory, currentMinute, totalAmount])
-
-  const visibleRows = useMemo(() => {
-    const rows = [...flowRows]
-    if (sortMode === 'recent') rows.sort((a, b) => (b.increase10m ?? -Infinity) - (a.increase10m ?? -Infinity))
-    else rows.sort((a, b) => a.rank - b.rank)
-    return rows.slice(0, visibleCount)
-  }, [flowRows, visibleCount, sortMode])
-
-  const maxCurrent = Math.max(1, ...visibleRows.map((row) => row.item.tradingAmount ?? 0))
-  const maxIncrease10m = Math.max(1, ...visibleRows.map((row) => Math.abs(row.increase10m ?? 0)))
+  const rankings = useMemo(() => {
+    const enriched = themeFlow.topRankings?.length ? themeFlow.topRankings : snapshot?.topRankings ?? []
+    return enriched.filter((item): item is RankingItem & { symbol: string } => Boolean(item.symbol)).slice(0, 100)
+  }, [themeFlow.topRankings, snapshot?.topRankings])
+  const themes = themeFlow.themes ?? []
   const topAmount = Math.max(1, rankings[0]?.tradingAmount ?? 1)
+  const totalAmount = snapshot?.marketTradingAmount ?? rankings.reduce((sum, item) => sum + (item.tradingAmount ?? 0), 0)
+  const investors = snapshot?.marketInvestors?.total
+  const kospi = snapshot?.indices?.KOSPI
+  const kosdaq = snapshot?.indices?.KOSDAQ
 
-  return <div className="market-workspace">
+  return <div className="market-workspace theme-flow-workspace">
     <section className="workspace-main">
-      <section className="top-flow-board panel" data-testid="top-flow-board">
-        <div className="flow-board-head">
+      <section className="theme-strength-board panel" data-testid="theme-strength-board">
+        <header className="theme-board-head">
           <div>
-            <p>TOP TURNOVER FLOW</p>
-            <h1>거래대금 상위 종목 자금 이동 비교</h1>
-            <small>누적 거래대금과 최근 10분 증가액을 같은 종목 행에서 세로로 비교합니다. 별도 해석 문구 없이 원시 비교값만 표시합니다.</small>
+            <p>THEME ROTATION / TOP 50</p>
+            <h1>테마 강도 비교 <span>(거래대금 상위 50 기준)</span></h1>
+            <small>거래대금 상위 50종목 중 같은 테마가 3종 이상일 때 표시합니다. 구성종목별 가격을 기준시점 0%로 정규화한 뒤 3분 단위 수익률을 단순평균합니다.</small>
           </div>
-          <div className="flow-controls">
-            <div className="segmented-control" aria-label="정렬 기준">
-              <button className={sortMode === 'amount' ? 'active' : ''} onClick={() => setSortMode('amount')}>누적 순위</button>
-              <button className={sortMode === 'recent' ? 'active' : ''} onClick={() => setSortMode('recent')}>최근 10분 증가</button>
-            </div>
-            <div className="segmented-control" aria-label="표시 종목 수">
-              {([10, 20, 30] as const).map((count) => <button key={count} className={visibleCount === count ? 'active' : ''} onClick={() => setVisibleCount(count)}>TOP {count}</button>)}
-            </div>
+          <div className="theme-board-controls">
+            <span className={themeFlow.ok ? 'flow-live' : 'flow-loading'}>{themeFlow.ok ? '● LIVE 3MIN' : '● 3분봉 준비 중'}</span>
+            <div className="segmented-control"><button className="active">전일 포함(24H)</button><button disabled>3일</button><button disabled>5일</button></div>
           </div>
-        </div>
+        </header>
 
-        <div className="flow-column-head">
-          <span>종목</span><span>현재 거래대금</span><span>TOP100 비중</span><span>최근 10분 증가</span><span>30분 순위변화</span><span>최근 90분</span>
-        </div>
-        <div className="flow-rows">
-          {visibleRows.map((row) => {
-            const amountWidth = (row.item.tradingAmount ?? 0) / maxCurrent * 100
-            const recentWidth = Math.abs(row.increase10m ?? 0) / maxIncrease10m * 100
-            const move = row.rankMove30m
-            return <article className="flow-stock-row" key={row.item.symbol}>
-              <div className="flow-stock-name"><b>{String(row.rank).padStart(2, '0')}</b><span><strong>{row.item.name ?? row.item.symbol}</strong><small>{row.item.symbol} · {row.item.market ?? '-'}</small></span><em className={(row.item.changeRate ?? 0) >= 0 ? 'up' : 'down'}>{fmtRate(row.item.changeRate)}</em></div>
-              <div className="flow-bar-cell"><strong>{fmtAmount(row.item.tradingAmount)}</strong><div className="flow-bar-track"><i className="flow-bar cumulative" style={{ width: `${amountWidth}%` }} /></div></div>
-              <div className="flow-share"><strong>{row.share == null ? '-' : `${row.share.toFixed(2)}%`}</strong><small>TOP100 합계 기준</small></div>
-              <div className="flow-bar-cell recent"><strong>{fmtSignedAmount(row.increase10m)}</strong><div className="flow-bar-track"><i className={`flow-bar recent-bar ${(row.increase10m ?? 0) < 0 ? 'negative' : ''}`} style={{ width: `${recentWidth}%` }} /></div><small>30분 {fmtSignedAmount(row.increase30m)}</small></div>
-              <div className="rank-move"><strong>{move == null ? '-' : move === 0 ? '0' : `${move > 0 ? '▲ ' : '▼ '}${Math.abs(move)}`}</strong><small>{row.previousRank30m == null ? '30분 표본 없음' : `30분 전 ${row.previousRank30m}위`}</small></div>
-              <div className="spark-cell"><svg viewBox="0 0 176 44" preserveAspectRatio="none" role="img" aria-label={`${row.item.name ?? row.item.symbol} 최근 90분 누적 거래대금`}><path d={sparkPath(row.spark)} /></svg><small>종목별 축 · {row.spark.length}개 표본</small></div>
-            </article>
-          })}
-          {!visibleRows.length && <div className="workspace-empty">실시간 거래대금 TOP100 데이터 연결 대기 중입니다.</div>}
+        <div className="theme-method-strip"><span>선정조건 <b>TOP50 내 3종+</b></span><span>정렬 <b>테마별 거래대금 합계</b></span><span>차트 <b>3분 평균 수익률</b></span><span>업데이트 <b>{displayTime(themeFlow.updatedAt)}</b></span></div>
+
+        <div className="theme-strength-list">
+          {themes.map((theme, index) => <ThemeRow key={theme.name} theme={theme} rank={index + 1} />)}
+          {!themes.length && <div className="workspace-empty theme-empty"><strong>테마 평균 차트를 준비하고 있습니다.</strong><span>TOP50 종목명 확인 → 테마 3종 이상 묶음 → 1분봉 수집 → 3분 평균 계산 순서로 생성됩니다.</span>{themeFlow.error && <small>{themeFlow.error}</small>}</div>}
         </div>
       </section>
 
-      <MarketDashboard />
+      <section className="market-bottom-strip">
+        <div className="market-mini-panel panel"><span>코스피</span><strong>{kospi?.lastPrice?.toLocaleString() ?? '-'}</strong><b className={(kospi?.changeRate ?? 0) >= 0 ? 'up' : 'down'}>{fmtRate(kospi?.changeRate)}</b></div>
+        <div className="market-mini-panel panel"><span>코스닥</span><strong>{kosdaq?.lastPrice?.toLocaleString() ?? '-'}</strong><b className={(kosdaq?.changeRate ?? 0) >= 0 ? 'up' : 'down'}>{fmtRate(kosdaq?.changeRate)}</b></div>
+        <div className="market-mini-panel panel"><span>TOP100 거래대금</span><strong>{fmtAmount(totalAmount)}</strong><b>{rankings.length}/100 종목</b></div>
+        <div className="market-mini-panel panel"><span>외국인 현물 순매수</span><strong className={(investors?.foreignerNetBuyAmount ?? 0) >= 0 ? 'up' : 'down'}>{fmtWon(investors?.foreignerNetBuyAmount)}</strong><b>코스피+코스닥</b></div>
+        <div className="market-mini-panel panel"><span>기관 현물 순매수</span><strong className={(investors?.institutionNetBuyAmount ?? 0) >= 0 ? 'up' : 'down'}>{fmtWon(investors?.institutionNetBuyAmount)}</strong><b>코스피+코스닥</b></div>
+      </section>
+
+      <details className="deep-market-details panel">
+        <summary><span><b>시장 전체 상세 대시보드</b><small>시장지도 · 동시간 비교 · 프로그램 · 수급 · 종목 상세</small></span><strong>펼치기 / 접기</strong></summary>
+        <div className="deep-market-body"><MarketDashboard /></div>
+      </details>
     </section>
 
     <aside className="top100-rail panel" data-testid="top100-ranking">
-      <div className="top100-head">
-        <div><p>MARKET TURNOVER</p><h2>거래대금 TOP100</h2></div>
-        <span>{displayTime(snapshot?.updatedAt)}</span>
-      </div>
-      <div className="top100-summary"><span>합계</span><strong>{fmtAmount(totalAmount)}</strong><small>{rankings.length}/100 종목 수신</small></div>
+      <div className="top100-tabs"><button className="active">거래대금 TOP100</button><button disabled>테마 요약</button></div>
+      <div className="top100-head"><div><p>MARKET TURNOVER</p><h2>거래대금 TOP100</h2></div><span>{displayTime(snapshot?.updatedAt)}</span></div>
+      <div className="top100-list-head"><span>순위</span><span>종목명</span><span>등락률</span><span>거래대금</span></div>
       <div className="top100-list">
-        {rankings.slice(0, 100).map((item, index) => {
+        {rankings.map((item, index) => {
           const amount = item.tradingAmount ?? 0
           const width = amount / topAmount * 100
-          const share = totalAmount > 0 ? amount / totalAmount * 100 : 0
           return <div className="top100-row" key={`${item.symbol}-${index}`}>
-            <b>{String(index + 1).padStart(2, '0')}</b>
-            <div className="top100-stock"><strong>{item.name ?? item.symbol}</strong><small>{item.symbol} · {fmtAmount(item.tradingAmount)}</small><div className="top100-mini-track"><i style={{ width: `${width}%` }} /></div></div>
-            <div className="top100-values"><strong className={(item.changeRate ?? 0) >= 0 ? 'up' : 'down'}>{fmtRate(item.changeRate)}</strong><small>{share.toFixed(2)}%</small></div>
+            <b>{index + 1}</b>
+            <div className="top100-stock"><strong>{item.name ?? item.symbol}</strong><small>{item.symbol} · {item.lastPrice?.toLocaleString() ?? '-'}</small><div className="top100-mini-track"><i style={{ width: `${width}%` }} /></div></div>
+            <strong className={`top100-rate ${(item.changeRate ?? 0) >= 0 ? 'up' : 'down'}`}>{fmtRate(item.changeRate)}</strong>
+            <strong className="top100-amount">{fmtAmount(item.tradingAmount)}</strong>
           </div>
         })}
-        {!rankings.length && <div className="workspace-empty">TOP100 라이브 데이터 연결 대기 중</div>}
+        {!rankings.length && <div className="workspace-empty">TOP100 실시간 데이터 연결 대기 중</div>}
       </div>
     </aside>
   </div>
