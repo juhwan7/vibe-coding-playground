@@ -17,7 +17,7 @@ concurrency:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     steps:
       - name: Checkout
@@ -40,9 +40,17 @@ jobs:
         id: unit
         run: npm test
 
+      - name: Backend tests
+        id: backend
+        run: node --test backend/*.test.mjs
+
       - name: Build
         id: build
         run: npm run build
+
+      - name: Docker compose build
+        id: docker
+        run: docker compose build
 
       - name: Install Playwright Chromium
         id: playwright_install
@@ -68,7 +76,9 @@ jobs:
             "install": "${{ steps.install.outcome }}",
             "typecheck": "${{ steps.typecheck.outcome }}",
             "unit": "${{ steps.unit.outcome }}",
+            "backend": "${{ steps.backend.outcome }}",
             "build": "${{ steps.build.outcome }}",
+            "docker": "${{ steps.docker.outcome }}",
             "playwright_install": "${{ steps.playwright_install.outcome }}",
             "e2e": "${{ steps.e2e.outcome }}"
           }
