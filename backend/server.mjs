@@ -2,6 +2,7 @@ import http from 'node:http'
 import { MarketCollector } from './marketCollector.mjs'
 import { SnapshotStore } from './snapshotStore.mjs'
 import { ThemeFlowService } from './themeFlowService.mjs'
+import { UsThemeFlowService } from './usThemeFlowService.mjs'
 import { TossClient } from './tossClient.mjs'
 
 const port = Number(process.env.PORT || 8787)
@@ -17,6 +18,10 @@ const history = new SnapshotStore()
 const themeFlow = new ThemeFlowService(client, () => collector.snapshot, {
   refreshMs: Number(process.env.THEME_FLOW_REFRESH_MS || 60000),
   cachePath: process.env.THEME_CANDLE_CACHE_PATH || '/app/data/theme-candles.json',
+})
+const usThemeFlow = new UsThemeFlowService(client, {
+  refreshMs: Number(process.env.US_THEME_FLOW_REFRESH_MS || 60000),
+  cachePath: process.env.US_THEME_CANDLE_CACHE_PATH || '/app/data/us-theme-candles.json',
 })
 let historyTimer = null
 
@@ -49,11 +54,14 @@ const server = http.createServer(async (request, response) => {
       configured: client.configured,
       marketReady: Boolean(collector.snapshot?.ok),
       themeFlowReady: Boolean(themeFlow.payload?.ok),
+      usThemeFlowReady: Boolean(usThemeFlow.payload?.ok),
       lastError: collector.lastError,
       themeFlowError: themeFlow.payload?.error ?? null,
+      usThemeFlowError: usThemeFlow.payload?.error ?? null,
       updatedAt: collector.snapshot?.updatedAt ?? null,
       historyEnabled: true,
       themeHistoryPersisted: true,
+      usThemeHistoryPersisted: true,
       refreshSeconds: 60,
     })
   }
@@ -65,6 +73,10 @@ const server = http.createServer(async (request, response) => {
 
   if (url.pathname === '/api/market/theme-flow') {
     return send(response, themeFlow.payload?.ok ? 200 : 503, themeFlow.payload)
+  }
+
+  if (url.pathname === '/api/market/us-theme-flow') {
+    return send(response, usThemeFlow.payload?.ok ? 200 : 503, usThemeFlow.payload)
   }
 
   if (url.pathname === '/api/market/history') {
@@ -94,12 +106,15 @@ function send(response, status, payload) {
 server.listen(port, '0.0.0.0', () => {
   console.log(`[market-backend] listening on :${port}`)
 
-  // Keep the HTTP server responsive immediately. Market/Toss initialization runs
-  // asynchronously so Docker liveness checks can succeed while data is loading.
+  // Keep the HTTP server responsive immediately. KR and US market collectors
+  // initialize independently so one market cannot block the other dashboard.
   void collector.start()
     .then(() => history.maybeAppend(collector.snapshot).catch(() => {}))
     .then(() => themeFlow.start())
-    .catch((error) => console.error('[market-backend] initialization failed', error))
+    .catch((error) => console.error('[market-backend] KR initialization failed', error))
+
+  void usThemeFlow.start()
+    .catch((error) => console.error('[market-backend] US initialization failed', error))
 
   historyTimer = setInterval(() => history.maybeAppend(collector.snapshot).catch(() => {}), 60000)
   historyTimer.unref?.()
@@ -108,6 +123,7 @@ server.listen(port, '0.0.0.0', () => {
 const shutdown = () => {
   collector.stop()
   themeFlow.stop()
+  usThemeFlow.stop()
   if (historyTimer) clearInterval(historyTimer)
   server.close(() => process.exit(0))
   setTimeout(() => process.exit(1), 3000).unref()
