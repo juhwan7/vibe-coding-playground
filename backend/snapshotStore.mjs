@@ -31,6 +31,18 @@ function compactStock(stock) {
   }
 }
 
+function compactRanking(item) {
+  return {
+    symbol: item.symbol ?? null,
+    name: item.name ?? null,
+    market: item.market ?? null,
+    lastPrice: item.lastPrice ?? null,
+    changeRate: item.changeRate ?? null,
+    tradingAmount: item.tradingAmount ?? null,
+    tradingVolume: item.tradingVolume ?? null,
+  }
+}
+
 function compactSnapshot(snapshot) {
   return {
     updatedAt: snapshot.updatedAt,
@@ -41,7 +53,7 @@ function compactSnapshot(snapshot) {
     marketInvestors: snapshot.marketInvestors ?? null,
     programSummary: snapshot.programSummary ?? null,
     futures: snapshot.futures ?? null,
-    topRankings: (snapshot.topRankings ?? []).slice(0, 10),
+    topRankings: (snapshot.topRankings ?? []).slice(0, 100).map(compactRanking),
     stocks: Object.fromEntries(Object.entries(snapshot.stocks ?? {}).map(([symbol, stock]) => [symbol, compactStock(stock)])),
   }
 }
@@ -109,7 +121,7 @@ export class SnapshotStore {
     await this.ready
     try {
       const info = await stat(this.filePath)
-      if (info.size < 25 * 1024 * 1024) return
+      if (info.size < 250 * 1024 * 1024) return
     } catch { return }
 
     const cutoff = Date.now() - this.retainDays * 24 * 60 * 60 * 1000
