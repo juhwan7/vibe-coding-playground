@@ -69,17 +69,22 @@ jobs:
           git checkout --detach "$VERIFIED_SHA"
 
           # React/TypeScript/Vite was already built and tested on GitHub-hosted CI.
-          # The Pi only receives the verified static dist artifact and wraps it in
-          # the tiny nginx runtime image; it never recompiles the frontend itself.
+          # The Pi receives only the verified dist artifact and never recompiles React.
           rm -rf "$APP/dist"
           mkdir -p "$APP/dist"
           cp -a "$RUNNER_TEMP/frontend-dist/." "$APP/dist/"
 
-          if [ -n "$(echo "$SERVICES" | xargs)" ]; then
-            UNIQUE_SERVICES="$(echo "$SERVICES" | xargs -n1 | sort -u | xargs)"
-            echo "Rebuilding services: $UNIQUE_SERVICES"
-            docker compose build $UNIQUE_SERVICES
-          else
+          if echo " $SERVICES " | grep -q ' backend '; then
+            echo "Rebuilding backend"
+            docker compose build backend
+          fi
+
+          if echo " $SERVICES " | grep -q ' frontend '; then
+            echo "Wrapping prebuilt frontend dist in nginx runtime image"
+            docker build -f Dockerfile.frontend.runtime -t vibe-coding-playground-frontend:latest .
+          fi
+
+          if [ -z "$(echo "$SERVICES" | xargs)" ]; then
             echo "No application image changes detected; reusing existing images"
           fi
 
@@ -90,9 +95,8 @@ jobs:
             exit 1
           fi
 
-          # The deployment is considered available when nginx/backend answer and a
-          # last-known-good market snapshot can be served. Fresh collection continues
-          # in the background and must not keep users or deployments waiting.
+          # Deployment availability is based on an immediately servable last-good
+          # snapshot. Fresh collection continues in the background and never blocks users.
           API_LIVE=0
           for attempt in $(seq 1 30); do
             if curl --fail --silent --show-error http://localhost:8080/api/health >/tmp/k-market-health.json; then
