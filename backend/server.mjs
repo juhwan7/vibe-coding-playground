@@ -1,6 +1,7 @@
 import http from 'node:http'
 import { MarketCollector } from './marketCollector.mjs'
 import { SnapshotStore } from './snapshotStore.mjs'
+import { PreparedSnapshotStore, compactHistoryForBrowser } from './preparedSnapshotStore.mjs'
 import { ThemeFlowService } from './themeFlowService.mjs'
 import { UsThemeFlowService } from './usThemeFlowService.mjs'
 import { QuizUniverseService } from './quizUniverseService.mjs'
@@ -18,6 +19,7 @@ const collector = new MarketCollector(client, {
   slowMs: Number(process.env.SLOW_POLL_MS || 180000),
 })
 const history = new SnapshotStore()
+const prepared = new PreparedSnapshotStore()
 const themeFlow = new ThemeFlowService(client, () => collector.snapshot, {
   refreshMs: Number(process.env.THEME_FLOW_REFRESH_MS || 60000),
   cachePath: process.env.THEME_CANDLE_CACHE_PATH || '/app/data/theme-candles.json',
@@ -30,6 +32,9 @@ const quizUniverse = new QuizUniverseService({ cachePath: process.env.QUIZ_UNIVE
 const quizDescriptions = new QuizDescriptionService({ cachePath: process.env.QUIZ_DESCRIPTION_CACHE_PATH || '/app/data/quiz-descriptions.json' })
 const featureNews = new FeatureNewsService({ refreshMs: Number(process.env.FEATURE_NEWS_REFRESH_MS || 180000) })
 let historyTimer = null
+let preparedTimer = null
+let preparedHistoryTimer = null
+let newsTimer = null
 let krThemeStartTimer = null
 let usThemeStartTimer = null
 let manualRefreshPromise = null
@@ -53,12 +58,33 @@ function fundingStatus() {
   }
 }
 
+async function publishPreparedFast() {
+  const writes = []
+  if (collector.snapshot) writes.push(prepared.write('market-snapshot.json', collector.snapshot))
+  if (themeFlow.payload?.ok) writes.push(prepared.write('kr-theme-flow.json', themeFlow.payload))
+  if (usThemeFlow.payload?.ok) writes.push(prepared.write('us-theme-flow.json', usThemeFlow.payload))
+  if (featureNews.payload?.items?.length) writes.push(prepared.write('feature-news.json', featureNews.payload))
+  if (writes.length) await Promise.allSettled(writes)
+}
+
+async function publishPreparedHistory() {
+  const payload = await history.read({ days: 8, resolutionMinutes: 1 })
+  await prepared.write('market-history.json', compactHistoryForBrowser(payload))
+}
+
+async function refreshPreparedNews() {
+  const payload = await featureNews.get()
+  if (payload?.items?.length) await prepared.write('feature-news.json', payload)
+}
+
 async function refreshPrimaryMarket() {
   if (manualRefreshPromise) return manualRefreshPromise
   const startedAt = Date.now()
   manualRefreshPromise = collector.refresh()
     .then(async (snapshot) => {
       await history.maybeAppend(snapshot).catch(() => {})
+      await publishPreparedFast().catch(() => {})
+      await publishPreparedHistory().catch(() => {})
       return {
         ok: Boolean(snapshot?.ok),
         updatedAt: snapshot?.updatedAt ?? null,
@@ -82,6 +108,7 @@ const server = http.createServer(async (request, response) => {
       marketMode: collector.snapshot?.mode ?? null,
       themeFlowReady: Boolean(themeFlow.payload?.ok),
       usThemeFlowReady: Boolean(usThemeFlow.payload?.ok),
+      preparedSnapshotsEnabled: true,
       lastError: collector.lastError,
       themeFlowError: themeFlow.payload?.error ?? null,
       usThemeFlowError: usThemeFlow.payload?.error ?? null,
@@ -100,6 +127,7 @@ const server = http.createServer(async (request, response) => {
         slowMarketSeconds: 180,
         featureNewsSeconds: 180,
         themeChartSeconds: 60,
+        preparedPublishSeconds: 2,
         offSessionSeconds: 300,
       },
       requestScheduler: client.schedulerStats(),
@@ -119,7 +147,7 @@ const server = http.createServer(async (request, response) => {
         ok: result.ok,
         updatedAt: result.updatedAt,
         elapsedMs: result.elapsedMs,
-        note: '첫 화면 핵심 데이터만 우선 갱신했습니다. 테마·종목별 상세 데이터는 분산 수집 큐에서 계속 갱신됩니다.',
+        note: '기존 화면을 유지한 채 첫 화면 핵심 데이터를 우선 갱신했습니다. 나머지 상세 데이터는 분산 수집 큐에서 계속 갱신됩니다.',
       })
     } catch (error) {
       return send(response, 503, { ok: false, error: error instanceof Error ? error.message : String(error) })
@@ -136,6 +164,7 @@ const server = http.createServer(async (request, response) => {
 
   if (url.pathname === '/api/market/feature-news') {
     const payload = await featureNews.get()
+    if (payload?.items?.length) await prepared.write('feature-news.json', payload).catch(() => {})
     return send(response, payload.ok ? 200 : 503, payload)
   }
 
@@ -179,11 +208,10 @@ function send(response, status, payload) {
 server.listen(port, '0.0.0.0', () => {
   console.log(`[market-backend] listening on :${port}`)
 
-  // Restore the last small snapshot first so a restart does not produce a blank page.
-  // It stays ok:false until a fresh Toss snapshot arrives, so health/deploy checks still
-  // wait for real live data instead of mistaking cached data for a successful refresh.
+  // Keep a last-known-good response available before any user arrives. Nginx serves
+  // these prepared JSON files directly, so a page view never starts data collection.
   void history.latest({ maxAgeHours: 36 })
-    .then((cached) => {
+    .then(async (cached) => {
       if (cached && !collector.snapshot) {
         collector.snapshot = {
           ...cached,
@@ -191,25 +219,51 @@ server.listen(port, '0.0.0.0', () => {
           mode: 'startup-cache',
           error: '마지막 저장값 표시 중 · 최신 시장 데이터 우선 갱신 중',
         }
+        await publishPreparedFast().catch(() => {})
       }
+      await publishPreparedHistory().catch(() => {})
       return collector.start()
     })
-    .then(() => history.maybeAppend(collector.snapshot).catch(() => {}))
+    .then(async () => {
+      await history.maybeAppend(collector.snapshot).catch(() => {})
+      await publishPreparedFast().catch(() => {})
+      await publishPreparedHistory().catch(() => {})
+    })
     .then(() => {
       krThemeStartTimer = setTimeout(() => {
-        void themeFlow.start().catch((error) => console.error('[market-backend] KR theme initialization failed', error))
+        void themeFlow.start()
+          .then(() => publishPreparedFast())
+          .catch((error) => console.error('[market-backend] KR theme initialization failed', error))
       }, Number(process.env.KR_THEME_START_DELAY_MS || 3000))
       krThemeStartTimer.unref?.()
 
       usThemeStartTimer = setTimeout(() => {
-        void usThemeFlow.start().catch((error) => console.error('[market-backend] US initialization failed', error))
+        void usThemeFlow.start()
+          .then(() => publishPreparedFast())
+          .catch((error) => console.error('[market-backend] US initialization failed', error))
       }, Number(process.env.US_THEME_START_DELAY_MS || 8000))
       usThemeStartTimer.unref?.()
+
+      newsTimer = setTimeout(() => {
+        void refreshPreparedNews().catch((error) => console.error('[market-backend] news initialization failed', error))
+      }, Number(process.env.FEATURE_NEWS_START_DELAY_MS || 12000))
+      newsTimer.unref?.()
     })
     .catch((error) => console.error('[market-backend] KR initialization failed', error))
 
+  preparedTimer = setInterval(() => publishPreparedFast().catch(() => {}), 2000)
+  preparedTimer.unref?.()
+
   historyTimer = setInterval(() => history.maybeAppend(collector.snapshot).catch(() => {}), 60000)
   historyTimer.unref?.()
+
+  preparedHistoryTimer = setInterval(() => publishPreparedHistory().catch(() => {}), 60000)
+  preparedHistoryTimer.unref?.()
+
+  const newsRefreshMs = Math.max(180000, Number(process.env.FEATURE_NEWS_REFRESH_MS || 180000))
+  const recurringNewsTimer = setInterval(() => refreshPreparedNews().catch(() => {}), newsRefreshMs)
+  recurringNewsTimer.unref?.()
+  newsTimer = newsTimer || recurringNewsTimer
 })
 
 const shutdown = () => {
@@ -217,6 +271,9 @@ const shutdown = () => {
   themeFlow.stop()
   usThemeFlow.stop()
   if (historyTimer) clearInterval(historyTimer)
+  if (preparedTimer) clearInterval(preparedTimer)
+  if (preparedHistoryTimer) clearInterval(preparedHistoryTimer)
+  if (newsTimer) clearTimeout(newsTimer)
   if (krThemeStartTimer) clearTimeout(krThemeStartTimer)
   if (usThemeStartTimer) clearTimeout(usThemeStartTimer)
   server.close(() => process.exit(0))
