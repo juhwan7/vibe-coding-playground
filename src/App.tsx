@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
 import LiquidityDashboard from './LiquidityDashboard'
 import MarketWorkspace from './MarketWorkspace'
+import UsMarketWorkspace from './UsMarketWorkspace'
 import './liveMarket.css'
 import './theme.css'
 export { moneyFlowScore } from './marketData'
 
 type Theme = 'light' | 'dark'
-type Page = 'liquidity' | 'flow' | 'quiz'
+type Page = 'liquidity' | 'flow' | 'us-flow' | 'quiz'
 
 type QuizItem = {
   stock: string
@@ -63,14 +64,16 @@ export default function App() {
 
   let content = <LiquidityDashboard />
   if (page === 'flow') content = <MarketWorkspace />
+  if (page === 'us-flow') content = <UsMarketWorkspace />
   if (page === 'quiz') content = <StockQuiz />
 
   return <div className="app-root">
     <nav className="global-nav">
-      <button className="brand" onClick={() => setPage('liquidity')}>K-MARKET FLOW</button>
+      <button className="brand" onClick={() => setPage('liquidity')}>MARKET FLOW</button>
       <div>
         <button className={page === 'liquidity' ? 'active' : ''} onClick={() => setPage('liquidity')}>증시 자금</button>
-        <button className={page === 'flow' ? 'active' : ''} onClick={() => setPage('flow')}>테마 흐름</button>
+        <button className={page === 'flow' ? 'active' : ''} onClick={() => setPage('flow')}>국내 테마 흐름</button>
+        <button className={page === 'us-flow' ? 'active' : ''} onClick={() => setPage('us-flow')}>미국 테마 흐름</button>
         <button className={page === 'quiz' ? 'active' : ''} onClick={() => setPage('quiz')}>종목 퀴즈</button>
       </div>
       <aside className="nav-actions"><span className="live-dot">● MARKET LAB</span><button className="theme-toggle" type="button" onClick={toggleTheme} aria-label={theme === 'light' ? '다크 테마로 전환' : '화이트 테마로 전환'} title={theme === 'light' ? '다크 테마' : '화이트 테마'}><span className="theme-icon" aria-hidden="true">☀</span><span className="toggle-track"><span className="toggle-knob" /></span><span className="theme-icon moon" aria-hidden="true">☾</span></button></aside>
