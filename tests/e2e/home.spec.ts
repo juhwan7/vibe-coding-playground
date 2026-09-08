@@ -1,25 +1,20 @@
 import { expect, test } from '@playwright/test'
 
-test('money flow dashboard renders and drills into sectors', async ({ page }, testInfo) => {
+test('theme flow board and top100 rail render', async ({ page }, testInfo) => {
   await page.goto('/')
-  await expect(page.getByTestId('top-flow-board')).toBeVisible()
-  await expect(page.getByRole('heading', { name: '거래대금 상위 종목 자금 이동 비교' })).toBeVisible()
+  await expect(page.getByTestId('theme-strength-board')).toBeVisible()
+  await expect(page.getByRole('heading', { name: /테마 강도 비교/ })).toBeVisible()
+  await expect(page.getByText('TOP50 내 3종+')).toBeVisible()
+  await expect(page.getByText('3분 평균 수익률')).toBeVisible()
   await expect(page.getByTestId('top100-ranking')).toBeVisible()
   await expect(page.getByRole('heading', { name: '거래대금 TOP100' })).toBeVisible()
+
+  const details = page.locator('.deep-market-details')
+  await details.locator('summary').click()
   await expect(page.getByTestId('moneyflow-dashboard')).toBeVisible()
   await expect(page.getByRole('heading', { name: '한국 시장 전체 Heatmap' })).toBeVisible()
-  await expect(page.getByText('Money Flow', { exact: false }).first()).toBeVisible()
-  await expect(page.getByText('08:00 → 20:00 · KRX + NXT 통합 흐름')).toBeVisible()
 
-  await page.getByRole('button', { name: /원전·전력/ }).first().click()
-  await expect(page.getByRole('heading', { name: /원전·전력 → 세부테마 → 종목/ })).toBeVisible()
-  await expect(page.getByText('두산에너빌리티')).toBeVisible()
-
-  const replay = page.getByRole('slider', { name: '시장 시간 재생' })
-  await replay.fill('240')
-  await expect(page.getByTestId('timeline-current')).toHaveText('12:00')
-
-  await page.screenshot({ path: testInfo.outputPath('money-flow-dashboard.png'), fullPage: true })
+  await page.screenshot({ path: testInfo.outputPath('theme-flow-dashboard.png'), fullPage: true })
 })
 
 test('stock quiz remains available from top navigation', async ({ page }) => {
