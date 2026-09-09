@@ -320,6 +320,19 @@ export default function MarketWorkspace() {
   }, [themeFlow.topRankings, themeFlow.themes, snapshot?.topRankings, snapshot?.stocks])
 
   const themes = (themeFlow.themes ?? []).slice(0, 5)
+  const themeMembershipBySymbol = new Map<string, { name: string; accent: string; rank: number }>()
+  themes.forEach((theme, index) => {
+    for (const member of theme.members ?? []) {
+      const symbol = String(member.symbol ?? '').trim()
+      if (!symbol || !isIndividualStock(member) || themeMembershipBySymbol.has(symbol)) continue
+      themeMembershipBySymbol.set(symbol, {
+        name: theme.name,
+        accent: ACCENTS[index % ACCENTS.length],
+        rank: index + 1,
+      })
+    }
+  })
+
   const topAmount = Math.max(1, rankings[0]?.tradingAmount ?? 1)
   const totalAmount = rankings.reduce((sum, item) => sum + (item.tradingAmount ?? 0), 0)
   const investors = snapshot?.marketInvestors?.total
@@ -363,9 +376,23 @@ export default function MarketWorkspace() {
           const amount = item.tradingAmount ?? 0
           const width = amount / topAmount * 100
           const displayName = validStockName(item.name, item.symbol)
-          return <div className="top100-row" key={`${item.symbol}-${index}`}>
+          const themeMembership = themeMembershipBySymbol.get(item.symbol)
+          return <div
+            className={`top100-row${themeMembership ? ' top100-row-themed' : ''}`}
+            data-theme-name={themeMembership?.name}
+            key={`${item.symbol}-${index}`}
+            style={themeMembership ? { ['--top100-theme-accent' as string]: themeMembership.accent } : undefined}
+            title={themeMembership ? `현재 ${themeMembership.rank}위 테마 · ${themeMembership.name}` : undefined}
+          >
             <b>{index + 1}</b>
-            <div className="top100-stock"><strong>{displayName ?? '종목명 확인 중'}</strong><small>{item.symbol} · <FlashValue value={item.lastPrice}>{item.lastPrice?.toLocaleString() ?? '-'}</FlashValue></small><div className="top100-mini-track"><i style={{ width: `${width}%` }} /></div></div>
+            <div className="top100-stock">
+              <strong>{displayName ?? '종목명 확인 중'}</strong>
+              <small>
+                <span className="top100-stock-meta">{item.symbol} · <FlashValue value={item.lastPrice}>{item.lastPrice?.toLocaleString() ?? '-'}</FlashValue></span>
+                {themeMembership && <span className="top100-theme-label">{themeMembership.name}</span>}
+              </small>
+              <div className="top100-mini-track"><i style={{ width: `${width}%` }} /></div>
+            </div>
             <strong className={`top100-rate ${(item.changeRate ?? 0) >= 0 ? 'up' : 'down'}`}><FlashValue value={item.changeRate}>{fmtRate(item.changeRate)}</FlashValue></strong>
             <strong className="top100-amount"><FlashValue value={item.tradingAmount}>{fmtAmount(item.tradingAmount)}</FlashValue></strong>
           </div>
