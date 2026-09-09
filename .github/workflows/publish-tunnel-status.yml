@@ -18,15 +18,14 @@ concurrency:
 jobs:
   publish:
     # Public-repo safety: this self-hosted job never runs pull-request code.
-    # It only runs on a timer, an explicit manual dispatch, or after a successful
-    # main-branch Pi deployment.
+    # It runs only on a timer, explicit dispatch, or after a successful main deploy.
     if: >-
       ${{ github.event_name != 'workflow_run' ||
           (github.event.workflow_run.conclusion == 'success' &&
            github.event.workflow_run.head_branch == 'main' &&
            github.event.workflow_run.head_repository.full_name == github.repository) }}
     runs-on: [self-hosted, linux, ARM64, k-market-pi]
-    timeout-minutes: 3
+    timeout-minutes: 5
 
     steps:
       - name: Detect, recover and publish current Quick Tunnel URL
@@ -38,7 +37,8 @@ jobs:
           set -euo pipefail
 
           SERVICE=market-tunnel.service
-          FALLBACK_SERVICE=market-tunnel-fallback.service
+          USER_FALLBACK_SERVICE=market-tunnel-fallback.service
+          DOCKER_FALLBACK=market-tunnel-docker-fallback
           STATUS_BRANCH=tunnel-status
           STATUS_PATH=CURRENT_TUNNEL.md
           API="https://api.github.com/repos/$REPOSITORY"
@@ -47,35 +47,42 @@ jobs:
           RECOVERY_MARKER="$RECOVERY_DIR/quick-tunnel-restart"
           RECOVERY_COOLDOWN_SECONDS=900
 
+          docker_running() {
+            [ "$(docker inspect -f '{{.State.Running}}' "$DOCKER_FALLBACK" 2>/dev/null || true)" = true ]
+          }
+
           detect_unit() {
-            local fallback_state system_state user_state
-            fallback_state="$(systemctl --user is-active "$FALLBACK_SERVICE" 2>/dev/null || true)"
-            if [ "$fallback_state" = active ]; then
+            local state
+            if docker_running; then
+              printf 'docker|active'
+              return
+            fi
+            state="$(systemctl --user is-active "$USER_FALLBACK_SERVICE" 2>/dev/null || true)"
+            if [ "$state" = active ]; then
               printf 'fallback|active'
               return
             fi
-            system_state="$(systemctl is-active "$SERVICE" 2>/dev/null || true)"
-            if [ "$system_state" = active ]; then
+            state="$(systemctl is-active "$SERVICE" 2>/dev/null || true)"
+            if [ "$state" = active ]; then
               printf 'system|active'
               return
             fi
-            user_state="$(systemctl --user is-active "$SERVICE" 2>/dev/null || true)"
-            if [ "$user_state" = active ]; then
+            state="$(systemctl --user is-active "$SERVICE" 2>/dev/null || true)"
+            if [ "$state" = active ]; then
               printf 'user|active'
               return
             fi
-            printf 'system|%s' "${system_state:-inactive}"
+            printf 'none|inactive'
           }
 
           collect_logs() {
             journalctl -u "$SERVICE" --no-pager -n 1000 --since '2 days ago' 2>/dev/null || true
             systemctl status "$SERVICE" --no-pager -l 2>/dev/null || true
             journalctl --user -u "$SERVICE" --no-pager -n 1000 --since '2 days ago' 2>/dev/null || true
-            systemctl --user status "$SERVICE" --no-pager -l 2>/dev/null || true
-            # Put fallback logs last so a newly allocated fallback URL wins over
-            # an older dead system-service URL when we select the final match.
-            journalctl --user -u "$FALLBACK_SERVICE" --no-pager -n 1000 --since '2 days ago' 2>/dev/null || true
-            systemctl --user status "$FALLBACK_SERVICE" --no-pager -l 2>/dev/null || true
+            journalctl --user -u "$USER_FALLBACK_SERVICE" --no-pager -n 1000 --since '2 days ago' 2>/dev/null || true
+            systemctl --user status "$USER_FALLBACK_SERVICE" --no-pager -l 2>/dev/null || true
+            # Docker fallback logs are intentionally last so a newly allocated URL wins.
+            docker logs "$DOCKER_FALLBACK" --tail 1000 2>/dev/null || true
           }
 
           detect_url() {
@@ -85,18 +92,23 @@ jobs:
           check_url() {
             local url="$1"
             [ -n "$url" ] || return 1
-            curl --fail --silent --show-error --connect-timeout 3 --max-time 6 \
+            curl --fail --silent --show-error --connect-timeout 3 --max-time 7 \
               "$url/api/health" >/tmp/tunnel-health.json 2>/dev/null
           }
 
-          restart_tunnel() {
-            local scope="$1"
-            case "$scope" in
-              fallback) systemctl --user restart "$FALLBACK_SERVICE" >/dev/null 2>&1 ;;
+          restart_scope() {
+            case "$1" in
+              docker) docker restart "$DOCKER_FALLBACK" >/dev/null 2>&1 ;;
+              fallback) systemctl --user restart "$USER_FALLBACK_SERVICE" >/dev/null 2>&1 ;;
               user) systemctl --user restart "$SERVICE" >/dev/null 2>&1 ;;
               system) sudo -n systemctl restart "$SERVICE" >/dev/null 2>&1 ;;
               *) return 1 ;;
             esac
+          }
+
+          origin_ready() {
+            curl --fail --silent --show-error --connect-timeout 2 --max-time 5 \
+              http://127.0.0.1:8080/ >/tmp/local-origin-index.html
           }
 
           start_user_fallback() {
@@ -107,42 +119,48 @@ jobs:
                 break
               fi
             done
-            if [ -z "$cloudflared_bin" ]; then
-              echo 'cloudflared executable not found; cannot create user fallback tunnel'
-              return 1
-            fi
-
-            # The frontend root is static and is the most reliable origin readiness
-            # probe here. /api/health can briefly time out while the backend collector is
-            # busy even though nginx and the app are already serving normally.
-            if ! curl --fail --silent --show-error --connect-timeout 2 --max-time 5 \
-              http://localhost:8080/ >/tmp/local-origin-index.html; then
-              echo 'Local frontend is not reachable; refusing to create fallback tunnel'
-              return 1
-            fi
+            [ -n "$cloudflared_bin" ] || return 1
+            origin_ready || return 1
 
             mkdir -p "$HOME/.config/systemd/user"
-            cat >"$HOME/.config/systemd/user/$FALLBACK_SERVICE" <<EOF
+            cat >"$HOME/.config/systemd/user/$USER_FALLBACK_SERVICE" <<EOF
           [Unit]
           Description=MARKET FLOW user Quick Tunnel fallback
           After=network-online.target
 
           [Service]
           Type=simple
-          ExecStart=$cloudflared_bin tunnel --no-autoupdate --url http://localhost:8080
+          ExecStart=$cloudflared_bin tunnel --no-autoupdate --url http://127.0.0.1:8080
           Restart=always
           RestartSec=5
 
           [Install]
           WantedBy=default.target
           EOF
-            sed -i 's/^          //' "$HOME/.config/systemd/user/$FALLBACK_SERVICE"
-
+            sed -i 's/^          //' "$HOME/.config/systemd/user/$USER_FALLBACK_SERVICE"
             systemctl --user daemon-reload >/dev/null 2>&1 || return 1
-            systemctl --user enable "$FALLBACK_SERVICE" >/dev/null 2>&1 || true
-            systemctl --user restart "$FALLBACK_SERVICE" >/dev/null 2>&1 || return 1
-            echo "Started $FALLBACK_SERVICE with $cloudflared_bin"
-            return 0
+            systemctl --user enable "$USER_FALLBACK_SERVICE" >/dev/null 2>&1 || true
+            systemctl --user restart "$USER_FALLBACK_SERVICE" >/dev/null 2>&1 || return 1
+            echo "Started user fallback tunnel"
+          }
+
+          start_docker_fallback() {
+            origin_ready || { echo 'Local frontend is not reachable; refusing Docker tunnel fallback'; return 1; }
+            docker info >/dev/null 2>&1 || { echo 'Docker is unavailable to the runner'; return 1; }
+
+            if ! docker image inspect cloudflare/cloudflared:latest >/dev/null 2>&1; then
+              echo 'Pulling Cloudflare tunnel image for ARM64 fallback'
+              docker pull cloudflare/cloudflared:latest >/dev/null
+            fi
+
+            docker rm -f "$DOCKER_FALLBACK" >/dev/null 2>&1 || true
+            docker run -d \
+              --name "$DOCKER_FALLBACK" \
+              --restart unless-stopped \
+              --network host \
+              cloudflare/cloudflared:latest \
+              tunnel --no-autoupdate --url http://127.0.0.1:8080 >/dev/null
+            echo "Started Docker Quick Tunnel fallback"
           }
 
           unit_info="$(detect_unit)"
@@ -150,20 +168,9 @@ jobs:
           unit_state="${unit_info#*|}"
           tunnel_url="$(detect_url)"
           reachable=false
-          if check_url "$tunnel_url"; then
-            reachable=true
-          fi
+          if check_url "$tunnel_url"; then reachable=true; fi
 
-          # An active cloudflared process can keep running after its Quick Tunnel URL
-          # has expired. First try a normal restart. If the system unit is root-managed
-          # and the runner cannot restart it, create a separate user-scoped cloudflared
-          # unit. That gives the runner a recoverable tunnel without granting broad sudo.
-          needs_recovery=false
-          if [ "$unit_state" != active ] || { [ -n "$tunnel_url" ] && [ "$reachable" != true ]; }; then
-            needs_recovery=true
-          fi
-
-          if [ "$needs_recovery" = true ]; then
+          if [ "$unit_state" != active ] || [ -z "$tunnel_url" ] || [ "$reachable" != true ]; then
             mkdir -p "$RECOVERY_DIR"
             now_epoch="$(date +%s)"
             last_restart=0
@@ -175,20 +182,20 @@ jobs:
             if [ "$age" -ge "$RECOVERY_COOLDOWN_SECONDS" ]; then
               echo "Quick Tunnel is not publicly reachable; attempting controlled recovery"
               old_url="$tunnel_url"
-              restarted=false
+              recovered=false
 
-              if [ "$unit_state" = active ] && restart_tunnel "$unit_scope"; then
-                restarted=true
+              if [ "$unit_state" = active ] && restart_scope "$unit_scope"; then
+                recovered=true
               elif start_user_fallback; then
-                unit_scope=fallback
-                unit_state=active
-                restarted=true
+                recovered=true
+              elif start_docker_fallback; then
+                recovered=true
               fi
 
-              if [ "$restarted" = true ]; then
+              if [ "$recovered" = true ]; then
                 touch "$RECOVERY_MARKER"
                 reachable=false
-                for attempt in $(seq 1 18); do
+                for attempt in $(seq 1 24); do
                   sleep 2
                   unit_info="$(detect_unit)"
                   unit_scope="${unit_info%%|*}"
@@ -204,23 +211,18 @@ jobs:
                 done
                 echo "Tunnel recovery finished: ${old_url:-none} -> ${tunnel_url:-none}"
               else
-                echo "Tunnel recovery was not permitted or fallback startup failed"
+                echo "All tunnel recovery paths failed"
               fi
             else
-              echo "Recovery cooldown active (${age}s/${RECOVERY_COOLDOWN_SECONDS}s); not restarting again"
+              echo "Recovery cooldown active (${age}s/${RECOVERY_COOLDOWN_SECONDS}s)"
             fi
           fi
 
-          # Refresh final state after any recovery attempt.
           unit_info="$(detect_unit)"
           unit_scope="${unit_info%%|*}"
           unit_state="${unit_info#*|}"
           tunnel_url="$(detect_url)"
-          if check_url "$tunnel_url"; then
-            reachable=true
-          else
-            reachable=false
-          fi
+          if check_url "$tunnel_url"; then reachable=true; else reachable=false; fi
 
           if [ -z "$tunnel_url" ]; then
             status=offline
@@ -230,15 +232,13 @@ jobs:
             status=unreachable
           fi
 
-          old="$(curl --fail --silent --show-error --max-time 8 "$RAW" 2>/dev/null || true)"
-          old_url="$(printf '%s' "$old" | grep -Eo 'https://[a-z0-9-]+\.trycloudflare\.com' | head -n 1 || true)"
-          old_status="$(printf '%s' "$old" | sed -n 's/^- 상태: `\([^`]*\)`.*/\1/p' | head -n 1)"
-
           echo "Tunnel service: ${unit_state:-unknown} ($unit_scope)"
           echo "Detected URL: ${tunnel_url:-none}"
           echo "Reachability: $status"
 
-          # Avoid a commit every five minutes. Publish only when URL/status changes.
+          old="$(curl --fail --silent --show-error --max-time 8 "$RAW" 2>/dev/null || true)"
+          old_url="$(printf '%s' "$old" | grep -Eo 'https://[a-z0-9-]+\.trycloudflare\.com' | head -n 1 || true)"
+          old_status="$(printf '%s' "$old" | sed -n 's/^- 상태: `\([^`]*\)`.*/\1/p' | head -n 1)"
           if [ "$old_url" = "$tunnel_url" ] && [ "$old_status" = "$status" ]; then
             echo "Tunnel address/status unchanged; registry already current"
             exit 0
@@ -257,7 +257,7 @@ jobs:
 
           **[$tunnel_url]($tunnel_url)**
 
-          이 파일은 Raspberry Pi가 5분마다 Cloudflare Quick Tunnel 주소를 확인해 자동 갱신합니다. 기존 system 서비스가 만료됐고 runner가 재시작 권한이 없으면 sudo 권한을 넓히지 않고 user-scoped fallback 터널을 자동으로 생성합니다.
+          이 파일은 Raspberry Pi가 5분마다 Cloudflare Quick Tunnel 주소를 확인해 자동 갱신합니다. systemd 재시작 권한이 없으면 user 서비스, 그래도 안 되면 Docker 기반 fallback 터널을 자동 사용합니다.
           EOF
           else
             cat >/tmp/current-tunnel.md <<EOF
@@ -270,7 +270,6 @@ jobs:
           현재 유효한 \`trycloudflare.com\` 주소를 감지하지 못했습니다. 이 파일은 5분 안에 다시 자동 확인합니다.
           EOF
           fi
-
           sed -i 's/^          //' /tmp/current-tunnel.md
           encoded="$(base64 -w 0 /tmp/current-tunnel.md)"
 
