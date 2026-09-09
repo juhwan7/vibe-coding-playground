@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import LiquidityDashboard from './LiquidityDashboard'
 import MarketWorkspace from './MarketWorkspace'
+import ThemeFlowSaasEnhancer from './ThemeFlowSaasEnhancer'
 import IntradayBrief from './IntradayBrief'
 import MarketReplay from './MarketReplay'
 import UsMarketWorkspace from './UsMarketWorkspace'
@@ -73,7 +74,7 @@ export default function App() {
     }
   }
 
-  let content = <div className="flow-page-with-news" key={`flow-${dataRevision}`}><MarketWorkspace /><FeatureNews /></div>
+  let content = <div className="flow-page-with-news" key={`flow-${dataRevision}`}><ThemeFlowSaasEnhancer /><MarketWorkspace /><FeatureNews /></div>
   if (page === 'liquidity') content = <LiquidityDashboard key={`liquidity-${dataRevision}`} />
   if (page === 'us-flow') content = <div key={`us-flow-${dataRevision}`}><UsDataNotice /><UsMarketWorkspace /></div>
   if (page === 'daily-issues') content = <DailyIssues key={`daily-issues-${dataRevision}`} />
