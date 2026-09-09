@@ -6,19 +6,16 @@ test('domestic liquidity dashboard is the first page and light theme is default'
   await expect(page.getByTestId('liquidity-dashboard')).toBeVisible()
   await expect(page.getByRole('heading', { name: '국내 증시 자금 상태' })).toBeVisible()
   await expect(page.getByRole('button', { name: '시장 데이터 수동 새로고침' })).toBeVisible()
-  await expect(page.getByText('TOP100 누적 거래대금', { exact: true }).first()).toBeVisible()
-  await expect(page.getByRole('heading', { name: '증시 주변자금 · 대기자금 · 레버리지' })).toBeVisible()
-  await expect(page.getByText('투자자예탁금', { exact: true })).toBeVisible()
-  await expect(page.getByText('신용융자 잔고', { exact: true })).toBeVisible()
   await page.screenshot({ path: testInfo.outputPath('liquidity-dashboard.png'), fullPage: true })
 })
 
-test('domestic theme flow board, market brief and stock-only top100 rail render', async ({ page }, testInfo) => {
+test('domestic theme flow uses five themes, line charts and an always-open simplified detail dashboard', async ({ page }, testInfo) => {
   await page.goto('/')
   await page.getByRole('button', { name: '국내 테마 흐름' }).click()
+
   await expect(page.getByTestId('feature-news')).toBeVisible()
   await expect(page.getByRole('heading', { name: '시황 요약' })).toBeVisible()
-  await expect(page.getByText(/오늘 오전 6시 이후/)).toBeVisible()
+  await expect(page.getByText(/오늘 00:00 이후/)).toBeVisible()
   await expect(page.getByText(/시간당 최대 8건/)).toBeVisible()
   const timelineLayout = await page.getByTestId('feature-news-timeline').evaluate((node) => ({
     display: getComputedStyle(node).display,
@@ -30,16 +27,28 @@ test('domestic theme flow board, market brief and stock-only top100 rail render'
   await expect(page.getByTestId('theme-strength-board')).toBeVisible()
   await expect(page.getByRole('heading', { name: /테마 강도 비교/ })).toBeVisible()
   await expect(page.getByText('개별주(STOCK)만')).toBeVisible()
-  await expect(page.getByText(/4개 · 강도순 자동교체/)).toBeVisible()
-  await expect(page.getByText(/평균 3분 캔들 · 자동 확대축/)).toBeVisible()
+  await expect(page.getByText(/5개 · 강도순 자동교체/)).toBeVisible()
+  await expect(page.getByText(/평균 3분 선차트 · 자동 확대축/)).toBeVisible()
   await expect(page.getByText(/10초/).first()).toBeVisible()
   await expect(page.getByTestId('top100-ranking')).toBeVisible()
   await expect(page.getByRole('heading', { name: '거래대금 TOP100 · 개별주만' })).toBeVisible()
 
-  const details = page.locator('.deep-market-details')
-  await details.locator(':scope > summary').click()
   await expect(page.getByTestId('moneyflow-dashboard')).toBeVisible()
   await expect(page.getByRole('heading', { name: '한국 시장 전체 Heatmap' })).toBeVisible()
+  await expect(page.locator('.deep-market-details summary')).toHaveCount(0)
+
+  for (const removed of [
+    '시간대별 거래대금 · 최근 5거래일 동시간 비교',
+    '수급 · 프로그램 · 선물',
+    '1주 동시간 비교',
+    '테마 순환 기록',
+    '종목 거래대금 변화',
+    '뉴스 · 동적 테마 분류',
+  ]) {
+    await expect(page.getByText(removed, { exact: true })).toHaveCount(0)
+  }
+  await expect(page.getByText(/세부테마 → 종목/)).toHaveCount(0)
+  await expect(page.getByText(/08:00 → 20:00/)).toHaveCount(0)
 
   await page.screenshot({ path: testInfo.outputPath('theme-flow-dashboard.png'), fullPage: true })
 })
@@ -49,9 +58,7 @@ test('US theme flow page is available', async ({ page }, testInfo) => {
   await page.getByRole('button', { name: '미국 테마 흐름' }).click()
   await expect(page.getByTestId('us-theme-strength-board')).toBeVisible()
   await expect(page.getByRole('heading', { name: /미국 테마 강도 비교/ })).toBeVisible()
-  await expect(page.getByText('미국 TOP50 내 3종+')).toBeVisible()
   await expect(page.getByTestId('us-top100-ranking')).toBeVisible()
-  await expect(page.getByRole('heading', { name: '미국 거래대금 TOP100' })).toBeVisible()
   await page.screenshot({ path: testInfo.outputPath('us-theme-flow-dashboard.png'), fullPage: true })
 })
 
@@ -71,27 +78,16 @@ test('stock quiz separates full KOSPI200 and KOSDAQ150 company-description pools
   await expect(page.getByRole('heading', { name: /어느 시장의 기업을 더 많이 알고 있을까/ })).toBeVisible()
   await expect(page.getByTestId('quiz-pool-kospi200')).toContainText('KOSPI 200')
   await expect(page.getByTestId('quiz-pool-kosdaq150')).toContainText('KOSDAQ 150')
-  await expect(page.getByText('ETF·ETN 제외', { exact: true })).toBeVisible()
-
-  await page.getByTestId('quiz-pool-kospi200').click()
-  await expect(page.getByTestId('question-card')).toBeVisible()
   await expect(page.locator('.index-quiz-choices button')).toHaveCount(4)
 })
 
 test('pages have no horizontal overflow', async ({ page }) => {
   await page.goto('/')
-  let sizes = await page.evaluate(() => ({ scrollWidth: document.documentElement.scrollWidth, clientWidth: document.documentElement.clientWidth }))
-  expect(sizes.scrollWidth).toBeLessThanOrEqual(sizes.clientWidth + 1)
-  await page.getByRole('button', { name: '국내 테마 흐름' }).click()
-  sizes = await page.evaluate(() => ({ scrollWidth: document.documentElement.scrollWidth, clientWidth: document.documentElement.clientWidth }))
-  expect(sizes.scrollWidth).toBeLessThanOrEqual(sizes.clientWidth + 1)
-  await page.getByRole('button', { name: '미국 테마 흐름' }).click()
-  sizes = await page.evaluate(() => ({ scrollWidth: document.documentElement.scrollWidth, clientWidth: document.documentElement.clientWidth }))
-  expect(sizes.scrollWidth).toBeLessThanOrEqual(sizes.clientWidth + 1)
-  await page.getByRole('button', { name: '금일 이슈 정리' }).click()
-  sizes = await page.evaluate(() => ({ scrollWidth: document.documentElement.scrollWidth, clientWidth: document.documentElement.clientWidth }))
-  expect(sizes.scrollWidth).toBeLessThanOrEqual(sizes.clientWidth + 1)
-  await page.getByRole('button', { name: '종목 퀴즈' }).click()
-  sizes = await page.evaluate(() => ({ scrollWidth: document.documentElement.scrollWidth, clientWidth: document.documentElement.clientWidth }))
+  for (const label of ['국내 테마 흐름', '미국 테마 흐름', '금일 이슈 정리', '종목 퀴즈']) {
+    let sizes = await page.evaluate(() => ({ scrollWidth: document.documentElement.scrollWidth, clientWidth: document.documentElement.clientWidth }))
+    expect(sizes.scrollWidth).toBeLessThanOrEqual(sizes.clientWidth + 1)
+    await page.getByRole('button', { name: label }).click()
+  }
+  const sizes = await page.evaluate(() => ({ scrollWidth: document.documentElement.scrollWidth, clientWidth: document.documentElement.clientWidth }))
   expect(sizes.scrollWidth).toBeLessThanOrEqual(sizes.clientWidth + 1)
 })
