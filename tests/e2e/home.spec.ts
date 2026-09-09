@@ -9,18 +9,18 @@ test('domestic liquidity dashboard is the first page and light theme is default'
   await page.screenshot({ path: testInfo.outputPath('liquidity-dashboard.png'), fullPage: true })
 })
 
-test('domestic theme flow uses five stabilized turnover-weighted themes and an always-open detail dashboard', async ({ page }, testInfo) => {
+test('domestic theme flow uses a data-driven brief, five themes, and TOP100 market detail', async ({ page }, testInfo) => {
   await page.goto('/')
   await page.getByRole('button', { name: '국내 테마 흐름' }).click()
 
-  await expect(page.getByTestId('market-intelligence')).toBeVisible()
-  await expect(page.getByRole('heading', { name: /시장 상태 엔진/ })).toBeVisible()
-  await expect(page.getByText(/원시값 기반/).first()).toBeVisible()
+  await expect(page.getByTestId('market-intelligence')).toHaveCount(0)
+  await expect(page.getByTestId('intraday-brief')).toBeVisible()
+  await expect(page.getByRole('heading', { name: '장중 시황 브리핑' })).toBeVisible()
+  await expect(page.getByText(/실제 TOP100·지수·테마 데이터/)).toBeVisible()
 
   await expect(page.getByTestId('feature-news')).toBeVisible()
   await expect(page.getByRole('heading', { name: '시황 요약' })).toBeVisible()
   await expect(page.getByText(/오늘 06:00 이후/)).toBeVisible()
-  await expect(page.getByText(/매번 다시 훑고 누적/)).toBeVisible()
   const timelineLayout = await page.getByTestId('feature-news-timeline').evaluate((node) => ({
     display: getComputedStyle(node).display,
     flow: getComputedStyle(node).gridAutoFlow,
@@ -33,26 +33,14 @@ test('domestic theme flow uses five stabilized turnover-weighted themes and an a
   await expect(page.getByText('개별주(STOCK)만')).toBeVisible()
   await expect(page.getByText(/5개 · 8% 또는 3회 확인 후 교체/)).toBeVisible()
   await expect(page.getByText(/거래대금 가중 3분 선차트 · 강한 자동 확대축/)).toBeVisible()
-  await expect(page.getByText(/10초/).first()).toBeVisible()
   await expect(page.getByTestId('top100-ranking')).toBeVisible()
   await expect(page.getByRole('heading', { name: '거래대금 TOP100 · 개별주만' })).toBeVisible()
 
   await expect(page.getByTestId('moneyflow-dashboard')).toBeVisible()
-  await expect(page.getByRole('heading', { name: '한국 시장 전체 Heatmap' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '거래대금 TOP100 시장 지도' })).toBeVisible()
+  await expect(page.getByText(/고정 WATCHLIST가 아니라 거래대금 TOP100 개별주 기준/)).toBeVisible()
+  await expect(page.getByText(/한국 전체 상장종목 수를 뜻하지 않습니다/)).toBeVisible()
   await expect(page.locator('.deep-market-details summary')).toHaveCount(0)
-
-  for (const removed of [
-    '시간대별 거래대금 · 최근 5거래일 동시간 비교',
-    '수급 · 프로그램 · 선물',
-    '1주 동시간 비교',
-    '테마 순환 기록',
-    '종목 거래대금 변화',
-    '뉴스 · 동적 테마 분류',
-  ]) {
-    await expect(page.getByText(removed, { exact: true })).toHaveCount(0)
-  }
-  await expect(page.getByText(/세부테마 → 종목/)).toHaveCount(0)
-  await expect(page.getByText(/08:00 → 20:00/)).toHaveCount(0)
 
   await page.screenshot({ path: testInfo.outputPath('theme-flow-dashboard.png'), fullPage: true })
 })
@@ -73,6 +61,30 @@ test('daily issue digest menu is available before or after 15:20', async ({ page
   await expect(page.getByRole('heading', { name: '금일 이슈 정리' })).toBeVisible()
   await expect(page.getByText(/매일 15:20 기준/)).toBeVisible()
   await page.screenshot({ path: testInfo.outputPath('daily-issues.png'), fullPage: true })
+})
+
+test('market replay page sits between daily issues and stock quiz and exposes replay tools', async ({ page }, testInfo) => {
+  await page.goto('/')
+  const daily = page.getByRole('button', { name: '금일 이슈 정리' })
+  const replay = page.getByRole('button', { name: '시장 복기' })
+  const quiz = page.getByRole('button', { name: '종목 퀴즈' })
+  await expect(daily).toBeVisible()
+  await expect(replay).toBeVisible()
+  await expect(quiz).toBeVisible()
+  const labels = await page.locator('.global-nav > div button').allTextContents()
+  expect(labels.indexOf('금일 이슈 정리')).toBeLessThan(labels.indexOf('시장 복기'))
+  expect(labels.indexOf('시장 복기')).toBeLessThan(labels.indexOf('종목 퀴즈'))
+
+  await replay.click()
+  await expect(page.getByTestId('market-replay')).toBeVisible()
+  await expect(page.getByRole('heading', { name: '시장 복기' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '지수·거래대금 흐름' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '시간대별 시장 주도권' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '거래대금 주도 종목' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '테마 순환 기록' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '수급·프로그램 복기' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '뉴스 타이밍' })).toBeVisible()
+  await page.screenshot({ path: testInfo.outputPath('market-replay.png'), fullPage: true })
 })
 
 test('stock quiz uses one prepared Pi cache and never fetches descriptions per question', async ({ page }) => {
@@ -122,7 +134,7 @@ test('stock quiz uses one prepared Pi cache and never fetches descriptions per q
 
 test('pages have no horizontal overflow', async ({ page }) => {
   await page.goto('/')
-  for (const label of ['국내 테마 흐름', '미국 테마 흐름', '금일 이슈 정리', '종목 퀴즈']) {
+  for (const label of ['국내 테마 흐름', '미국 테마 흐름', '금일 이슈 정리', '시장 복기', '종목 퀴즈']) {
     const sizes = await page.evaluate(() => ({ scrollWidth: document.documentElement.scrollWidth, clientWidth: document.documentElement.clientWidth }))
     expect(sizes.scrollWidth).toBeLessThanOrEqual(sizes.clientWidth + 1)
     await page.getByRole('button', { name: label }).click()
