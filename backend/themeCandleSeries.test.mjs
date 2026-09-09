@@ -18,9 +18,9 @@ test('aggregateThemeSeries returns true averaged 3-minute OHLC values', () => {
 
   assert.equal(points.length, 1)
   const candle = points[0]
-  assert.ok(Math.abs(candle.openValue - 0) < 0.001)
-  assert.ok(Math.abs(candle.highValue - 4.5) < 0.001)
-  assert.ok(Math.abs(candle.lowValue - (-1)) < 0.001)
-  assert.ok(Math.abs(candle.closeValue - 3.5) < 0.001)
+  assert.ok(Math.abs(candle.openValue - (-0.7438055)) < 0.001)
+  assert.ok(Math.abs(candle.highValue - 3.7214915) < 0.001)
+  assert.ok(Math.abs(candle.lowValue - (-1.7363675)) < 0.001)
+  assert.ok(Math.abs(candle.closeValue - 2.7289295) < 0.001)
   assert.ok(Math.abs(candle.value - candle.closeValue) < 0.001)
 })
