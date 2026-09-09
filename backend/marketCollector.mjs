@@ -3,10 +3,18 @@ import { TossApiError, sleep } from './tossClient.mjs'
 import { directNameFromRanking } from './stockMetadata.mjs'
 
 const NON_INDIVIDUAL_RANKING_NAME = /(ETF|ETN|KODEX|TIGER|RISE|ACE|PLUS|SOL|HANARO|KOSEF|TIMEFOLIO|ARIRANG|FOCUS|KBSTAR|리츠|스팩|인프라)/i
+const TRACKING_START_SECONDS = 8 * 60 * 60
+const TRACKING_END_SECONDS = 20 * 60 * 60
+const NXT_AFTER_START_SECONDS = 15 * 60 * 60 + 30 * 60
 
 function number(value) {
   const parsed = Number(value)
   return Number.isFinite(parsed) ? parsed : null
+}
+
+function maxNumber(...values) {
+  const clean = values.map(number).filter((value) => value != null)
+  return clean.length ? Math.max(...clean) : null
 }
 
 function kstParts(date = new Date()) {
@@ -17,13 +25,28 @@ function kstParts(date = new Date()) {
   return { year: get('year'), month: get('month'), day: get('day'), hour: get('hour'), minute: get('minute'), second: get('second') }
 }
 
+function kstSecondOfDay(date = new Date()) {
+  const { hour, minute, second } = kstParts(date)
+  return hour * 60 * 60 + minute * 60 + second
+}
+
+export function domesticCollectionActive(date = new Date()) {
+  const total = kstSecondOfDay(date)
+  return total >= TRACKING_START_SECONDS && total <= TRACKING_END_SECONDS
+}
+
+export function nxtAfterMarketActive(date = new Date()) {
+  const total = kstSecondOfDay(date)
+  return total >= NXT_AFTER_START_SECONDS && total <= TRACKING_END_SECONDS
+}
+
 export function marketSessionLabel(date = new Date()) {
   const { hour, minute } = kstParts(date)
   const total = hour * 60 + minute
   if (total >= 480 && total < 530) return 'NXT PRE · 08:00~08:50'
   if (total >= 540 && total < 920) return 'KRX + NXT · 통합 장중'
   if (total >= 920 && total < 930) return 'KRX 종가 구간'
-  if (total >= 940 && total < 1200) return 'NXT AFTER · 15:40~20:00'
+  if (total >= 930 && total <= 1200) return 'NXT AFTER · 15:30~20:00'
   return '시장 대기 · 08:00~20:00 추적'
 }
 
@@ -109,6 +132,50 @@ export function rankingItem(item, fallbackName = null) {
   }
 }
 
+function rankingRecords(payload) {
+  const rankings = payload?.result?.rankings
+  return Array.isArray(rankings) ? rankings : []
+}
+
+/**
+ * `1d`는 기존 당일 누적 기준으로 유지하고, NXT 애프터마켓에서는 `realtime` 랭킹도 함께 본다.
+ * 두 응답의 거래대금을 더하지 않고 종목별 더 큰 실제 값을 사용한다. 이렇게 하면 realtime이
+ * 짧은 구간 값으로 작게 내려와도 기존 누적값을 훼손하지 않고, 애프터마켓 누적값이 더 커질 때만 반영된다.
+ */
+export function mergeMarketTradingAmountRankings(dailyItems = [], realtimeItems = [], fallbackNameForSymbol = null) {
+  const daily = new Map(dailyItems.map((item) => [item?.symbol ?? item?.stock?.symbol ?? null, item]).filter(([symbol]) => symbol))
+  const realtime = new Map(realtimeItems.map((item) => [item?.symbol ?? item?.stock?.symbol ?? null, item]).filter(([symbol]) => symbol))
+  const symbols = [...new Set([...daily.keys(), ...realtime.keys()])]
+
+  return symbols.map((symbol) => {
+    const fallbackName = typeof fallbackNameForSymbol === 'function' ? fallbackNameForSymbol(symbol) : null
+    const dailyItem = daily.get(symbol)
+    const realtimeItem = realtime.get(symbol)
+    const dailyParsed = dailyItem ? rankingItem(dailyItem, fallbackName) : null
+    const realtimeParsed = realtimeItem ? rankingItem(realtimeItem, dailyParsed?.name ?? fallbackName) : null
+    const dailyAmount = number(dailyParsed?.tradingAmount)
+    const realtimeAmount = number(realtimeParsed?.tradingAmount)
+    const tradingAmount = maxNumber(dailyAmount, realtimeAmount)
+    const tradingVolume = maxNumber(dailyParsed?.tradingVolume, realtimeParsed?.tradingVolume)
+    const realtimeWon = realtimeAmount != null && (dailyAmount == null || realtimeAmount > dailyAmount)
+
+    return {
+      symbol,
+      name: realtimeParsed?.name ?? dailyParsed?.name ?? fallbackName,
+      market: realtimeParsed?.market ?? dailyParsed?.market ?? null,
+      lastPrice: realtimeParsed?.lastPrice ?? dailyParsed?.lastPrice ?? null,
+      changeRate: realtimeParsed?.changeRate ?? dailyParsed?.changeRate ?? null,
+      tradingAmount,
+      tradingVolume,
+      tradingAmountSource: realtimeWon ? 'market-ranking-realtime' : dailyAmount != null ? 'market-ranking-1d' : realtimeAmount != null ? 'market-ranking-realtime' : null,
+      rankingAmounts: {
+        daily: dailyAmount,
+        realtime: realtimeAmount,
+      },
+    }
+  }).sort((a, b) => (b.tradingAmount ?? -Infinity) - (a.tradingAmount ?? -Infinity))
+}
+
 export function isDisplayableIndividualRanking(item = {}) {
   const symbol = String(item?.symbol ?? '').trim()
   const name = String(item?.name ?? '').trim()
@@ -149,8 +216,7 @@ export class MarketCollector {
 
   schedule() {
     if (!this.running) return
-    const { hour } = kstParts()
-    const active = hour >= 8 && hour <= 20
+    const active = domesticCollectionActive()
     this.timer = setTimeout(async () => {
       await this.refresh().catch(() => {})
       this.schedule()
@@ -175,34 +241,45 @@ export class MarketCollector {
 
     try {
       const symbols = encodeURIComponent(WATCH_SYMBOLS.join(','))
-      const [pricesPayload, rankingPayload, indicesPayload] = await Promise.all([
+      const afterMarket = nxtAfterMarketActive()
+      const realtimeRankingPromise = afterMarket
+        ? this.client.request('/api/v1/rankings?type=MARKET_TRADING_AMOUNT&marketCountry=KR&duration=realtime&count=100').catch(() => null)
+        : Promise.resolve(null)
+      const [pricesPayload, rankingPayload, realtimeRankingPayload, indicesPayload] = await Promise.all([
         this.client.request(`/api/v1/prices?symbols=${symbols}`),
         this.client.request('/api/v1/rankings?type=MARKET_TRADING_AMOUNT&marketCountry=KR&duration=1d&count=100'),
+        realtimeRankingPromise,
         this.client.request('/api/v1/market-indicators/prices?symbols=KOSPI%2CKOSDAQ'),
       ])
 
       const prices = new Map((pricesPayload?.result ?? []).map((item) => [item.symbol, item]))
-      const rankings = rankingPayload?.result?.rankings ?? []
-      const rankingMap = new Map(rankings.map((item) => [item.symbol, item]))
-      const normalizedRankings = rankings.map((item) => {
-        const symbol = item?.symbol ?? item?.stock?.symbol ?? null
-        const parsed = rankingItem(item, symbol ? this.rankingNames.get(symbol) ?? null : null)
-        if (parsed.symbol && parsed.name) this.rankingNames.set(parsed.symbol, parsed.name)
-        return parsed
-      }).filter(isDisplayableIndividualRanking)
+      const dailyRankings = rankingRecords(rankingPayload)
+      const realtimeRankings = rankingRecords(realtimeRankingPayload)
+      const dailyRankingMap = new Map(dailyRankings.map((item) => [item?.symbol ?? item?.stock?.symbol ?? null, item]).filter(([symbol]) => symbol))
+      const realtimeRankingMap = new Map(realtimeRankings.map((item) => [item?.symbol ?? item?.stock?.symbol ?? null, item]).filter(([symbol]) => symbol))
+      const normalizedRankings = mergeMarketTradingAmountRankings(
+        dailyRankings,
+        realtimeRankings,
+        (symbol) => this.rankingNames.get(symbol) ?? null,
+      ).map((item) => {
+        if (item.symbol && item.name) this.rankingNames.set(item.symbol, item.name)
+        return item
+      }).filter(isDisplayableIndividualRanking).slice(0, 100)
+      const rankingMap = new Map(normalizedRankings.map((item) => [item.symbol, item]))
       const indices = new Map((indicesPayload?.result ?? []).map((item) => [item.symbol, item]))
       const stocks = {}
 
       for (const info of WATCHLIST) {
         const price = prices.get(info.symbol)
         const ranking = rankingMap.get(info.symbol)
+        const rawDailyRanking = dailyRankingMap.get(info.symbol)
+        const rawRealtimeRanking = realtimeRankingMap.get(info.symbol)
         const daily = this.daily.get(info.symbol)
         const flow = this.investor.get(info.symbol)
-        const lastPrice = number(price?.lastPrice ?? ranking?.price?.lastPrice)
-        const basePrice = number(ranking?.price?.basePrice) ?? daily?.previousClose ?? null
-        const changeRate = ranking?.price?.changeRate != null
-          ? number(ranking.price.changeRate) * 100
-          : lastPrice != null && basePrice ? ((lastPrice / basePrice) - 1) * 100 : null
+        const lastPrice = number(price?.lastPrice ?? ranking?.lastPrice)
+        const basePrice = number(rawRealtimeRanking?.price?.basePrice ?? rawDailyRanking?.price?.basePrice) ?? daily?.previousClose ?? null
+        const changeRate = number(ranking?.changeRate)
+          ?? (lastPrice != null && basePrice ? ((lastPrice / basePrice) - 1) * 100 : null)
         const exactTradingAmount = number(ranking?.tradingAmount)
         const tradingVolume = number(ranking?.tradingVolume) ?? daily?.volume ?? null
         const tradingAmount = exactTradingAmount ?? daily?.estimatedTradingAmount ?? null
@@ -219,7 +296,7 @@ export class MarketCollector {
           foreignNetBuyVolume: flow?.foreigner ?? null,
           institutionNetBuyVolume: flow?.institution ?? null,
           updatedAt: price?.timestamp ?? daily?.timestamp ?? null,
-          tradingAmountSource: exactTradingAmount != null ? 'market-ranking-1d' : tradingAmount != null ? 'ohlcv-estimate' : null,
+          tradingAmountSource: exactTradingAmount != null ? ranking?.tradingAmountSource ?? 'market-ranking-1d' : tradingAmount != null ? 'ohlcv-estimate' : null,
         }
       }
 
@@ -268,8 +345,13 @@ export class MarketCollector {
           foreignNetContracts: null,
           institutionNetContracts: null,
         },
-        rankingDuration: '1d',
-        rankedAt: rankingPayload?.result?.rankedAt ?? null,
+        rankingDuration: realtimeRankings.length ? '1d+realtime' : '1d',
+        rankingPolicy: realtimeRankings.length ? 'per-symbol-max-with-realtime-after-15:30' : '1d',
+        rankedAt: realtimeRankingPayload?.result?.rankedAt ?? rankingPayload?.result?.rankedAt ?? null,
+        rankingRankedAt: {
+          daily: rankingPayload?.result?.rankedAt ?? null,
+          realtime: realtimeRankingPayload?.result?.rankedAt ?? null,
+        },
       }
 
       // Publish the fast snapshot immediately. Slower daily/investor/program data
@@ -303,7 +385,9 @@ export class MarketCollector {
       programSummary: null,
       futures: { available: false, source: null },
       rankingDuration: '1d',
+      rankingPolicy: '1d',
       rankedAt: null,
+      rankingRankedAt: { daily: null, realtime: null },
     }
   }
 
