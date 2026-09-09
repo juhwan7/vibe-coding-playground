@@ -19,39 +19,54 @@ jobs:
       - name: Inspect live quiz runtime
         shell: bash
         run: |
-          set -u
+          set -euo pipefail
           APP="$HOME/vibe-coding-playground"
           cd "$APP"
+
           echo '=== deployed checkout ==='
-          git rev-parse HEAD || true
+          git rev-parse HEAD
           echo
-          echo '=== quiz universe API ==='
-          curl --silent --show-error --max-time 20 http://127.0.0.1:8080/api/quiz/universe || true
+          echo '=== deployed quiz fallback markers ==='
+          docker compose exec -T backend sh -c "grep -n 'RISE ETF\|official-benchmark-etf-holdings-fallback\|mixed-public-web-fallback' /app/quizUniverseService.mjs | head -n 20" || true
           echo
+
+          echo '=== live quiz universe ==='
+          UNIVERSE=''
+          for attempt in $(seq 1 6); do
+            UNIVERSE="$(curl --fail --silent --show-error --max-time 30 http://127.0.0.1:8080/api/quiz/universe || true)"
+            printf '%s\n' "$UNIVERSE"
+            if printf '%s' "$UNIVERSE" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{const j=JSON.parse(s);const k=j.counts?.kospi200??0;const q=j.counts?.kosdaq150??0;process.exit(j.ok&&k>=192&&q>=142?0:1)}catch{process.exit(1)}})"; then
+              break
+            fi
+            if [ "$attempt" -lt 6 ]; then sleep 5; fi
+          done
+
+          printf '%s' "$UNIVERSE" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);console.log('UNIVERSE_SUMMARY',JSON.stringify({ok:j.ok,source:j.source,mode:j.universeMode,counts:j.counts,warning:j.warning,error:j.error}));const k=j.counts?.kospi200??0;const q=j.counts?.kosdaq150??0;if(!j.ok||k<192||q<142)process.exit(1)})"
           echo
+
+          echo '=== prepared quiz readiness ==='
+          PREPARED=''
+          READY=0
+          for attempt in $(seq 1 18); do
+            PREPARED="$(curl --fail --silent --show-error --max-time 10 http://127.0.0.1:8080/data/quiz-prepared.json || true)"
+            if printf '%s' "$PREPARED" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{const j=JSON.parse(s);const k=j.counts?.kospi200??0;const q=j.counts?.kosdaq150??0;console.log(JSON.stringify({attempt:Number(process.argv[1]),counts:j.counts,cacheStatus:j.cacheStatus,error:j.error}));process.exit(j.ok&&k>=4&&q>=4?0:1)}catch(e){console.log('prepared parse error',e.message);process.exit(1)}})" "$attempt"; then
+              READY=1
+              break
+            fi
+            if [ "$attempt" -lt 18 ]; then sleep 5; fi
+          done
+
+          printf '%s' "$PREPARED" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);console.log('PREPARED_SUMMARY',JSON.stringify({ok:j.ok,source:j.source,counts:j.counts,cacheStatus:j.cacheStatus,error:j.error}));})"
+          if [ "$READY" -ne 1 ]; then
+            echo 'Prepared quiz did not reach >=4 stocks in both pools.'
+            echo '=== backend quiz logs ==='
+            docker compose logs --since=15m backend 2>&1 | grep -Ei 'quiz|KRX|RISE|Npay|KODEX|description|prewarm|fallback' | tail -n 180 || true
+            exit 1
+          fi
+          echo
+
           echo '=== persistent quiz summary ==='
-          docker compose exec -T backend node -e "const fs=require('fs'); for (const p of ['/app/data/quiz-universe.json','/app/data/quiz-descriptions.json','/app/public-data/quiz-prepared.json']) { try { const s=fs.statSync(p); const j=JSON.parse(fs.readFileSync(p,'utf8')); const values=Object.values(j.items||{}); const poolCounts=values.reduce((a,x)=>{const k=x&&x.pool||'none';a[k]=(a[k]||0)+1;return a},{}); console.log(p, {bytes:s.size, source:j.source, sourceDate:j.sourceDate, ok:j.ok, stale:j.stale, counts:j.counts, expectedCounts:j.expectedCounts, cacheStatus:j.cacheStatus, itemCount:values.length||undefined, poolCounts, error:j.error}); } catch(e) { console.log(p, 'ERROR', e.message); } }" || true
-          echo
-          echo '=== official benchmark ETF raw holdings probes ==='
-          for row in \
-            'RISE200|https://www.riseetf.co.kr/prod/finderDetail/4435?searchFlag=viewtab3' \
-            'RISEKQ150|https://www.riseetf.co.kr/prod/finderDetail/4459?searchFlag=viewtab3' \
-            'PLUS200|https://www.plusetf.co.kr/product/detail?n=006184' \
-            'PLUSKQ150|https://www.plusetf.co.kr/product/detail?n=006318'; do
-            label="${row%%|*}"
-            url="${row#*|}"
-            body="$(curl --silent --show-error --max-time 20 -L -A 'Mozilla/5.0' -H 'Accept-Language: ko-KR,ko;q=0.9' "$url" 2>/dev/null || true)"
-            rise_isin="$(printf '%s' "$body" | grep -Eo 'KR7[0-9]{9}' | sort -u | wc -l | tr -d ' ')"
-            six_codes="$(printf '%s' "$body" | grep -Eo '(^|[^0-9])[0-9]{6}([^0-9]|$)' | grep -Eo '[0-9]{6}' | sort -u | wc -l | tr -d ' ')"
-            echo "$label bytes=${#body} riseISIN=$rise_isin sixDigitTokens=$six_codes"
-          done
-          echo
-          echo '=== Naver KPI200 page count probe ==='
-          for page in 1 2 19 20 21; do
-            body="$(curl --silent --show-error --max-time 10 -A 'Mozilla/5.0' -e 'https://finance.naver.com/' "https://finance.naver.com/sise/entryJongmok.naver?indCode=KPI200&page=${page}" 2>/dev/null || true)"
-            count="$(printf '%s' "$body" | grep -Eo 'item/main\.naver\?code=[0-9]{6}' | sort -u | wc -l | tr -d ' ')"
-            echo "KPI200 page${page} => ${count}"
-          done
+          docker compose exec -T backend node -e "const fs=require('fs'); for (const p of ['/app/data/quiz-universe.json','/app/data/quiz-descriptions.json','/app/public-data/quiz-prepared.json']) { try { const s=fs.statSync(p); const j=JSON.parse(fs.readFileSync(p,'utf8')); const values=Object.values(j.items||{}); const poolCounts=values.reduce((a,x)=>{const k=x&&x.pool||'none';a[k]=(a[k]||0)+1;return a},{}); console.log(p, {bytes:s.size, source:j.source, sourceDate:j.sourceDate, ok:j.ok, stale:j.stale, counts:j.counts, expectedCounts:j.expectedCounts, cacheStatus:j.cacheStatus, itemCount:values.length||undefined, poolCounts, error:j.error}); } catch(e) { console.log(p, 'ERROR', e.message); } }"
           echo
           echo '=== backend quiz logs ==='
-          docker compose logs --since=10m backend 2>&1 | grep -Ei 'quiz|KRX|KODEX|description|prewarm|fallback' | tail -n 120 || true
+          docker compose logs --since=15m backend 2>&1 | grep -Ei 'quiz|KRX|RISE|Npay|KODEX|description|prewarm|fallback' | tail -n 180 || true
