@@ -20,6 +20,7 @@ services:
       THEME_CANDLE_CACHE_PATH: /app/data/theme-candles.json
       US_THEME_CANDLE_CACHE_PATH: /app/data/us-theme-candles.json
       QUIZ_UNIVERSE_CACHE_PATH: /app/data/quiz-universe.json
+      DAILY_ISSUE_CACHE_PATH: /app/data/daily-issues.json
     volumes:
       - market-history:/app/data
       - dashboard-cache:/app/public-data
