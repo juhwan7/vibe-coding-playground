@@ -254,6 +254,8 @@ export class QuizDescriptionService {
       cacheOnly: true,
       source: 'Raspberry Pi 영속 기업설명 캐시',
       updatedAt: new Date().toISOString(),
+      readyCodes: this.cachedCodes(),
+      cacheStatus: this.status(),
       items,
     }
   }
@@ -291,6 +293,8 @@ export class QuizDescriptionService {
       cacheOnly: false,
       source: 'Npay 증권 기업개요 · FnGuide',
       updatedAt: new Date().toISOString(),
+      readyCodes: this.cachedCodes(),
+      cacheStatus: this.status(),
       items,
     }
   }
