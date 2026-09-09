@@ -1,4 +1,5 @@
-import { ThemeFlowService, aggregateStockCandles, aggregateThemeSeries, isIndividualStock, selectThemeGroups } from './themeFlowService.mjs'
+import { ThemeFlowService, aggregateStockCandles, isIndividualStock, selectThemeGroups } from './themeFlowService.mjs'
+import { aggregateTradingAmountWeightedThemeSeries } from './themeWeightedSeries.mjs'
 import { sleep } from './tossClient.mjs'
 
 function dateKey(timestamp) {
@@ -113,7 +114,7 @@ export class ThemeFlowServiceFive extends ThemeFlowService {
           members.map((member) => ({ symbol: member.symbol, candles: this.candleCache.get(member.symbol) ?? [] })),
           2,
         )
-        const points = aggregateThemeSeries(recentSeries)
+        const points = aggregateTradingAmountWeightedThemeSeries(recentSeries)
         return {
           name: group.name,
           tradingAmount: group.tradingAmount,
@@ -127,6 +128,8 @@ export class ThemeFlowServiceFive extends ThemeFlowService {
           endDay: points.at(-1)?.day ?? null,
           selectionBasis: group.selectionBasis ?? null,
           rankingLimit: group.rankingLimit ?? null,
+          weighting: '3m-trading-amount-weighted-return',
+          dominantWeightPercent: points.at(-1)?.dominantWeightPercent ?? null,
         }
       })
 
@@ -145,9 +148,9 @@ export class ThemeFlowServiceFive extends ThemeFlowService {
           instrumentFilter: 'securityType=STOCK',
           candleInterval: '1m',
           aggregateInterval: '3m',
-          weighting: 'equal-return',
-          chart: 'averaged-close-line',
-          tradingAmount: 'market-ranking-1d',
+          weighting: '3m-trading-amount-weighted-return',
+          chart: 'weighted-close-line',
+          tradingAmount: 'market-ranking-1d + intraday-3m-weight',
           historyTradingDays: 2,
           persisted: true,
         },
