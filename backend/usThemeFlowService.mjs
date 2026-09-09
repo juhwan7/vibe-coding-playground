@@ -7,6 +7,9 @@ const EXCHANGE_TRADED_NAME = /(ETF|ETN|SPDR|ISHARES|PROSHARES|DIREXION|VANGUARD|
 const EXCHANGE_TRADED_SYMBOLS = new Set([
   'SPY','QQQ','IWM','DIA','VOO','VTI','IVV','TQQQ','SQQQ','SOXL','SOXS','UVXY','VXX','XLF','XLE','XLK','XLV','SMH','IBIT','FBTC',
 ])
+const LIVE_SAMPLE_INTERVAL_MS = 30_000
+const ONE_MINUTE_MS = 60_000
+const LIVE_CACHE_MAX_ITEMS = 4_500
 
 function number(value) {
   const parsed = Number(value)
@@ -154,24 +157,54 @@ function candleRecords(payload) {
   }).filter((candle) => candle.timestamp && candle.closePrice != null)
 }
 
+function priceRecords(payload) {
+  const result = payload?.result
+  if (Array.isArray(result)) return result
+  if (Array.isArray(result?.prices)) return result.prices
+  if (Array.isArray(result?.items)) return result.items
+  if (Array.isArray(result?.records)) return result.records
+  return []
+}
+
+export async function loadUsLivePrices(client, symbols, fallbackTimestamp = new Date().toISOString()) {
+  const unique = [...new Set((symbols ?? []).map((symbol) => String(symbol || '').trim().toUpperCase()).filter(Boolean))]
+  if (!unique.length) return []
+  const encoded = encodeURIComponent(unique.join(','))
+  const payload = await client.request(`/api/v1/prices?symbols=${encoded}`)
+  return priceRecords(payload).map((item) => ({
+    symbol: item?.symbol ?? item?.stock?.symbol ?? null,
+    lastPrice: number(item?.lastPrice ?? item?.price?.lastPrice),
+    timestamp: item?.timestamp ?? item?.price?.timestamp ?? fallbackTimestamp,
+  })).filter((item) => item.symbol && item.lastPrice != null && item.timestamp)
+}
+
 function usDateKey(timestamp) {
   return new Intl.DateTimeFormat('en-CA', {
     timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit',
   }).format(new Date(timestamp))
 }
 
-function usMinuteOfDay(timestamp) {
+function usTimeParts(timestamp) {
   const parts = new Intl.DateTimeFormat('en-GB', {
-    timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: false,
+    timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
   }).formatToParts(new Date(timestamp))
-  const hour = Number(parts.find((part) => part.type === 'hour')?.value ?? 0)
-  const minute = Number(parts.find((part) => part.type === 'minute')?.value ?? 0)
+  const get = (type) => Number(parts.find((part) => part.type === type)?.value ?? 0)
+  return { hour: get('hour'), minute: get('minute'), second: get('second') }
+}
+
+function usMinuteOfDay(timestamp) {
+  const { hour, minute } = usTimeParts(timestamp)
   return hour * 60 + minute
 }
 
+function isRegularTimestamp(timestamp) {
+  const { hour, minute, second } = usTimeParts(timestamp)
+  const totalSeconds = hour * 3600 + minute * 60 + second
+  return totalSeconds >= (9 * 3600 + 30 * 60) && totalSeconds <= 16 * 3600
+}
+
 function isRegularCandle(candle) {
-  const minute = usMinuteOfDay(candle.timestamp)
-  return minute >= 570 && minute <= 960
+  return Boolean(candle?.timestamp) && isRegularTimestamp(candle.timestamp)
 }
 
 function mergeCandles(existing, incoming, maxItems = 5000) {
@@ -193,6 +226,39 @@ function mergeCandles(existing, incoming, maxItems = 5000) {
   return merged.filter((candle) => keepDays.has(usDateKey(candle.timestamp))).slice(-maxItems)
 }
 
+function bucket30s(timestamp) {
+  const time = Date.parse(timestamp)
+  if (!Number.isFinite(time)) return null
+  return Math.floor(time / LIVE_SAMPLE_INTERVAL_MS) * LIVE_SAMPLE_INTERVAL_MS
+}
+
+function bucket1m(timestamp) {
+  const time = Date.parse(timestamp)
+  if (!Number.isFinite(time)) return null
+  return Math.floor(time / ONE_MINUTE_MS) * ONE_MINUTE_MS
+}
+
+export function mergeUsLivePriceSamples(existing, incoming, maxItems = LIVE_CACHE_MAX_ITEMS) {
+  const map = new Map()
+  for (const sample of [...(existing ?? []), ...(incoming ?? [])]) {
+    if (!sample?.timestamp || sample.lastPrice == null || !isRegularTimestamp(sample.timestamp)) continue
+    const bucket = bucket30s(sample.timestamp)
+    if (bucket == null) continue
+    const timestamp = new Date(bucket).toISOString()
+    map.set(timestamp, {
+      timestamp,
+      observedAt: sample.observedAt ?? sample.timestamp,
+      lastPrice: number(sample.lastPrice),
+    })
+  }
+  const merged = [...map.values()]
+    .filter((sample) => sample.lastPrice != null)
+    .sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp))
+  const days = [...new Set(merged.map((sample) => usDateKey(sample.timestamp)))].sort()
+  const keepDays = new Set(days.slice(-5))
+  return merged.filter((sample) => keepDays.has(usDateKey(sample.timestamp))).slice(-maxItems)
+}
+
 function hasFullPreviousTradingDay(candles) {
   const days = [...new Set(candles.map((candle) => usDateKey(candle.timestamp)))].sort()
   if (days.length < 2) return false
@@ -210,12 +276,6 @@ function recentTradingDayFilter(memberSeries, count = 2) {
     symbol,
     candles: candles.filter((candle) => selected.has(usDateKey(candle.timestamp)) && isRegularCandle(candle)),
   }))
-}
-
-function bucket3m(timestamp) {
-  const time = Date.parse(timestamp)
-  if (!Number.isFinite(time)) return null
-  return Math.floor(time / 180000) * 180000
 }
 
 function nearestDelta(points, minutes) {
@@ -236,6 +296,14 @@ function nearestDelta(points, minutes) {
   return last.value - nearest.value
 }
 
+function weightedAverage(values, weights) {
+  const totalWeight = weights.reduce((sum, weight) => sum + Math.max(0, Number(weight) || 0), 0)
+  if (totalWeight > 0) {
+    return values.reduce((sum, value, index) => sum + value * Math.max(0, Number(weights[index]) || 0), 0) / totalWeight
+  }
+  return values.reduce((sum, value) => sum + value, 0) / Math.max(1, values.length)
+}
+
 export function aggregateUsThemeSeries(memberSeries) {
   const buckets = new Map()
   for (const { symbol, candles } of memberSeries) {
@@ -244,7 +312,7 @@ export function aggregateUsThemeSeries(memberSeries) {
     if (!baseline) continue
     const perBucket = new Map()
     for (const candle of candles) {
-      const key = bucket3m(candle.timestamp)
+      const key = bucket1m(candle.timestamp)
       if (key == null || candle.closePrice == null) continue
       const current = perBucket.get(key) ?? { timestamp: new Date(key).toISOString(), value: null, volume: 0, tradingAmount: 0 }
       current.value = (candle.closePrice / baseline - 1) * 100
@@ -265,20 +333,52 @@ export function aggregateUsThemeSeries(memberSeries) {
 
   return [...buckets.values()]
     .sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp))
-    .map((bucket) => {
-      const totalWeight = bucket.weights.reduce((sum, weight) => sum + weight, 0)
-      const weightedValue = totalWeight > 0
-        ? bucket.values.reduce((sum, value, index) => sum + value * bucket.weights[index], 0) / totalWeight
-        : bucket.values.reduce((sum, value) => sum + value, 0) / Math.max(1, bucket.values.length)
-      return {
-        timestamp: bucket.timestamp,
-        value: weightedValue,
-        volume: bucket.volume,
-        tradingAmount: bucket.tradingAmount,
-        memberCount: bucket.symbols.size,
-        day: usDateKey(bucket.timestamp),
-      }
-    })
+    .map((bucket) => ({
+      timestamp: bucket.timestamp,
+      value: weightedAverage(bucket.values, bucket.weights),
+      volume: bucket.volume,
+      tradingAmount: bucket.tradingAmount,
+      memberCount: bucket.symbols.size,
+      day: usDateKey(bucket.timestamp),
+      source: '1m-backfill',
+    }))
+}
+
+export function aggregateUsLiveThemeSeries(memberSeries) {
+  const buckets = new Map()
+  for (const { symbol, candles = [], samples = [], weight = 0 } of memberSeries) {
+    if (!samples.length) continue
+    const baseline = candles.find((candle) => candle.closePrice != null)?.closePrice ?? samples.find((sample) => sample.lastPrice != null)?.lastPrice
+    if (!baseline) continue
+    for (const sample of samples) {
+      const key = bucket30s(sample.timestamp)
+      if (key == null || sample.lastPrice == null) continue
+      const aggregate = buckets.get(key) ?? { timestamp: new Date(key).toISOString(), values: [], weights: [], symbols: new Set() }
+      aggregate.values.push((sample.lastPrice / baseline - 1) * 100)
+      aggregate.weights.push(Math.max(0, Number(weight) || 0))
+      aggregate.symbols.add(symbol)
+      buckets.set(key, aggregate)
+    }
+  }
+
+  return [...buckets.values()]
+    .sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp))
+    .map((bucket) => ({
+      timestamp: bucket.timestamp,
+      value: weightedAverage(bucket.values, bucket.weights),
+      volume: 0,
+      tradingAmount: null,
+      memberCount: bucket.symbols.size,
+      day: usDateKey(bucket.timestamp),
+      source: '30s-live',
+    }))
+}
+
+export function mergeUsThemePoints(historyPoints = [], livePoints = []) {
+  const map = new Map()
+  for (const point of historyPoints) map.set(point.timestamp, point)
+  for (const point of livePoints) map.set(point.timestamp, point)
+  return [...map.values()].sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp))
 }
 
 async function mapLimit(items, limit, worker) {
@@ -296,23 +396,33 @@ async function mapLimit(items, limit, worker) {
 function usSessionActive() {
   const weekday = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', weekday: 'short' }).format(new Date())
   if (weekday === 'Sat' || weekday === 'Sun') return false
-  const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(new Date())
-  const hour = Number(parts.find((part) => part.type === 'hour')?.value ?? 0)
+  const { hour } = usTimeParts(new Date().toISOString())
   return hour >= 4 && hour <= 20
+}
+
+function usRegularSessionActive() {
+  const now = new Date()
+  const weekday = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', weekday: 'short' }).format(now)
+  if (weekday === 'Sat' || weekday === 'Sun') return false
+  return isRegularTimestamp(now.toISOString())
 }
 
 export class UsThemeFlowService {
   constructor(client, {
     refreshMs = 60000,
+    liveSampleMs = LIVE_SAMPLE_INTERVAL_MS,
     cachePath = process.env.US_THEME_CANDLE_CACHE_PATH || '/app/data/us-theme-candles.json',
   } = {}) {
     this.client = client
     this.refreshMs = refreshMs
+    this.liveSampleMs = liveSampleMs
     this.cachePath = cachePath
     this.stockMeta = new Map()
     this.metaUpdatedAt = 0
     this.candleCache = new Map()
+    this.livePriceCache = new Map()
     this.cacheLoaded = false
+    this.activeGroups = []
     this.payload = {
       ok: false,
       updatedAt: null,
@@ -327,8 +437,10 @@ export class UsThemeFlowService {
       error: '초기화 중',
     }
     this.timer = null
+    this.liveTimer = null
     this.running = false
     this.refreshing = false
+    this.liveSampling = false
   }
 
   async start() {
@@ -336,12 +448,15 @@ export class UsThemeFlowService {
     this.running = true
     await this.loadPersistedCache().catch(() => {})
     await this.refresh().catch(() => {})
+    await this.sampleLivePrices().catch(() => {})
     this.schedule()
+    this.scheduleLiveSampling()
   }
 
   stop() {
     this.running = false
     if (this.timer) clearTimeout(this.timer)
+    if (this.liveTimer) clearTimeout(this.liveTimer)
   }
 
   schedule() {
@@ -353,6 +468,16 @@ export class UsThemeFlowService {
     this.timer.unref?.()
   }
 
+  scheduleLiveSampling() {
+    if (!this.running) return
+    const delay = usRegularSessionActive() ? this.liveSampleMs : 300000
+    this.liveTimer = setTimeout(async () => {
+      await this.sampleLivePrices().catch(() => {})
+      this.scheduleLiveSampling()
+    }, delay)
+    this.liveTimer.unref?.()
+  }
+
   async loadPersistedCache() {
     if (this.cacheLoaded) return
     this.cacheLoaded = true
@@ -362,17 +487,21 @@ export class UsThemeFlowService {
       for (const [symbol, candles] of Object.entries(saved?.candles ?? {})) {
         if (Array.isArray(candles)) this.candleCache.set(symbol, mergeCandles([], candles))
       }
+      for (const [symbol, samples] of Object.entries(saved?.livePrices ?? {})) {
+        if (Array.isArray(samples)) this.livePriceCache.set(symbol, mergeUsLivePriceSamples([], samples))
+      }
     } catch {
-      // 첫 실행이거나 캐시가 없으면 Toss 분봉으로 백필한다.
+      // 첫 실행이거나 캐시가 없으면 Toss 1분봉으로 백필한다.
     }
   }
 
   async persistCache() {
     await mkdir(dirname(this.cachePath), { recursive: true })
     const payload = {
-      version: 1,
+      version: 2,
       savedAt: new Date().toISOString(),
       candles: Object.fromEntries([...this.candleCache.entries()].map(([symbol, candles]) => [symbol, candles])),
+      livePrices: Object.fromEntries([...this.livePriceCache.entries()].map(([symbol, samples]) => [symbol, samples])),
     }
     const tempPath = `${this.cachePath}.tmp`
     await writeFile(tempPath, JSON.stringify(payload), 'utf8')
@@ -432,6 +561,67 @@ export class UsThemeFlowService {
     this.candleCache.set(symbol, mergeCandles(existing, candleRecords(payload)))
   }
 
+  buildThemes(groups = this.activeGroups) {
+    return groups.map((group) => {
+      const members = group.members.map((member) => this.enrichRanking(member)).filter(isUsIndividualStock)
+      const recentSeries = recentTradingDayFilter(members.map((member) => ({
+        symbol: member.symbol,
+        candles: this.candleCache.get(member.symbol) ?? [],
+      })), 2)
+      const historyPoints = aggregateUsThemeSeries(recentSeries)
+      const visibleDays = new Set(historyPoints.map((point) => point.day))
+      const liveSeries = members.map((member) => {
+        const candles = recentSeries.find((entry) => entry.symbol === member.symbol)?.candles ?? []
+        const samples = (this.livePriceCache.get(member.symbol) ?? []).filter((sample) => !visibleDays.size || visibleDays.has(usDateKey(sample.timestamp)))
+        return { symbol: member.symbol, candles, samples, weight: member.tradingAmount ?? 0 }
+      })
+      const livePoints = aggregateUsLiveThemeSeries(liveSeries)
+      const points = mergeUsThemePoints(historyPoints, livePoints)
+      return {
+        name: group.name,
+        tradingAmount: members.reduce((sum, member) => sum + (member.tradingAmount ?? 0), 0),
+        memberCount: members.length,
+        members,
+        points,
+        selectionBasis: group.selectionBasis,
+        rankingLimit: 50,
+        currentValue: points.at(-1)?.value ?? null,
+        change1h: nearestDelta(points, 60),
+        change3h: nearestDelta(points, 180),
+        startDay: points[0]?.day ?? null,
+        endDay: points.at(-1)?.day ?? null,
+      }
+    }).slice(0, 5)
+  }
+
+  async sampleLivePrices() {
+    if (this.liveSampling || this.refreshing || !this.client.configured || !usRegularSessionActive() || !this.activeGroups.length) return this.payload
+    this.liveSampling = true
+    try {
+      const symbols = [...new Set(this.activeGroups.flatMap((group) => group.members.map((member) => member.symbol).filter(Boolean)))]
+      const samples = await loadUsLivePrices(this.client, symbols)
+      for (const sample of samples) {
+        const existing = this.livePriceCache.get(sample.symbol) ?? []
+        this.livePriceCache.set(sample.symbol, mergeUsLivePriceSamples(existing, [sample]))
+      }
+      if (samples.length) {
+        const themes = this.buildThemes()
+        this.payload = {
+          ...this.payload,
+          ok: true,
+          updatedAt: new Date().toISOString(),
+          themes,
+          stage: themes.some((theme) => theme.points.length >= 2) ? 'ready' : this.payload.stage,
+          liveSampledAt: new Date().toISOString(),
+          liveSampleCount: samples.length,
+        }
+      }
+      return this.payload
+    } finally {
+      this.liveSampling = false
+    }
+  }
+
   async refresh() {
     if (this.refreshing || !this.client.configured) return this.payload
     this.refreshing = true
@@ -458,9 +648,9 @@ export class UsThemeFlowService {
       const topRankings = enrichedRankings.filter(isUsIndividualStock).slice(0, 50)
       const marketTradingAmount = topRankings.reduce((sum, item) => sum + (item.tradingAmount ?? 0), 0)
       const groups = selectUsThemeGroups(topRankings, { limit: 50, targetCount: 5 })
+      this.activeGroups = groups
       const rankedAt = rankingResult.payload?.result?.rankedAt ?? null
 
-      // ETF/ETN을 제거한 실제 개별주 TOP50을 먼저 게시하고 테마 차트는 뒤에서 채운다.
       this.payload = {
         ...this.payload,
         ok: true,
@@ -488,26 +678,7 @@ export class UsThemeFlowService {
       })
       await this.persistCache().catch(() => {})
 
-      const themes = groups.map((group) => {
-        const members = group.members.map((member) => this.enrichRanking(member)).filter(isUsIndividualStock)
-        const recentSeries = recentTradingDayFilter(members.map((member) => ({ symbol: member.symbol, candles: this.candleCache.get(member.symbol) ?? [] })), 2)
-        const points = aggregateUsThemeSeries(recentSeries)
-        return {
-          name: group.name,
-          tradingAmount: members.reduce((sum, member) => sum + (member.tradingAmount ?? 0), 0),
-          memberCount: members.length,
-          members,
-          points,
-          selectionBasis: group.selectionBasis,
-          rankingLimit: 50,
-          currentValue: points.at(-1)?.value ?? null,
-          change1h: nearestDelta(points, 60),
-          change3h: nearestDelta(points, 180),
-          startDay: points[0]?.day ?? null,
-          endDay: points.at(-1)?.day ?? null,
-        }
-      }).slice(0, 5)
-
+      const themes = this.buildThemes(groups)
       this.payload = {
         ok: true,
         marketCountry: 'US',
@@ -523,6 +694,8 @@ export class UsThemeFlowService {
         rankingIsMarketWide: rankingResult.isMarketWide,
         rankingAttempts: rankingResult.attempts,
         chartFailures,
+        liveSampledAt: this.payload.liveSampledAt ?? null,
+        liveSampleCount: this.payload.liveSampleCount ?? 0,
         criteria: {
           rankingLimit: 50,
           targetThemeCount: 5,
@@ -530,12 +703,14 @@ export class UsThemeFlowService {
           preferredMinMembers: 3,
           fallbackMinMembers: 1,
           candleInterval: '1m',
-          aggregateInterval: '3m',
-          weighting: '3m-turnover-weighted-return',
+          livePriceInterval: '30s',
+          aggregateInterval: '30s-live+1m-backfill',
+          weighting: '1m actual turnover; 30s live uses current cumulative member turnover',
           ranking: `${rankingResult.type}/US/${rankingResult.duration}`,
           chartSession: 'US regular 09:30-16:00 ET',
           historyTradingDays: 2,
           persisted: true,
+          liveSamplingPersisted: true,
         },
         error: null,
       }
