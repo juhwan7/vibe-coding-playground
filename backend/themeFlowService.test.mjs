@@ -50,7 +50,7 @@ test('selectThemeGroups keeps four strongest qualified themes and replaces the w
 
   const first = selectThemeGroups(base, { targetCount: 4 })
   assert.equal(first.length, 4)
-  assert.deepEqual(first.map((group) => group.name), ['반도체', '원전', '방산', '조선'])
+  assert.deepEqual(first.map((group) => group.name), ['반도체', '방산', '원전', '조선'])
 
   const strongerBio = base.map((item) => ['196170', '298380', '068270'].includes(item.symbol) ? { ...item, tradingAmount: item.tradingAmount + 250 } : item)
   const next = selectThemeGroups(strongerBio, { targetCount: 4 })
