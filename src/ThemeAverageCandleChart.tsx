@@ -12,6 +12,7 @@ type ThemeGroup = {
 
 const SESSION_START = 8 * 60
 const SESSION_MINUTES = 12 * 60
+const MAX_LINE_GAP_MS = 15 * 60 * 1000
 
 function timeParts(iso: string) {
   const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(new Date(iso))
@@ -29,6 +30,33 @@ function compactDay(day?: string | null) {
 function fmtRate(value: number | null | undefined) {
   if (value == null || !Number.isFinite(value)) return '-'
   return `${value > 0 ? '+' : ''}${value.toFixed(2)}%`
+}
+
+export function splitThemeLineSegments<T extends { timestamp: string; day: string }>(source: T[], maxGapMs = MAX_LINE_GAP_MS) {
+  const points = [...source].sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp))
+  const segments: T[][] = []
+  let current: T[] = []
+
+  for (const point of points) {
+    const previous = current.at(-1)
+    const currentTime = Date.parse(point.timestamp)
+    const previousTime = previous ? Date.parse(previous.timestamp) : NaN
+    const shouldBreak = Boolean(previous) && (
+      previous?.day !== point.day
+      || !Number.isFinite(currentTime)
+      || !Number.isFinite(previousTime)
+      || currentTime - previousTime > maxGapMs
+    )
+
+    if (shouldBreak) {
+      if (current.length) segments.push(current)
+      current = []
+    }
+    current.push(point)
+  }
+
+  if (current.length) segments.push(current)
+  return segments
 }
 
 export default function ThemeAverageCandleChart({ theme, accent }: { theme: ThemeGroup; accent: string }) {
@@ -67,7 +95,7 @@ export default function ThemeAverageCandleChart({ theme, accent }: { theme: Them
   }
   const xForMinute = (dayIndex: number, minute: number) => (dayIndex * SESSION_MINUTES + minute) / domainMinutes * width
   const ticks = days.flatMap((day, dayIndex) => [8, 10, 12, 14, 16, 18, 20].map((hour) => ({ day, dayIndex, hour, minute: (hour - 8) * 60 })))
-  const perDay = days.map((day) => points.filter((point) => point.day === day))
+  const lineSegments = splitThemeLineSegments(points)
   const latest = points.at(-1)!
   const latestX = xForTimestamp(latest.timestamp, latest.day)
   const latestY = y(latest.lineValue)
@@ -98,9 +126,10 @@ export default function ThemeAverageCandleChart({ theme, accent }: { theme: Them
       <text x={width - 5} y={chartTop + 10} textAnchor="end" className="theme-candle-price-label">{fmtRate(hi)}</text>
       <text x={width - 5} y={chartBottom - 4} textAnchor="end" className="theme-candle-price-label">{fmtRate(lo)}</text>
       <line x1={latestX} x2={latestX} y1={chartTop} y2={chartBottom} className="theme-current-guide" />
-      {perDay.map((dayPoints, index) => {
-        const polyline = dayPoints.map((point) => `${xForTimestamp(point.timestamp, point.day)},${y(point.lineValue)}`).join(' ')
-        return <polyline key={days[index]} points={polyline} className="theme-average-line" fill="none" />
+      {lineSegments.map((segment, index) => {
+        if (segment.length < 2) return null
+        const polyline = segment.map((point) => `${xForTimestamp(point.timestamp, point.day)},${y(point.lineValue)}`).join(' ')
+        return <polyline key={`${segment[0].timestamp}-${index}`} points={polyline} className="theme-average-line" fill="none" />
       })}
       <circle cx={latestX} cy={latestY} r="9" className="theme-average-current-halo" aria-hidden="true" />
       <circle cx={latestX} cy={latestY} r="4.8" className="theme-average-current-dot">
