@@ -10,7 +10,8 @@ const FINALIZE_MINUTE = 15 * 60 + 20
 const REGULAR_SESSION_START_MINUTE = 9 * 60
 const REGULAR_SESSION_END_MINUTE = 15 * 60 + 30
 const TWO_DAY_BACKFILL_MAX_PAGES = 6
-const DAILY_ISSUE_SCHEMA_VERSION = 3
+const DAILY_CONTEXT_COUNT = 30
+const DAILY_ISSUE_SCHEMA_VERSION = 4
 const EXCHANGE_TRADED_NAME = /(ETF|ETN|KODEX|TIGER|RISE|ACE|PLUS|SOL|HANARO|KOSEF|TIMEFOLIO|ARIRANG|FOCUS|KBSTAR|리츠|스팩|인프라)/i
 const POSITIVE_NEWS_CUE = /(상승|강세|급등|상한가|오름세|랠리|수혜|호재|기대감|부각|신고가)/i
 const BUSINESS_HINT = /(주력|주요|사업|영위|생산|제조|판매|개발|서비스|플랫폼|제품|매출|반도체|메모리|HBM|DRAM|NAND|배터리|이차전지|2차전지|자동차|바이오|의약|원전|조선|방산|전력|변압기|금융|은행|증권|보험|통신|게임|화학|철강|건설|로봇|콘텐츠|유통)/i
@@ -81,8 +82,12 @@ function candleRecords(payload) {
   if (!Array.isArray(candles)) return []
   return candles.map((candle) => ({
     timestamp: candle.timestamp ?? null,
+    openPrice: number(candle.openPrice),
+    highPrice: number(candle.highPrice),
+    lowPrice: number(candle.lowPrice),
     closePrice: number(candle.closePrice),
-  })).filter((candle) => candle.timestamp && candle.closePrice != null)
+    volume: number(candle.volume),
+  })).filter((candle) => candle.timestamp && [candle.openPrice, candle.highPrice, candle.lowPrice, candle.closePrice].every((value) => value != null))
 }
 
 function mergeCandles(existing = [], incoming = []) {
@@ -113,6 +118,15 @@ function hasFullPreviousTradingDay(candles = []) {
   return firstMinute <= REGULAR_SESSION_START_MINUTE + 2
 }
 
+function ohlcPoint(candle) {
+  const open = number(candle?.openPrice)
+  const high = number(candle?.highPrice)
+  const low = number(candle?.lowPrice)
+  const close = number(candle?.closePrice)
+  if (!candle?.timestamp || [open, high, low, close].some((value) => value == null)) return null
+  return { timestamp: candle.timestamp, open, high, low, close, volume: number(candle.volume) }
+}
+
 export function buildTwoDayIntraday(candles = [], dayCount = 2) {
   const ordered = [...candles]
     .filter((candle) => candle?.timestamp && candle.closePrice != null && Number.isFinite(Date.parse(candle.timestamp)))
@@ -129,13 +143,22 @@ export function buildTwoDayIntraday(candles = [], dayCount = 2) {
     date: day,
     points: session
       .filter((candle) => kstParts(candle.timestamp).day === day)
-      .map((candle) => ({ timestamp: candle.timestamp, value: number(candle.closePrice) }))
-      .filter((point) => point.value != null),
+      .map(ohlcPoint)
+      .filter(Boolean),
   })).filter((day) => day.points.length)
 }
 
 export function buildIntradayLine(candles = []) {
-  return buildTwoDayIntraday(candles, 1).at(-1)?.points ?? []
+  return (buildTwoDayIntraday(candles, 1).at(-1)?.points ?? []).map((point) => ({ timestamp: point.timestamp, value: point.close }))
+}
+
+export function buildDailyBars(candles = [], count = DAILY_CONTEXT_COUNT) {
+  return [...candles]
+    .filter((candle) => candle?.timestamp && Number.isFinite(Date.parse(candle.timestamp)))
+    .sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp))
+    .map(ohlcPoint)
+    .filter(Boolean)
+    .slice(-Math.max(1, count))
 }
 
 function normalizeIssueText(text = '') {
@@ -388,6 +411,12 @@ export class DailyIssueService {
     return merged
   }
 
+  async fetchDailyCandles(symbol) {
+    const query = new URLSearchParams({ symbol, interval: '1d', count: String(DAILY_CONTEXT_COUNT), adjusted: 'true' })
+    const payload = await this.client.request(`/api/v1/candles?${query.toString()}`, { priority: 'background', dedupe: false }).catch(() => null)
+    return candleRecords(payload)
+  }
+
   async generate(day) {
     try {
       const rankingPayload = await this.client.request('/api/v1/rankings?type=MARKET_TRADING_AMOUNT&marketCountry=KR&duration=1d&count=100', { priority: 'critical', dedupe: false })
@@ -429,8 +458,14 @@ export class DailyIssueService {
       const chartMap = new Map()
 
       await mapLimit(stocks, 4, async (stock) => {
-        const candles = await this.fetchTwoTradingDayCandles(stock.symbol)
-        chartMap.set(stock.symbol, buildTwoDayIntraday(candles, 2))
+        const [minuteCandles, dailyCandles] = await Promise.all([
+          this.fetchTwoTradingDayCandles(stock.symbol),
+          this.fetchDailyCandles(stock.symbol),
+        ])
+        chartMap.set(stock.symbol, {
+          intraday: buildTwoDayIntraday(minuteCandles, 2),
+          daily: buildDailyBars(dailyCandles, DAILY_CONTEXT_COUNT),
+        })
         await sleep(40)
       })
 
@@ -439,6 +474,7 @@ export class DailyIssueService {
         const issue = directIssue.reasonType === 'direct-news'
           ? directIssue
           : (summarizeThemeFallback(stock, stock.themeLabels, themeEvidence) ?? directIssue)
+        const chart = chartMap.get(stock.symbol)
         return {
           symbol: stock.symbol,
           name: stock.name,
@@ -455,7 +491,8 @@ export class DailyIssueService {
           articleCount: issue.articleCount,
           sources: issue.sources,
           links: issue.links,
-          intraday: chartMap.get(stock.symbol) ?? [],
+          intraday: chart?.intraday ?? [],
+          daily: chart?.daily ?? [],
         }
       }))
 
@@ -466,7 +503,7 @@ export class DailyIssueService {
         date: day,
         targetTime: '15:20',
         capturedAt: new Date().toISOString(),
-        source: '토스증권 Open API 거래대금 랭킹/실제 1분봉 2거래일 + Google News RSS + Npay/FnGuide 기업개요 캐시',
+        source: '토스증권 Open API 거래대금 랭킹/전일+오늘 실제 1분 OHLC/최근 30거래일 일봉 OHLC + Google News RSS + Npay/FnGuide 기업개요 캐시',
         sort: 'changeRate-desc',
         rows,
         error: null,
