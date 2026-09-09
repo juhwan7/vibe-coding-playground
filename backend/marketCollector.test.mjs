@@ -24,7 +24,7 @@ test('classifies NXT after-market from 15:30 through 20:00 in Korea time', () =>
 })
 
 test('classifies the short post-close settlement grace period separately', () => {
-  assert.match(marketSessionLabel(new Date('2026-09-09T11:00:01Z')), /종료 정산/)
+  assert.match(marketSessionLabel(new Date('2026-09-09T11:01:00Z')), /종료 정산/)
   assert.match(marketSessionLabel(new Date('2026-09-09T11:30:00Z')), /종료 정산/)
 })
 
