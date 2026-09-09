@@ -41,13 +41,14 @@ const quizDescriptions = new QuizDescriptionService({ cachePath: process.env.QUI
 const featureNews = new FeatureNewsTodayService({
   refreshMs: Number(process.env.FEATURE_NEWS_REFRESH_MS || 180000),
   getSnapshot: () => collector.snapshot,
+  getThemes: () => themeFlow.payload?.themes ?? [],
 })
 const dailyIssues = new DailyIssueService(client, {
   cachePath: process.env.DAILY_ISSUE_CACHE_PATH || '/app/data/daily-issues.json',
 })
 const futuresProvider = new FuturesProvider()
 const intelligence = new MarketIntelligenceService({
-  themeCount: 4,
+  themeCount: 5,
   replacementMargin: Number(process.env.THEME_REPLACEMENT_MARGIN || 0.08),
   replacementConfirmations: Number(process.env.THEME_REPLACEMENT_CONFIRMATIONS || 3),
 })
@@ -134,7 +135,7 @@ function liveKrThemePayload() {
   return {
     ...raw,
     themes: intel.themes ?? raw.themes ?? [],
-    criteria: { ...(raw.criteria ?? {}), themeCount: 4, hysteresis: '8%-or-3-confirmations', overlapAdjustment: '1/N' },
+    criteria: { ...(raw.criteria ?? {}), themeCount: 5, hysteresis: '8%-or-3-confirmations', overlapAdjustment: '1/N' },
     intelligence: {
       market: intel.market ?? null,
       quality: intel.quality ?? null,
@@ -235,10 +236,11 @@ const server = http.createServer(async (request, response) => {
         primaryMarketSeconds: Math.round(primaryRefreshMs / 1000),
         slowMarketSeconds: Math.round(collector.slowMs / 1000),
         featureNewsSeconds: Math.round(Number(process.env.FEATURE_NEWS_REFRESH_MS || 180000) / 1000),
-        featureNewsWindow: '00:00-today',
+        featureNewsWindow: '06:00-today-rescan-and-accumulate',
         themeChartLiveSeconds: Math.round(primaryRefreshMs / 1000),
         themeCandleCollectionSeconds: Math.round(themeFlow.refreshMs / 1000),
-        themeCount: 4,
+        themeCount: 5,
+        themeWeighting: '3m-trading-amount-weighted-return',
         themeReplacement: '8%-or-3-confirmations',
         dailyIssueFinalizeKst: '15:20',
         closeArchiveKst: ['15:20', '15:35'],

@@ -1,4 +1,6 @@
-import { ThemeFlowService, aggregateStockCandles, aggregateThemeSeries, isIndividualStock, selectThemeGroups } from './themeFlowService.mjs'
+import { ThemeFlowService, aggregateStockCandles, isIndividualStock, selectThemeGroups } from './themeFlowService.mjs'
+import { aggregateTradingAmountWeightedThemeSeries } from './themeWeightedSeries.mjs'
+import { stockMeta, stockRecords } from './stockMetadata.mjs'
 import { sleep } from './tossClient.mjs'
 
 function dateKey(timestamp) {
@@ -46,6 +48,27 @@ async function mapLimit(items, limit, worker) {
 }
 
 export class ThemeFlowServiceFive extends ThemeFlowService {
+  async ensureMeta(symbols = []) {
+    const unique = [...new Set(symbols.map((symbol) => String(symbol ?? '').trim()).filter(Boolean))]
+    const missing = unique.filter((symbol) => !this.stockMeta.has(symbol))
+    if (!missing.length && Date.now() - this.metaUpdatedAt < 6 * 60 * 60 * 1000) return
+    const targets = missing.length ? missing : unique
+
+    // TOP100 전체를 한 번에 요청하면 메타 API의 길이/개수 제한에 걸려 이름이 전부 빠질 수 있다.
+    // 25종목씩 나눠 받아 종목코드가 종목명처럼 표시되는 상황을 막는다.
+    for (let index = 0; index < targets.length; index += 25) {
+      const chunk = targets.slice(index, index + 25)
+      const encoded = encodeURIComponent(chunk.join(','))
+      const payload = await this.client.request(`/api/v1/stocks?symbols=${encoded}`)
+      for (const record of stockRecords(payload)) {
+        const meta = stockMeta(record)
+        if (meta.symbol) this.stockMeta.set(meta.symbol, meta)
+      }
+      if (index + 25 < targets.length) await sleep(80)
+    }
+    this.metaUpdatedAt = Date.now()
+  }
+
   async stockChartReady(symbol, { fallbackName = null } = {}) {
     const normalized = String(symbol ?? '').trim()
     if (!/^\d{6}$/.test(normalized)) return { ok: false, error: '올바른 국내 종목코드가 아닙니다.', points: [] }
@@ -113,7 +136,7 @@ export class ThemeFlowServiceFive extends ThemeFlowService {
           members.map((member) => ({ symbol: member.symbol, candles: this.candleCache.get(member.symbol) ?? [] })),
           2,
         )
-        const points = aggregateThemeSeries(recentSeries)
+        const points = aggregateTradingAmountWeightedThemeSeries(recentSeries)
         return {
           name: group.name,
           tradingAmount: group.tradingAmount,
@@ -127,6 +150,8 @@ export class ThemeFlowServiceFive extends ThemeFlowService {
           endDay: points.at(-1)?.day ?? null,
           selectionBasis: group.selectionBasis ?? null,
           rankingLimit: group.rankingLimit ?? null,
+          weighting: '3m-trading-amount-weighted-return',
+          dominantWeightPercent: points.at(-1)?.dominantWeightPercent ?? null,
         }
       })
 
@@ -145,9 +170,9 @@ export class ThemeFlowServiceFive extends ThemeFlowService {
           instrumentFilter: 'securityType=STOCK',
           candleInterval: '1m',
           aggregateInterval: '3m',
-          weighting: 'equal-return',
-          chart: 'averaged-close-line',
-          tradingAmount: 'market-ranking-1d',
+          weighting: '3m-trading-amount-weighted-return',
+          chart: 'weighted-close-line',
+          tradingAmount: 'market-ranking-1d + intraday-3m-weight',
           historyTradingDays: 2,
           persisted: true,
         },
