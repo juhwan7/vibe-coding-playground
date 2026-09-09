@@ -229,7 +229,7 @@ export default function DailyIssues() {
       <div>
         <p>DAILY MARKET ISSUE DIGEST / 15:20 KST</p>
         <h1>금일 이슈 정리</h1>
-        <small>거래대금 상위 개별주를 등락률 순으로 정리합니다. 종목별 실제 기업개요와 테마를 함께 표시하고, 직접 종목 기사가 없으면 같은 테마에서 상승한 종목의 기사만 근거로 테마 동반 강세 가능성을 추정해 구분 표시합니다. 오른쪽은 전일+오늘 실제 1분봉입니다.</small>
+        <small>거래대금 상위 개별주를 등락률 순으로 정리합니다. 종목별 실제 기업개요와 테마를 함께 표시하고, 직접 종목 기사가 없으면 같은 테마에서 상승한 종목의 기사만 근거로 테마 동반 강세 가능성을 추정해 구분 표시합니다. 오른쪽은 전일과 오늘 2거래일의 실제 1분봉입니다.</small>
       </div>
       <aside>
         <b className={payload.ok ? 'ready' : 'waiting'}>{payload.ok ? '● 정리 완료' : payload.status === 'generating' ? '● 생성 중' : '● 15:20 대기'}</b>
