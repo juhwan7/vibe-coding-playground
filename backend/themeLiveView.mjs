@@ -1,4 +1,4 @@
-import { themesForStock } from './themeCatalog.mjs'
+import { themeMembershipsForStock } from './themeCatalog.mjs'
 import { cachedDescriptionForStock, classifyStockSector } from './stockClassification.mjs'
 
 function number(value) {
@@ -31,26 +31,27 @@ function mergeRanking(base, live) {
 
 function withCatalogThemes(item) {
   if (!item) return item
-  const verifiedThemes = themesForStock(item.symbol, item.name)
-  if (verifiedThemes.length) {
+  const description = cachedDescriptionForStock(item.symbol)
+  const memberships = themeMembershipsForStock(item.symbol, item.name, description)
+  if (memberships.length) {
     return {
       ...item,
-      catalogThemes: verifiedThemes,
-      classificationLabel: verifiedThemes[0],
+      catalogThemes: memberships.map((membership) => membership.name),
+      classificationLabel: memberships[0].name,
       classificationKind: 'theme',
-      classificationSource: 'theme-catalog',
+      classificationSource: memberships[0].source,
+      classificationConfidence: memberships[0].confidence,
     }
   }
 
   const classification = classifyStockSector({
     symbol: item.symbol,
     name: item.name,
-    description: cachedDescriptionForStock(item.symbol),
+    description,
   })
   return {
     ...item,
-    // 기존 프론트의 중립 배지 렌더링 경로를 그대로 재사용한다.
-    // 실제 주도테마 선정에는 themeCatalog.mjs만 사용하므로 이 fallback은 테마 집계에 영향이 없다.
+    // 주도테마로 확정할 근거가 약한 경우에도 우측 TOP100에서 업종 배지는 유지한다.
     catalogThemes: [classification.label],
     classificationLabel: classification.label,
     classificationKind: classification.label === '기타·개별주' ? 'fallback' : 'sector',
@@ -72,8 +73,7 @@ export function buildLiveThemePayload(payload, snapshot) {
   const baseBySymbol = new Map((payload.topRankings ?? []).filter((item) => item?.symbol).map((item) => [item.symbol, item]))
 
   // 우측 TOP100은 실시간 snapshot 순위를 기준으로 렌더링한다.
-  // 따라서 테마 서비스 payload에 포함된 종목만 분류하면, snapshot에는 있지만 payload에는 없는 종목의 배지가 비게 된다.
-  // 실시간 TOP100 전체를 기준으로 분류하되, payload 메타데이터가 있으면 합쳐서 유지한다.
+  // snapshot 전체를 분류하고, 명시 카탈로그가 없으면 기업개요 기반 고신뢰 단일 테마를 먼저 확인한다.
   const topRankings = (snapshot.topRankings ?? []).map((live) => {
     const base = baseBySymbol.get(live.symbol) ?? live
     return withCatalogThemes(mergeRanking(base, live))
