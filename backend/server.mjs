@@ -2,7 +2,7 @@ import http from 'node:http'
 import { MarketCollector } from './marketCollector.mjs'
 import { SnapshotStore } from './snapshotStore.mjs'
 import { PreparedSnapshotStore, compactHistoryForBrowser } from './preparedSnapshotStore.mjs'
-import { ThemeFlowService } from './themeFlowService.mjs'
+import { ThemeFlowServiceFive } from './themeFlowServiceFive.mjs'
 import { buildLiveThemePayload } from './themeLiveView.mjs'
 import { UsThemeFlowService } from './usThemeFlowService.mjs'
 import { QuizUniverseService } from './quizUniverseService.mjs'
@@ -23,7 +23,7 @@ const collector = new MarketCollector(client, {
 })
 const history = new SnapshotStore()
 const prepared = new PreparedSnapshotStore()
-const themeFlow = new ThemeFlowService(client, () => collector.snapshot, {
+const themeFlow = new ThemeFlowServiceFive(client, () => collector.snapshot, {
   refreshMs: Number(process.env.THEME_FLOW_REFRESH_MS || 60000),
   cachePath: process.env.THEME_CANDLE_CACHE_PATH || '/app/data/theme-candles.json',
 })
@@ -147,6 +147,7 @@ const server = http.createServer(async (request, response) => {
         featureNewsSeconds: Math.round(Number(process.env.FEATURE_NEWS_REFRESH_MS || 180000) / 1000),
         themeChartLiveSeconds: Math.round(primaryRefreshMs / 1000),
         themeCandleCollectionSeconds: Math.round(themeFlow.refreshMs / 1000),
+        themeCount: 5,
         dailyIssueFinalizeKst: '15:20',
         preparedPublishSeconds: 2,
         offSessionSeconds: 300,
@@ -182,7 +183,8 @@ const server = http.createServer(async (request, response) => {
 
   if (url.pathname === '/api/market/theme-stock-chart') {
     const symbol = String(url.searchParams.get('symbol') || '').trim()
-    const payload = themeFlow.stockChart(symbol)
+    const fallbackName = String(url.searchParams.get('name') || '').trim() || null
+    const payload = await themeFlow.stockChartReady(symbol, { fallbackName })
     return send(response, payload.ok ? 200 : 404, payload)
   }
 
@@ -241,8 +243,6 @@ function send(response, status, payload) {
 server.listen(port, '0.0.0.0', () => {
   console.log(`[market-backend] listening on :${port}`)
 
-  // Keep a last-known-good response available before any user arrives. Nginx serves
-  // these prepared JSON files directly, so a page view never starts data collection.
   void history.latest({ maxAgeHours: 36 })
     .then(async (cached) => {
       if (cached && !collector.snapshot) {
