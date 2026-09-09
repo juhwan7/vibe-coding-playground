@@ -13,17 +13,26 @@ test('domestic liquidity dashboard is the first page and light theme is default'
   await page.screenshot({ path: testInfo.outputPath('liquidity-dashboard.png'), fullPage: true })
 })
 
-test('domestic theme flow board, feature news and top100 rail render', async ({ page }, testInfo) => {
+test('domestic theme flow board, feature news and stock-only top100 rail render', async ({ page }, testInfo) => {
   await page.goto('/')
   await page.getByRole('button', { name: '국내 테마 흐름' }).click()
   await expect(page.getByTestId('feature-news')).toBeVisible()
   await expect(page.getByRole('heading', { name: '특징주 이슈' })).toBeVisible()
+  await expect(page.getByText(/오늘 오전 6시 이후/)).toBeVisible()
+  const timelineLayout = await page.getByTestId('feature-news-timeline').evaluate((node) => ({
+    display: getComputedStyle(node).display,
+    flow: getComputedStyle(node).gridAutoFlow,
+  }))
+  expect(timelineLayout.display).toBe('grid')
+  expect(timelineLayout.flow).toBe('column')
+
   await expect(page.getByTestId('theme-strength-board')).toBeVisible()
   await expect(page.getByRole('heading', { name: /테마 강도 비교/ })).toBeVisible()
-  await expect(page.getByText('TOP50 내 3종+')).toBeVisible()
-  await expect(page.getByText(/3분 평균 \+ 1시간 눈금/)).toBeVisible()
+  await expect(page.getByText('개별주(STOCK)만')).toBeVisible()
+  await expect(page.getByText(/4개 · 강도순 자동교체/)).toBeVisible()
+  await expect(page.getByText(/3분 변화 막대 · 2시간 눈금/)).toBeVisible()
   await expect(page.getByTestId('top100-ranking')).toBeVisible()
-  await expect(page.getByRole('heading', { name: '거래대금 TOP100' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '거래대금 TOP100 · 개별주만' })).toBeVisible()
 
   const details = page.locator('.deep-market-details')
   await details.locator(':scope > summary').click()

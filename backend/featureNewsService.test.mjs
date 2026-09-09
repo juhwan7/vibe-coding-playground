@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { collapseNewsIssues, isPromotionalNews, parseNewsRss, summarizeIssueTitle } from './featureNewsService.mjs'
+import { collapseNewsIssues, filterNewsSinceKstSix, isPromotionalNews, kstSixStart, parseNewsRss, summarizeIssueTitle } from './featureNewsService.mjs'
 
 test('parses feature-stock RSS items with source and real link path', () => {
   const xml = `<?xml version="1.0"?><rss><channel><item><title><![CDATA[[특징주] 삼성전자, 장중 강세 - 예시경제]]></title><link>https://news.google.com/rss/articles/example</link><pubDate>Tue, 08 Sep 2026 01:30:00 GMT</pubDate><source url="https://example.com">예시경제</source></item></channel></rss>`
@@ -18,6 +18,18 @@ test('turns article headlines into short issue labels', () => {
 test('filters obvious promotional or stock-room headlines', () => {
   assert.equal(isPromotionalNews({ title: '[광고] 무료 추천주 카톡방 입장', source: '예시' }), true)
   assert.equal(isPromotionalNews({ title: '[특징주] 삼성전자 HBM 수주 기대에 상승', source: '예시경제' }), false)
+})
+
+test('keeps only news published today from 06:00 KST', () => {
+  const now = Date.parse('2026-09-09T09:00:00+09:00')
+  assert.equal(new Date(kstSixStart(now)).toISOString(), '2026-09-08T21:00:00.000Z')
+  const filtered = filterNewsSinceKstSix([
+    { title: '이전', publishedAt: '2026-09-09T05:59:59+09:00' },
+    { title: '시작', publishedAt: '2026-09-09T06:00:00+09:00' },
+    { title: '장중', publishedAt: '2026-09-09T08:30:00+09:00' },
+    { title: '전날', publishedAt: '2026-09-08T14:00:00+09:00' },
+  ], now)
+  assert.deepEqual(filtered.map((item) => item.title), ['시작', '장중'])
 })
 
 test('collapses duplicate reports and keeps timeline order', () => {
