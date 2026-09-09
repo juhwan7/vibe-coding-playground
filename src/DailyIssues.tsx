@@ -111,7 +111,7 @@ function normalizeIntraday(value?: IntradayValue | null): IntradayDay[] {
 
 function normalizeDaily(value?: OhlcPoint[] | null) {
   if (!Array.isArray(value)) return []
-  return value.filter(isOhlcPoint).sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp)).slice(-30)
+  return value.filter(isOhlcPoint).sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp)).slice(-60)
 }
 
 function fmtChartPrice(value: number) {
@@ -159,16 +159,16 @@ function DailyOhlcChart({ daily, finalized }: { daily?: OhlcPoint[] | null; fina
   const y = (value: number) => pad.top + (hi - value) / range * plotHeight
   const step = plotWidth / Math.max(1, bars.length)
   const x = (index: number) => pad.left + step * (index + .5)
-  const tick = Math.max(2.2, Math.min(6, step * .28))
-  const gridValues = [hi, hi - range * .5, lo]
-  const labelIndexes = [...new Set([0, Math.floor((bars.length - 1) / 2), bars.length - 1])]
+  const candleWidth = Math.max(2.4, Math.min(8, step * .62))
+  const gridValues = [hi, hi - range * .25, hi - range * .5, hi - range * .75, lo]
+  const labelIndexes = [...new Set([0, Math.floor((bars.length - 1) * .25), Math.floor((bars.length - 1) * .5), Math.floor((bars.length - 1) * .75), bars.length - 1])]
 
   return <div className="daily-issues-chart-wrap daily-context" data-testid="daily-issues-daily-chart">
     <div className="daily-issues-chart-summary compact-chart-summary">
-      <span>최근 {bars.length}거래일 · 실제 일봉 OHLC · {finalized ? '당일 봉은 15:30 종가 기준' : '15:30 종가 OHLC 갱신 중'}</span>
+      <span>최근 {bars.length}거래일 · 실제 일봉 캔들 · {finalized ? '당일 봉은 15:30 종가 기준' : '15:30 종가 OHLC 갱신 중'}</span>
       <strong>{fmtChartPrice(bars.at(-1)!.close)}</strong>
     </div>
-    <svg className="daily-issues-daily-chart" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" role="img" aria-label="최근 거래일 실제 일봉 OHLC 막대차트">
+    <svg className="daily-issues-daily-chart" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" role="img" aria-label="최근 60거래일 실제 일봉 캔들차트">
       {gridValues.map((value) => {
         const gridY = y(value)
         return <g key={value.toFixed(6)}>
@@ -179,16 +179,20 @@ function DailyOhlcChart({ daily, finalized }: { daily?: OhlcPoint[] | null; fina
       {bars.map((point, index) => {
         const barX = x(index)
         const direction = barDirection(point)
+        const openY = y(point.open)
+        const closeY = y(point.close)
+        const rawBodyHeight = Math.abs(closeY - openY)
+        const bodyHeight = Math.max(1.5, rawBodyHeight)
+        const bodyY = Math.min(openY, closeY) - (bodyHeight - rawBodyHeight) / 2
         return <g key={point.timestamp} className={`daily-issues-ohlc-bar daily-issues-daily-bar ${direction}`}>
           <title>{`${shortDate(dateKey(point.timestamp))} 시 ${fmtChartPrice(point.open)} 고 ${fmtChartPrice(point.high)} 저 ${fmtChartPrice(point.low)} 종 ${fmtChartPrice(point.close)}`}</title>
           <line x1={barX} x2={barX} y1={y(point.high)} y2={y(point.low)} className="daily-issues-ohlc-wick" />
-          <line x1={barX - tick} x2={barX} y1={y(point.open)} y2={y(point.open)} className="daily-issues-ohlc-tick" />
-          <line x1={barX} x2={barX + tick} y1={y(point.close)} y2={y(point.close)} className="daily-issues-ohlc-tick" />
+          <rect className="daily-issues-candle-body" x={barX - candleWidth / 2} y={bodyY} width={candleWidth} height={bodyHeight} rx={.45} fill="currentColor" stroke="currentColor" strokeWidth={.8} vectorEffect="non-scaling-stroke" />
         </g>
       })}
       {labelIndexes.map((index) => <text key={index} x={x(index)} y={height - 7} textAnchor="middle" className="daily-issues-big-x-label">{shortDate(dateKey(bars[index].timestamp))}</text>)}
     </svg>
-    <div className="daily-issues-ohlc-legend"><span><i className="up" />상승</span><span><i className="down" />하락</span><small>세로선=고가↔저가 · 왼쪽=시가 · 오른쪽=종가</small></div>
+    <div className="daily-issues-ohlc-legend"><span><i className="up" />상승</span><span><i className="down" />하락</span><small>꼬리=고가↔저가 · 몸통=시가↔종가</small></div>
   </div>
 }
 
@@ -311,7 +315,7 @@ export default function DailyIssues() {
       <div>
         <p>DAILY MARKET ISSUE DIGEST / 15:30 CLOSE</p>
         <h1>금일 이슈 정리</h1>
-        <small>거래대금 상위 개별주를 15:30 정규장 종가 기준 등락률 순으로 정리합니다. 왼쪽에서는 선택 종목의 최근 30거래일 실제 일봉과 전일+오늘 실제 1분 OHLC 막대를 함께 보고, 오른쪽에서는 종목별 기업개요·테마·금일 상승 이유를 비교합니다. 직접 종목 기사가 없으면 같은 테마 상승 종목 기사 기반 추정임을 별도로 표시합니다.</small>
+        <small>거래대금 상위 개별주를 15:30 정규장 종가 기준 등락률 순으로 정리합니다. 왼쪽에서는 선택 종목의 최근 60거래일 실제 일봉 캔들과 전일+오늘 실제 1분 OHLC 막대를 함께 보고, 오른쪽에서는 종목별 기업개요·테마·금일 상승 이유를 비교합니다. 직접 종목 기사가 없으면 같은 테마 상승 종목 기사 기반 추정임을 별도로 표시합니다.</small>
       </div>
       <aside>
         <b className={finalized ? 'ready' : 'waiting'}>{statusText}</b>
@@ -330,7 +334,7 @@ export default function DailyIssues() {
         {selectedRow ? <>
           <div className="daily-issues-detail-head">
             <div>
-              <p>30-DAY DAILY + 2-DAY REAL 1M OHLC</p>
+              <p>60-DAY DAILY CANDLES + 2-DAY REAL 1M OHLC</p>
               <div className="daily-issues-detail-title"><h2>{selectedRow.name}</h2><span>{selectedRow.theme || '기타·개별주'}</span></div>
               <strong className="daily-issues-company-summary">{companyText(selectedRow)}</strong>
               <small>{selectedRow.symbol}{selectedRow.market ? ` · ${selectedRow.market}` : ''}</small>

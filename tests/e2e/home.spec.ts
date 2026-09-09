@@ -66,7 +66,7 @@ test('US theme flow page is available', async ({ page }, testInfo) => {
   await page.screenshot({ path: testInfo.outputPath('us-theme-flow-dashboard.png'), fullPage: true })
 })
 
-test('daily issue digest puts chart on the left and shows daily plus real one-minute OHLC bars', async ({ page }, testInfo) => {
+test('daily issue digest puts chart on the left and shows 60-day daily candles plus real one-minute OHLC bars', async ({ page }, testInfo) => {
   const intraday = [
     {
       date: '2026-09-08',
@@ -109,7 +109,7 @@ test('daily issue digest puts chart on the left and shows daily plus real one-mi
       body: JSON.stringify({
         ok: true,
         status: 'finalized',
-        schemaVersion: 4,
+        schemaVersion: 6,
         date: '2026-09-09',
         capturedAt: '2026-09-09T06:20:00.000Z',
         source: '테스트 실제 OHLC',
@@ -125,12 +125,13 @@ test('daily issue digest puts chart on the left and shows daily plus real one-mi
   await page.getByRole('button', { name: '금일 이슈 정리' }).click()
   await expect(page.getByTestId('daily-issues')).toBeVisible()
   await expect(page.getByRole('heading', { name: '금일 이슈 정리' })).toBeVisible()
-  await expect(page.getByText(/최근 30거래일 실제 일봉/)).toBeVisible()
+  await expect(page.getByText(/최근 60거래일 실제 일봉 캔들/)).toBeVisible()
   await expect(page.getByText(/전일\+오늘 실제 1분 OHLC/)).toBeVisible()
   await expect(page.getByTestId('daily-issues-chart-panel')).toContainText('삼성전자')
   await expect(page.getByTestId('daily-issues-daily-chart')).toBeVisible()
   await expect(page.getByTestId('daily-issues-intraday-chart')).toBeVisible()
   await expect(page.locator('.daily-issues-daily-bar')).toHaveCount(5)
+  await expect(page.locator('.daily-issues-candle-body')).toHaveCount(5)
   await expect(page.locator('.daily-issues-minute-bar')).toHaveCount(8)
   await expect(page.locator('.daily-issues-big-day-label')).toHaveText(['09.08', '09.09'])
 
@@ -153,6 +154,7 @@ test('daily issue digest puts chart on the left and shows daily plus real one-mi
   await page.getByRole('button', { name: /SK하이닉스/ }).click()
   await expect(page.getByTestId('daily-issues-chart-panel')).toContainText('SK하이닉스')
   await expect(page.locator('.daily-issues-daily-bar')).toHaveCount(5)
+  await expect(page.locator('.daily-issues-candle-body')).toHaveCount(5)
   await expect(page.locator('.daily-issues-minute-bar')).toHaveCount(8)
   await page.screenshot({ path: testInfo.outputPath('daily-issues.png'), fullPage: true })
 })
