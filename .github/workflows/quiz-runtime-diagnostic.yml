@@ -55,6 +55,9 @@ jobs:
           curl --silent --show-error --max-time 10 http://127.0.0.1:8080/data/quiz-prepared.json || true
           echo
           echo
+          echo '=== prepared quiz summary ==='
+          docker compose exec -T backend node -e "const fs=require('fs'); for (const p of ['/app/data/quiz-universe.json','/app/data/quiz-descriptions.json','/app/public-data/quiz-prepared.json']) { try { const s=fs.statSync(p); const j=JSON.parse(fs.readFileSync(p,'utf8')); console.log(p, {bytes:s.size, source:j.source, sourceDate:j.sourceDate, ok:j.ok, stale:j.stale, counts:j.counts, expectedCounts:j.expectedCounts, cacheStatus:j.cacheStatus, itemCount:j.items ? Object.keys(j.items).length : undefined, error:j.error}); } catch(e) { console.log(p, 'ERROR', e.message); } }" || true
+          echo
           echo '=== persistent quiz files ==='
           docker compose exec -T backend sh -c 'ls -lh /app/data/quiz-universe.json /app/data/quiz-descriptions.json /app/public-data/quiz-prepared.json 2>/dev/null || true; echo; head -c 1600 /app/data/quiz-universe.json 2>/dev/null || true' || true
           echo
