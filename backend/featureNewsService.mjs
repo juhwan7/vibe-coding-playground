@@ -90,6 +90,29 @@ function timeValue(value) {
   return Number.isFinite(parsed) ? parsed : 0
 }
 
+function kstDateKey(value) {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(new Date(value))
+  const year = parts.find((part) => part.type === 'year')?.value ?? '1970'
+  const month = parts.find((part) => part.type === 'month')?.value ?? '01'
+  const day = parts.find((part) => part.type === 'day')?.value ?? '01'
+  return `${year}-${month}-${day}`
+}
+
+export function kstSixStart(now = Date.now()) {
+  return Date.parse(`${kstDateKey(now)}T06:00:00+09:00`)
+}
+
+export function filterNewsSinceKstSix(items = [], now = Date.now()) {
+  const from = kstSixStart(now)
+  const until = Number(new Date(now)) + 5 * 60 * 1000
+  return items.filter((item) => {
+    const published = timeValue(item?.publishedAt)
+    return published >= from && published <= until
+  })
+}
+
 export function collapseNewsIssues(items = []) {
   const ordered = [...items]
     .filter((item) => item?.title && item?.link && !isPromotionalNews(item))
@@ -152,7 +175,7 @@ async function fetchQuery(query) {
 export class FeatureNewsService {
   constructor({ refreshMs = 60000 } = {}) {
     this.refreshMs = refreshMs
-    this.payload = { ok: false, updatedAt: null, items: [], error: null }
+    this.payload = { ok: false, updatedAt: null, windowStart: null, items: [], error: null }
     this.loading = null
   }
 
@@ -166,16 +189,32 @@ export class FeatureNewsService {
 
   async refresh() {
     try {
+      const now = Date.now()
       const batches = await Promise.all([
         fetchQuery('특징주 코스피 코스닥 when:1d'),
         fetchQuery('주식 급등 상한가 특징주 when:1d'),
       ])
-      const items = collapseNewsIssues(batches.flat()).slice(-24)
-      this.payload = { ok: true, updatedAt: new Date().toISOString(), source: 'Google News RSS · 중복/홍보 필터 · 원문 기사 연결', items, error: null }
+      const filtered = filterNewsSinceKstSix(batches.flat(), now)
+      const items = collapseNewsIssues(filtered).slice(-48)
+      this.payload = {
+        ok: true,
+        updatedAt: new Date(now).toISOString(),
+        windowStart: new Date(kstSixStart(now)).toISOString(),
+        source: 'Google News RSS · 당일 06:00 이후 · 중복/홍보 필터 · 원문 기사 연결',
+        items,
+        error: null,
+      }
       return this.payload
     } catch (error) {
       if (this.payload.items.length) return { ...this.payload, stale: true, error: error instanceof Error ? error.message : String(error) }
-      this.payload = { ok: false, updatedAt: new Date().toISOString(), source: 'Google News RSS · 중복/홍보 필터 · 원문 기사 연결', items: [], error: error instanceof Error ? error.message : String(error) }
+      this.payload = {
+        ok: false,
+        updatedAt: new Date().toISOString(),
+        windowStart: new Date(kstSixStart()).toISOString(),
+        source: 'Google News RSS · 당일 06:00 이후 · 중복/홍보 필터 · 원문 기사 연결',
+        items: [],
+        error: error instanceof Error ? error.message : String(error),
+      }
       return this.payload
     }
   }
