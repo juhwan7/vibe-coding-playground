@@ -1,0 +1,73 @@
+html { font-size: 17px; }
+body { font-size: 16px; }
+
+.global-nav .brand { font-size: 14px !important; letter-spacing: .10em; }
+.global-nav > div button,
+.manual-refresh,
+.theme-toggle { font-size: 13px !important; }
+.live-dot { font-size: 11px !important; }
+
+.feature-news-head h2,
+.theme-board-head h1,
+.daily-issues-head h1 { font-size: 24px !important; }
+.feature-news-head small,
+.theme-board-head small,
+.daily-issues-head p { font-size: 13px !important; line-height: 1.55 !important; }
+.feature-news-item h3 { font-size: 14px !important; line-height: 1.45 !important; }
+.feature-news-time time,
+.feature-news-source,
+.feature-news-tags { font-size: 11px !important; }
+
+.theme-rank-line h2 { font-size: 20px !important; }
+.theme-summary-cell > strong { font-size: 24px !important; }
+.theme-summary-cell p,
+.theme-summary-cell div,
+.theme-cell-title { font-size: 12px !important; }
+.theme-member-list > button { font-size: 13px !important; }
+.theme-member-list > button strong { font-size: 12px !important; }
+.theme-chart-name { font-size: 13px !important; }
+.theme-chart-metrics { font-size: 11px !important; }
+.theme-window-stats span { font-size: 11px !important; }
+.theme-window-stats strong { font-size: 14px !important; }
+.theme-method-strip { font-size: 12px !important; }
+
+.top100-head h2 { font-size: 19px !important; }
+.top100-list-head { font-size: 11px !important; }
+.top100-row > b { font-size: 12px !important; }
+.top100-stock strong { font-size: 14px !important; }
+.top100-stock small { font-size: 11px !important; }
+.top100-rate,
+.top100-amount { font-size: 13px !important; }
+
+.market-mini-panel > span { font-size: 12px !important; }
+.market-mini-panel > strong { font-size: 18px !important; }
+.market-mini-panel > b { font-size: 12px !important; }
+
+.data-status { font-size: 12px !important; }
+.market-strip span,
+.market-strip em { font-size: 12px !important; }
+.market-strip strong { font-size: 18px !important; }
+.panel-head p { font-size: 11px !important; }
+.panel-head h2 { font-size: 19px !important; }
+.panel-head > span,
+.panel-head > strong { font-size: 12px !important; }
+.comparison-card > span { font-size: 12px !important; }
+.comparison-card > strong { font-size: 20px !important; }
+.comparison-lines small { font-size: 11px !important; }
+.market-map-tile .map-title span { font-size: 15px !important; }
+.market-map-tile > strong { font-size: 21px !important; }
+.market-map-tile small { font-size: 11px !important; }
+.ranking-list button { font-size: 13px !important; }
+.ranking-list small { font-size: 11px !important; }
+
+.daily-issues-table,
+.daily-issue-row { font-size: 13px !important; }
+.daily-issue-name strong { font-size: 15px !important; }
+.daily-issue-summary { font-size: 13px !important; line-height: 1.5 !important; }
+
+@media (max-width: 900px) {
+  html { font-size: 16px; }
+  .feature-news-head h2,
+  .theme-board-head h1,
+  .daily-issues-head h1 { font-size: 21px !important; }
+}
