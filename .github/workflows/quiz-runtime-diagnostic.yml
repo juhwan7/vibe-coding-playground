@@ -32,6 +32,16 @@ jobs:
           curl --silent --show-error --max-time 20 http://127.0.0.1:8080/api/quiz/universe || true
           echo
           echo
+          echo '=== Naver index constituent probes ==='
+          JAR=/tmp/naver-quiz-cookies.txt
+          curl --silent --show-error --max-time 10 -c "$JAR" -A 'Mozilla/5.0' 'https://finance.naver.com/' >/dev/null || true
+          for code in KPI200 KQ150 KOSDAQ150; do
+            body="$(curl --silent --show-error --max-time 10 -b "$JAR" -c "$JAR" -A 'Mozilla/5.0' -e 'https://finance.naver.com/' "https://finance.naver.com/sise/entryJongmok.naver?indCode=${code}&page=1" 2>/dev/null || true)"
+            count="$(printf '%s' "$body" | grep -Eo 'item/main\.naver\?code=[0-9]{6}' | sort -u | wc -l | tr -d ' ')"
+            echo "$code page1 => unique stock links: $count"
+            printf '%s' "$body" | grep -Eo 'item/main\.naver\?code=[0-9]{6}[^>]*>[^<]+' | head -n 3 || true
+          done
+          echo
           echo '=== Toss KODEX 200 composition pagination probes ==='
           BASE='https://wts-info-api.tossinvest.com/api/v2/stock-infos/A069500/compositions'
           for suffix in '' '?limit=300' '?size=300' '?page=1&size=300' '?limit=300&offset=0' '?count=300' '?page=1&perPage=300'; do
@@ -39,8 +49,6 @@ jobs:
             body="$(curl --silent --show-error --max-time 15 -H 'Origin: https://tossinvest.com' -H 'Referer: https://tossinvest.com/' -H 'User-Agent: Mozilla/5.0' "$url" 2>/dev/null || true)"
             count="$(printf '%s' "$body" | grep -o '"stockCode"' | wc -l | tr -d ' ')"
             echo "${suffix:-base} => stockCode count: $count"
-            printf '%s' "$body" | head -c 450
-            echo
           done
           echo
           echo '=== prepared quiz now ==='
