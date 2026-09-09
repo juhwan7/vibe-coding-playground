@@ -6,6 +6,7 @@ const NON_INDIVIDUAL_RANKING_NAME = /(ETF|ETN|KODEX|TIGER|RISE|ACE|PLUS|SOL|HANA
 const TRACKING_START_SECONDS = 8 * 60 * 60
 const TRACKING_END_SECONDS = 20 * 60 * 60
 const NXT_AFTER_START_SECONDS = 15 * 60 * 60 + 30 * 60
+const NXT_FINALIZE_END_SECONDS = 20 * 60 * 60 + 30 * 60
 
 function number(value) {
   const parsed = Number(value)
@@ -40,6 +41,11 @@ export function nxtAfterMarketActive(date = new Date()) {
   return total >= NXT_AFTER_START_SECONDS && total <= TRACKING_END_SECONDS
 }
 
+export function nxtRealtimeRankingActive(date = new Date()) {
+  const total = kstSecondOfDay(date)
+  return total >= NXT_AFTER_START_SECONDS && total <= NXT_FINALIZE_END_SECONDS
+}
+
 export function marketSessionLabel(date = new Date()) {
   const { hour, minute } = kstParts(date)
   const total = hour * 60 + minute
@@ -47,6 +53,7 @@ export function marketSessionLabel(date = new Date()) {
   if (total >= 540 && total < 920) return 'KRX + NXT · 통합 장중'
   if (total >= 920 && total < 930) return 'KRX 종가 구간'
   if (total >= 930 && total <= 1200) return 'NXT AFTER · 15:30~20:00'
+  if (total > 1200 && total <= 1230) return 'NXT 종료 정산 · 최종 거래대금 확인'
   return '시장 대기 · 08:00~20:00 추적'
 }
 
@@ -241,8 +248,8 @@ export class MarketCollector {
 
     try {
       const symbols = encodeURIComponent(WATCH_SYMBOLS.join(','))
-      const afterMarket = nxtAfterMarketActive()
-      const realtimeRankingPromise = afterMarket
+      const realtimeRankingActive = nxtRealtimeRankingActive()
+      const realtimeRankingPromise = realtimeRankingActive
         ? this.client.request('/api/v1/rankings?type=MARKET_TRADING_AMOUNT&marketCountry=KR&duration=realtime&count=100').catch(() => null)
         : Promise.resolve(null)
       const [pricesPayload, rankingPayload, realtimeRankingPayload, indicesPayload] = await Promise.all([
@@ -346,7 +353,7 @@ export class MarketCollector {
           institutionNetContracts: null,
         },
         rankingDuration: realtimeRankings.length ? '1d+realtime' : '1d',
-        rankingPolicy: realtimeRankings.length ? 'per-symbol-max-with-realtime-after-15:30' : '1d',
+        rankingPolicy: realtimeRankings.length ? 'per-symbol-max-with-realtime-through-20:30-finalize' : '1d',
         rankedAt: realtimeRankingPayload?.result?.rankedAt ?? rankingPayload?.result?.rankedAt ?? null,
         rankingRankedAt: {
           daily: rankingPayload?.result?.rankedAt ?? null,
