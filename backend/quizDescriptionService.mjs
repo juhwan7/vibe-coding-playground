@@ -35,7 +35,6 @@ function htmlToText(html) {
 export function extractCompanyOverview(html) {
   const text = htmlToText(html)
   if (!text) return null
-
   const start = text.indexOf('기업개요')
   if (start < 0) return null
   const after = text.slice(start + '기업개요'.length)
@@ -44,9 +43,7 @@ export function extractCompanyOverview(html) {
     .replace(/^\s+/, '')
     .replace(/\s+/g, ' ')
     .trim()
-
   if (section.length < 20) return null
-
   const sentences = section
     .split(/(?<=[.!?])\s+/)
     .map((sentence) => sentence.trim())
@@ -124,12 +121,17 @@ export class QuizDescriptionService {
     preparedPath = '/app/public-data/quiz-prepared.json',
     refreshMs = 14 * 24 * 60 * 60 * 1000,
     fetchTimeoutMs = 6500,
+    bootstrapDelayMs = 5000,
+    bootstrapRetryMs = 15000,
+    bootstrapMaxAttempts = 20,
   } = {}) {
     this.cachePath = cachePath
     this.universeCachePath = universeCachePath
     this.preparedPath = preparedPath
     this.refreshMs = refreshMs
     this.fetchTimeoutMs = fetchTimeoutMs
+    this.bootstrapRetryMs = bootstrapRetryMs
+    this.bootstrapMaxAttempts = bootstrapMaxAttempts
     this.cache = new Map()
     this.loaded = false
     this.loading = null
@@ -144,6 +146,10 @@ export class QuizDescriptionService {
       startedAt: null,
       finishedAt: null,
     }
+    this.bootstrapTimer = setTimeout(() => {
+      void this.bootstrapPrewarm({ retries: this.bootstrapMaxAttempts, retryMs: this.bootstrapRetryMs }).catch(() => {})
+    }, Math.max(0, Number(bootstrapDelayMs) || 0))
+    this.bootstrapTimer.unref?.()
   }
 
   async load() {
@@ -400,10 +406,11 @@ export class QuizDescriptionService {
   }
 
   async bootstrapPrewarm({ retries = 20, retryMs = 15000 } = {}) {
-    for (let attempt = 0; attempt < retries; attempt += 1) {
+    const attempts = Math.max(0, Number(retries) || 0)
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
       const universe = await this.readUniverse()
       if (universe.targets.length >= 4) return this.prewarm(universe.targets)
-      if (attempt < retries - 1) await sleep(retryMs)
+      if (attempt < attempts - 1) await sleep(retryMs)
     }
     return this.status([])
   }
