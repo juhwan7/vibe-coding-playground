@@ -14,7 +14,7 @@ jobs:
   diagnose:
     if: github.ref == 'refs/heads/main'
     runs-on: [self-hosted, linux, ARM64, k-market-pi]
-    timeout-minutes: 3
+    timeout-minutes: 4
     steps:
       - name: Inspect live quiz runtime
         shell: bash
@@ -32,17 +32,23 @@ jobs:
           curl --silent --show-error --max-time 20 http://127.0.0.1:8080/api/quiz/universe || true
           echo
           echo
+          echo '=== Toss KODEX 200 composition pagination probes ==='
+          BASE='https://wts-info-api.tossinvest.com/api/v2/stock-infos/A069500/compositions'
+          for suffix in '' '?limit=300' '?size=300' '?page=1&size=300' '?limit=300&offset=0' '?count=300' '?page=1&perPage=300'; do
+            url="${BASE}${suffix}"
+            body="$(curl --silent --show-error --max-time 15 -H 'Origin: https://tossinvest.com' -H 'Referer: https://tossinvest.com/' -H 'User-Agent: Mozilla/5.0' "$url" 2>/dev/null || true)"
+            count="$(printf '%s' "$body" | grep -o '"stockCode"' | wc -l | tr -d ' ')"
+            echo "${suffix:-base} => stockCode count: $count"
+            printf '%s' "$body" | head -c 450
+            echo
+          done
+          echo
           echo '=== prepared quiz now ==='
           curl --silent --show-error --max-time 10 http://127.0.0.1:8080/data/quiz-prepared.json || true
           echo
           echo
           echo '=== persistent quiz files ==='
           docker compose exec -T backend sh -c 'ls -lh /app/data/quiz-universe.json /app/data/quiz-descriptions.json /app/public-data/quiz-prepared.json 2>/dev/null || true; echo; head -c 1600 /app/data/quiz-universe.json 2>/dev/null || true' || true
-          echo
-          echo
-          echo '=== wait for prewarm progress ==='
-          sleep 20
-          curl --silent --show-error --max-time 10 http://127.0.0.1:8080/data/quiz-prepared.json || true
           echo
           echo
           echo '=== backend quiz logs ==='
