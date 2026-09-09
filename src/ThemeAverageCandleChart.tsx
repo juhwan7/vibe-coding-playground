@@ -300,7 +300,7 @@ export default function ThemeAverageCandleChart({ theme, accent }: { theme: Them
     return (dayIndex * SESSION_MINUTES + minute) / domainMinutes * width
   }
   const xForMinute = (dayIndex: number, minute: number) => (dayIndex * SESSION_MINUTES + minute) / domainMinutes * width
-  const ticks = days.flatMap((day, dayIndex) => [8, 10, 12, 14, 16, 18, 20].map((hour) => ({ day, dayIndex, hour, minute: (hour - 8) * 60 })))
+  const ticks = days.flatMap((day, dayIndex) => Array.from({ length: 13 }, (_, index) => 8 + index).map((hour) => ({ day, dayIndex, hour, minute: (hour - 8) * 60 })))
   const lineSegments = splitThemeLineSegments(points)
   const latest = points.at(-1)!
   const latestX = xForTimestamp(latest.timestamp, latest.day)

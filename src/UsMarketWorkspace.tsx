@@ -55,7 +55,7 @@ const SESSION_START = 9 * 60 + 30
 const SESSION_MINUTES = 390
 const SESSION_START_SECONDS = SESSION_START * 60
 const SESSION_SECONDS = SESSION_MINUTES * 60
-const SESSION_TICKS = [570, 630, 690, 750, 810, 870, 930, 960]
+const SESSION_TICKS = [600, 660, 720, 780, 840, 900, 960]
 
 function fmtUsdAmount(value: number | null | undefined) {
   if (value == null || !Number.isFinite(value)) return '-'
@@ -199,11 +199,15 @@ function UsThemeChart({ theme, accent }: { theme: ThemeGroup; accent: string }) 
       {lo < 0 && hi > 0 && <line x1="0" x2={width} y1={y(0)} y2={y(0)} className="theme-zero-line" />}
       {days.flatMap((day, dayIndex) => SESSION_TICKS.map((minute) => ({ day, dayIndex, minute }))).map((tick) => {
         const x = xForMinute(tick.dayIndex, tick.minute)
-        const et = `${String(Math.floor(tick.minute / 60)).padStart(2, '0')}:${String(tick.minute % 60).padStart(2, '0')}`
+        const labelX = Math.max(24, Math.min(width - 24, x))
+        const et = `${String(Math.floor(tick.minute / 60)).padStart(2, '0')}:00`
         const kst = kstTickLabel(points, tick.day, tick.minute)
         return <g key={`${tick.day}-${tick.minute}`}>
-          <line x1={x} x2={x} y1={chartTop} y2={turnoverBottom} className={tick.minute === SESSION_START ? 'theme-day-line' : 'theme-hour-line'} />
-          <text x={Math.min(width - 62, x + 3)} y="193" className="theme-hour-label">{et}/{kst}</text>
+          <line x1={x} x2={x} y1={chartTop} y2={turnoverBottom} className="theme-hour-line" />
+          <text x={labelX} y="184" textAnchor="middle" className="theme-hour-label">
+            <tspan x={labelX}>ET {et}</tspan>
+            <tspan x={labelX} dy="9">KST {kst}</tspan>
+          </text>
         </g>
       })}
       {days.slice(1).map((day, index) => {
