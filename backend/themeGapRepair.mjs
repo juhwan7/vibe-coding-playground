@@ -41,20 +41,11 @@ function mergeCandles(existing = [], incoming = [], maxItems = 1600) {
     .slice(-maxItems)
 }
 
-function gapSignature(gaps = []) {
-  return gaps.map((gap) => `${gap.day}:${gap.edge}:${gap.from}:${gap.to}:${gap.gapMs}`).join('|')
-}
-
-function repairTarget(gaps = []) {
-  if (!gaps.length) return null
-  const latestDay = gaps.at(-1)?.day
-  return gaps.find((gap) => gap.day === latestDay) ?? gaps.at(-1)
-}
-
 /**
- * 이미 수집된 최신 구간부터 무작정 페이지를 거슬러 올라가지 않고,
- * 실제로 비어 있는 구간의 오른쪽 끝(to)을 Toss `before` 커서로 직접 지정한다.
- * 예: 오늘 첫 캔들이 13:00이면 before=13:00으로 조회해 오전 1분봉을 즉시 복구한다.
+ * 장중 15분+ 공백이 남아 있으면 Toss 캔들 API가 실제로 반환하는 nextBefore 커서를
+ * 처음부터 끝까지 따라가며 최근 2거래일 1분봉을 다시 수집한다.
+ * 임의 ISO 시각을 before 커서로 추정하지 않는다. 정상 동작 중인 금일이슈 차트와
+ * 같은 페이지네이션 규칙을 사용해 오전 전체 누락도 복구한다.
  */
 export async function repairMissingIntradayHistory({
   client,
@@ -63,46 +54,90 @@ export async function repairMissingIntradayHistory({
   maxItems = 1600,
   maxPages = 8,
 } = {}) {
-  let merged = mergeCandles(existing, [], maxItems)
+  const original = mergeCandles(existing, [], maxItems)
+  let merged = original
   let gaps = findIntradayCandleGaps(merged)
   const beforeGapCount = gaps.length
+
+  if (!gaps.length) {
+    return {
+      candles: merged,
+      repaired: false,
+      beforeGapCount: 0,
+      afterGapCount: 0,
+      pages: 0,
+      requests: 0,
+      exhausted: false,
+      error: null,
+      remainingGaps: [],
+    }
+  }
+
+  const pageLimit = Math.max(1, Number(maxPages) || 8)
+  // 복구 중에는 기존 캐시 크기보다 여유를 둬서 새 페이지가 과거 데이터를 밀어내지 않게 한다.
+  const workingLimit = Math.max(maxItems, pageLimit * 200 + 400)
+  let before = null
   let pages = 0
   let requests = 0
+  let exhausted = false
+  let error = null
 
-  while (gaps.length && pages < maxPages) {
-    const target = repairTarget(gaps)
-    if (!target?.to) break
-
-    const signatureBefore = gapSignature(gaps)
+  for (let page = 0; page < pageLimit && gaps.length; page += 1) {
     const query = new URLSearchParams({
       symbol: String(symbol ?? ''),
       interval: '1m',
       count: '200',
       adjusted: 'true',
-      before: target.to,
     })
+    if (before) query.set('before', before)
 
-    const payload = await client.request(`/api/v1/candles?${query.toString()}`)
-    requests += 1
+    let payload = null
+    try {
+      payload = await client.request(`/api/v1/candles?${query.toString()}`, {
+        priority: 'background',
+        dedupe: false,
+      })
+      requests += 1
+    } catch (requestError) {
+      error = requestError instanceof Error ? requestError.message : String(requestError)
+      break
+    }
+
     const incoming = candleRecords(payload)
-    if (!incoming.length) break
+    if (!incoming.length) {
+      exhausted = true
+      break
+    }
 
-    merged = mergeCandles(merged, incoming, maxItems)
+    merged = mergeCandles(merged, incoming, workingLimit)
     gaps = findIntradayCandleGaps(merged)
     pages += 1
-
     if (!gaps.length) break
-    if (gapSignature(gaps) === signatureBefore) break
+
+    const nextBefore = payload?.result?.nextBefore ?? null
+    if (!nextBefore || nextBefore === before) {
+      exhausted = true
+      break
+    }
+
+    before = nextBefore
     await sleep(80)
   }
 
+  const finalCandles = mergeCandles([], merged, maxItems)
+  const finalGaps = findIntradayCandleGaps(finalCandles)
+
   return {
-    candles: merged,
-    repaired: beforeGapCount > gaps.length,
+    candles: finalCandles,
+    repaired: finalGaps.length < beforeGapCount,
     beforeGapCount,
-    afterGapCount: gaps.length,
+    afterGapCount: finalGaps.length,
     pages,
     requests,
-    remainingGaps: gaps,
+    exhausted,
+    error,
+    oldestTimestamp: finalCandles[0]?.timestamp ?? null,
+    newestTimestamp: finalCandles.at(-1)?.timestamp ?? null,
+    remainingGaps: finalGaps,
   }
 }
