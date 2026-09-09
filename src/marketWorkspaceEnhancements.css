@@ -180,6 +180,49 @@
   white-space: nowrap;
 }
 
+/* 거래대금 상대 막대를 제거하고 기업 핵심사업 + TOP100 내 거래대금 비중을 보여준다. */
+.top100-list-head,
+.top100-row {
+  grid-template-columns: 34px minmax(0, 1fr) 62px 88px;
+}
+.top100-row { min-height: 64px; }
+.top100-company-summary {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  margin-top: 5px;
+  color: #78909e;
+  font-size: 9.5px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+.top100-company-summary > span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.top100-amount {
+  display: grid;
+  justify-items: end;
+  gap: 2px;
+  text-align: right;
+}
+.top100-amount > strong {
+  color: #c7d4dc;
+  font-size: 11px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+.top100-share {
+  color: #6f8796;
+  font-size: 8.5px;
+  font-weight: 800;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
 .deep-market-static-head {
   display: flex;
   align-items: center;
@@ -234,6 +277,12 @@
   background: color-mix(in srgb, var(--top100-theme-accent) 10%, #ffffff);
   color: color-mix(in srgb, var(--top100-theme-accent) 74%, #203246 26%);
 }
+:root[data-theme='light'] .top100-company-summary,
+:root:not([data-theme='dark']) .top100-company-summary { color: #62768a; }
+:root[data-theme='light'] .top100-amount > strong,
+:root:not([data-theme='dark']) .top100-amount > strong { color: #293f55; }
+:root[data-theme='light'] .top100-share,
+:root:not([data-theme='dark']) .top100-share { color: #6a7d90; }
 
 :root[data-theme='light'] .deep-market-static-head,
 :root:not([data-theme='dark']) .deep-market-static-head { border-color: #dce4ec; }
@@ -246,4 +295,6 @@
     padding: 2px 7px;
     font-size: 11px;
   }
+  .top100-company-summary { font-size: 11px; }
+  .top100-share { font-size: 10px; }
 }
