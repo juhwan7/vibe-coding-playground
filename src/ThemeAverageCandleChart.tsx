@@ -7,6 +7,7 @@ type ThemePoint = {
   day: string
   live?: boolean
   intervalSeconds?: number
+  filled?: boolean
 }
 
 type ThemeGroup = {
@@ -19,8 +20,8 @@ type ThemeGroup = {
 const SESSION_START = 8 * 60
 const SESSION_MINUTES = 12 * 60
 const TEN_SECOND_MS = 10 * 1000
-const LIVE_MAX_LINE_GAP_MS = 45 * 1000
-const HISTORY_MAX_LINE_GAP_MS = 15 * 60 * 1000
+const THIRTY_SECOND_MS = 30 * 1000
+const DISPLAY_MAX_LINE_GAP_MS = 90 * 1000
 const MAX_LIVE_POINTS = 4500
 const LIVE_STORAGE_PREFIX = 'k-market-theme-10s-v1:'
 
@@ -152,7 +153,69 @@ export function mergeThemeSeries(historical: ThemePoint[], live: ThemePoint[]) {
   return [...merged.values()].sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp))
 }
 
-export function splitThemeLineSegments<T extends { timestamp: string; day: string; live?: boolean }>(source: T[]) {
+export function resampleThemeSeries30s(source: ThemePoint[]) {
+  const valid = [...source]
+    .filter((point) => point?.timestamp && Number.isFinite(Date.parse(point.timestamp)) && Number.isFinite(point.value))
+    .sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp))
+  const grouped = new Map<string, ThemePoint[]>()
+
+  for (const point of valid) {
+    const day = point.day || kstDay(point.timestamp)
+    const dayPoints = grouped.get(day) ?? []
+    dayPoints.push(point)
+    grouped.set(day, dayPoints)
+  }
+
+  const result: ThemePoint[] = []
+  for (const [day, dayPoints] of [...grouped.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+    const latestByBucket = new Map<number, { point: ThemePoint; sourceTime: number }>()
+    for (const point of dayPoints) {
+      const sourceTime = Date.parse(point.timestamp)
+      const bucketTime = Math.floor(sourceTime / THIRTY_SECOND_MS) * THIRTY_SECOND_MS
+      const existing = latestByBucket.get(bucketTime)
+      if (!existing || sourceTime >= existing.sourceTime) {
+        latestByBucket.set(bucketTime, { point, sourceTime })
+      }
+    }
+
+    const bucketTimes = [...latestByBucket.keys()].sort((a, b) => a - b)
+    const firstBucket = bucketTimes[0]
+    const lastBucket = bucketTimes.at(-1)
+    if (firstBucket == null || lastBucket == null) continue
+
+    let previous: ThemePoint | null = null
+    for (let bucketTime = firstBucket; bucketTime <= lastBucket; bucketTime += THIRTY_SECOND_MS) {
+      const actual = latestByBucket.get(bucketTime)?.point
+      if (actual) {
+        previous = {
+          ...actual,
+          timestamp: new Date(bucketTime).toISOString(),
+          day,
+          closeValue: actual.value,
+          intervalSeconds: 30,
+          filled: false,
+        }
+        result.push(previous)
+        continue
+      }
+
+      if (previous) {
+        result.push({
+          ...previous,
+          timestamp: new Date(bucketTime).toISOString(),
+          day,
+          closeValue: previous.value,
+          intervalSeconds: 30,
+          filled: true,
+        })
+      }
+    }
+  }
+
+  return result
+}
+
+export function splitThemeLineSegments<T extends { timestamp: string; day: string }>(source: T[], maxGapMs = DISPLAY_MAX_LINE_GAP_MS) {
   const points = [...source].sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp))
   const segments: T[][] = []
   let current: T[] = []
@@ -161,7 +224,6 @@ export function splitThemeLineSegments<T extends { timestamp: string; day: strin
     const previous = current.at(-1)
     const currentTime = Date.parse(point.timestamp)
     const previousTime = previous ? Date.parse(previous.timestamp) : NaN
-    const maxGapMs = previous?.live && point.live ? LIVE_MAX_LINE_GAP_MS : HISTORY_MAX_LINE_GAP_MS
     const shouldBreak = Boolean(previous) && (
       previous?.day !== point.day
       || !Number.isFinite(currentTime)
@@ -201,15 +263,15 @@ export default function ThemeAverageCandleChart({ theme, accent }: { theme: Them
     })
   }, [theme.currentValue, theme.liveUpdatedAt, theme.name])
 
-  const usingLive10s = livePoints.length > 0
+  const hasLiveSource = livePoints.length > 0
   const points = useMemo(() => {
-    return mergeThemeSeries(theme.points ?? [], livePoints)
+    return resampleThemeSeries30s(mergeThemeSeries(theme.points ?? [], livePoints))
       .map((point) => ({ ...point, lineValue: point.value }))
       .filter((point) => Number.isFinite(point.lineValue))
       .sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp))
   }, [livePoints, theme.points])
 
-  if (!points.length) return <div className="theme-chart-empty">테마 거래대금 가중 10초 실시간 선차트 데이터 수집 중</div>
+  if (!points.length) return <div className="theme-chart-empty">테마 거래대금 가중 30초 선차트 데이터 수집 중</div>
 
   const width = 900
   const height = 258
@@ -247,10 +309,10 @@ export default function ThemeAverageCandleChart({ theme, accent }: { theme: Them
   const currentLabelHeight = 26
   const currentLabelX = latestX > width - currentLabelWidth - 14 ? latestX - currentLabelWidth - 10 : latestX + 10
   const currentLabelY = Math.max(chartTop + 4, Math.min(chartBottom - currentLabelHeight - 4, latestY - currentLabelHeight / 2))
-  const chartModeLabel = '테마 거래대금 가중 10초 실시간 선차트'
-  const chartModeDetail = usingLive10s
-    ? '기존 기록 + 10초 스냅샷 실시간 누적 · 실제 가중 등락률'
-    : '기존 기록 표시 · 첫 실시간 값부터 10초 단위로 이어집니다'
+  const chartModeLabel = '테마 거래대금 가중 30초 선차트'
+  const chartModeDetail = hasLiveSource
+    ? '10초 원천값 → 30초 표시 · 빈 구간은 직전값 유지'
+    : '기존 기록 → 30초 표시 · 빈 구간은 직전값 유지'
 
   return <div className="theme-chart-wrap theme-chart-emphasis" style={{ ['--theme-accent' as string]: accent }}>
     <div className="theme-chart-title">
@@ -260,7 +322,7 @@ export default function ThemeAverageCandleChart({ theme, accent }: { theme: Them
         <span>구간 저점 <b>{fmtRate(rawMin)}</b></span>
       </div>
     </div>
-    <svg className="theme-chart theme-chart-expanded" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" role="img" aria-label={`${theme.name} 구성종목 거래대금 가중 10초 실시간 선차트`}>
+    <svg className="theme-chart theme-chart-expanded" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" role="img" aria-label={`${theme.name} 구성종목 거래대금 가중 30초 선차트`}>
       {[.25, .5, .75].map((ratio) => <line key={ratio} x1="0" x2={width} y1={chartTop + (chartBottom - chartTop) * ratio} y2={chartTop + (chartBottom - chartTop) * ratio} className="theme-chart-grid" />)}
       {lo < 0 && hi > 0 && <line x1="0" x2={width} y1={y(0)} y2={y(0)} className="theme-zero-line" />}
       {ticks.map((tick) => {
