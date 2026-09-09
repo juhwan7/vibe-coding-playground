@@ -32,11 +32,10 @@ describe('appendTenSecondPoint', () => {
 })
 
 describe('mergeThemeSeries', () => {
-  it('기존 이력을 유지하면서 첫 실시간 원천 포인트부터 이어 붙인다', () => {
+  it('서버 이력의 마지막 시각 뒤에 실시간 원천 포인트를 이어 붙인다', () => {
     const merged = mergeThemeSeries([
       { timestamp: '2026-09-09T09:00:00+09:00', day: '2026-09-09', value: 1 },
       { timestamp: '2026-09-09T09:03:00+09:00', day: '2026-09-09', value: 1.2 },
-      { timestamp: '2026-09-09T09:06:00+09:00', day: '2026-09-09', value: 1.3 },
     ], [
       { timestamp: '2026-09-09T09:03:10+09:00', day: '2026-09-09', value: 1.21, live: true, intervalSeconds: 10 },
       { timestamp: '2026-09-09T09:03:20+09:00', day: '2026-09-09', value: 1.25, live: true, intervalSeconds: 10 },
@@ -52,6 +51,26 @@ describe('mergeThemeSeries', () => {
     expect(merged.at(-1)?.live).toBe(true)
   })
 
+  it('서버가 과거 누락을 백필하면 오래된 평평한 브라우저 실시간 값보다 복구 이력을 우선한다', () => {
+    const merged = mergeThemeSeries([
+      { timestamp: '2026-09-09T09:00:00+09:00', day: '2026-09-09', value: 1 },
+      { timestamp: '2026-09-09T09:03:00+09:00', day: '2026-09-09', value: 1.3 },
+      { timestamp: '2026-09-09T09:06:00+09:00', day: '2026-09-09', value: 1.5 },
+    ], [
+      { timestamp: '2026-09-09T09:00:10+09:00', day: '2026-09-09', value: 1, live: true, intervalSeconds: 10 },
+      { timestamp: '2026-09-09T09:03:10+09:00', day: '2026-09-09', value: 1, live: true, intervalSeconds: 10 },
+      { timestamp: '2026-09-09T09:07:10+09:00', day: '2026-09-09', value: 1.6, live: true, intervalSeconds: 10 },
+    ])
+
+    expect(merged.map((point) => point.timestamp)).toEqual([
+      '2026-09-09T09:00:00+09:00',
+      '2026-09-09T09:03:00+09:00',
+      '2026-09-09T09:06:00+09:00',
+      '2026-09-09T09:07:10+09:00',
+    ])
+    expect(merged.map((point) => point.value)).toEqual([1, 1.3, 1.5, 1.6])
+  })
+
   it('실시간 포인트가 아직 없어도 기존 이력은 그대로 반환한다', () => {
     const historical = [
       { timestamp: '2026-09-09T09:00:00+09:00', day: '2026-09-09', value: 1 },
@@ -62,7 +81,7 @@ describe('mergeThemeSeries', () => {
 })
 
 describe('resampleThemeSeries30s', () => {
-  it('기존 3분 간격 두 값 사이를 30초 간격으로 만들고 비어 있는 값은 직전 값으로 채운다', () => {
+  it('정상 3분 간격 두 값 사이는 30초 간격으로 만들고 직전 값으로 채운다', () => {
     const points = resampleThemeSeries30s([
       { timestamp: '2026-09-09T09:00:00+09:00', day: '2026-09-09', value: 1 },
       { timestamp: '2026-09-09T09:03:00+09:00', day: '2026-09-09', value: 1.3 },
@@ -99,15 +118,15 @@ describe('resampleThemeSeries30s', () => {
     expect(points[1].value).toBe(1.4)
   })
 
-  it('긴 장중 공백도 30초마다 이전 값으로 채워 선이 끊기지 않게 한다', () => {
+  it('3분을 넘는 긴 장중 공백은 직전값으로 꾸미지 않고 선을 분리한다', () => {
     const points = resampleThemeSeries30s([
       { timestamp: '2026-09-09T09:00:00+09:00', day: '2026-09-09', value: 2 },
-      { timestamp: '2026-09-09T09:02:00+09:00', day: '2026-09-09', value: 2.5 },
+      { timestamp: '2026-09-09T09:06:00+09:00', day: '2026-09-09', value: 2.5 },
     ])
 
-    expect(points).toHaveLength(5)
-    expect(points.map((point) => point.value)).toEqual([2, 2, 2, 2, 2.5])
-    expect(splitThemeLineSegments(points)).toHaveLength(1)
+    expect(points).toHaveLength(2)
+    expect(points.map((point) => point.value)).toEqual([2, 2.5])
+    expect(splitThemeLineSegments(points)).toHaveLength(2)
   })
 
   it('날짜가 바뀌는 구간은 이전 값으로 채워서 연결하지 않는다', () => {
