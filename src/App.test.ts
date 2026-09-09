@@ -13,14 +13,14 @@ describe('money flow score', () => {
 
 describe('index company-description quiz', () => {
   const pool = [
-    { code: '005930', name: '삼성전자' },
-    { code: '000660', name: 'SK하이닉스' },
-    { code: '005380', name: '현대차' },
-    { code: '000270', name: '기아' },
-    { code: '035420', name: 'NAVER' },
+    { code: '005930', name: '삼성전자', description: '메모리와 시스템 반도체를 생산함.' },
+    { code: '000660', name: 'SK하이닉스', description: '메모리 반도체를 생산함.' },
+    { code: '005380', name: '현대차', description: '완성차를 생산하고 판매함.' },
+    { code: '000270', name: '기아', description: '자동차를 생산하고 판매함.' },
+    { code: '035420', name: 'NAVER', description: '인터넷 플랫폼 서비스를 운영함.' },
   ]
 
-  it('uses every available index stock by default and gives four company options', () => {
+  it('uses every available prepared stock by default and gives four company options', () => {
     const questions = buildQuizRound(pool)
     expect(questions).toHaveLength(pool.length)
     expect(questions.every((question) => question.options.length === 4)).toBe(true)
