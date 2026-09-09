@@ -1,24 +1,46 @@
+import { useEffect, useMemo, useState } from 'react'
+
 type ThemePoint = {
   timestamp: string
   value: number
   closeValue?: number | null
   day: string
+  live?: boolean
+  intervalSeconds?: number
 }
 
 type ThemeGroup = {
   name: string
   points: ThemePoint[]
+  currentValue?: number | null
+  liveUpdatedAt?: string | null
 }
 
 const SESSION_START = 8 * 60
 const SESSION_MINUTES = 12 * 60
-const MAX_LINE_GAP_MS = 15 * 60 * 1000
+const TEN_SECOND_MS = 10 * 1000
+const MAX_LINE_GAP_MS = 45 * 1000
+const MAX_LIVE_POINTS = 4500
+const LIVE_STORAGE_PREFIX = 'k-market-theme-10s-v1:'
 
 function timeParts(iso: string) {
-  const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(new Date(iso))
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Seoul',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).formatToParts(new Date(iso))
   const hour = Number(parts.find((part) => part.type === 'hour')?.value ?? 8)
   const minute = Number(parts.find((part) => part.type === 'minute')?.value ?? 0)
-  return { hour, minute, total: hour * 60 + minute }
+  const second = Number(parts.find((part) => part.type === 'second')?.value ?? 0)
+  return { hour, minute, second, total: hour * 60 + minute + second / 60 }
+}
+
+function kstDay(iso: string) {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(new Date(iso))
 }
 
 function compactDay(day?: string | null) {
@@ -27,9 +49,86 @@ function compactDay(day?: string | null) {
   return `${month}/${date}`
 }
 
+function displayClock(iso?: string | null) {
+  if (!iso) return '-'
+  return new Intl.DateTimeFormat('ko-KR', {
+    timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+  }).format(new Date(iso))
+}
+
 function fmtRate(value: number | null | undefined) {
   if (value == null || !Number.isFinite(value)) return '-'
   return `${value > 0 ? '+' : ''}${value.toFixed(2)}%`
+}
+
+function storageKey(themeName: string) {
+  return `${LIVE_STORAGE_PREFIX}${encodeURIComponent(themeName)}`
+}
+
+function normalizeStoredPoint(point: Partial<ThemePoint>): ThemePoint | null {
+  const timestamp = String(point.timestamp ?? '')
+  const value = Number(point.value)
+  if (!Number.isFinite(Date.parse(timestamp)) || !Number.isFinite(value)) return null
+  return {
+    timestamp,
+    value,
+    closeValue: value,
+    day: point.day || kstDay(timestamp),
+    live: true,
+    intervalSeconds: 10,
+  }
+}
+
+function readLiveSeries(themeName: string) {
+  if (typeof window === 'undefined') return [] as ThemePoint[]
+  try {
+    const raw = window.localStorage.getItem(storageKey(themeName))
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    const today = kstDay(new Date().toISOString())
+    return parsed
+      .map((point) => normalizeStoredPoint(point))
+      .filter((point): point is ThemePoint => Boolean(point) && point.day === today)
+      .sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp))
+      .slice(-MAX_LIVE_POINTS)
+  } catch {
+    return []
+  }
+}
+
+function writeLiveSeries(themeName: string, points: ThemePoint[]) {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(storageKey(themeName), JSON.stringify(points.slice(-MAX_LIVE_POINTS)))
+  } catch {
+    // 저장공간이 부족해도 현재 탭의 실시간 차트는 계속 동작한다.
+  }
+}
+
+export function appendTenSecondPoint(source: ThemePoint[], timestamp: string, value: number) {
+  const parsed = Date.parse(timestamp)
+  if (!Number.isFinite(parsed) || !Number.isFinite(value)) return [...source]
+  const bucketTimestamp = new Date(Math.floor(parsed / TEN_SECOND_MS) * TEN_SECOND_MS).toISOString()
+  const day = kstDay(bucketTimestamp)
+  const map = new Map<string, ThemePoint>()
+
+  for (const point of source) {
+    if (point.day !== day || !Number.isFinite(Date.parse(point.timestamp)) || !Number.isFinite(point.value)) continue
+    map.set(point.timestamp, point)
+  }
+  map.set(bucketTimestamp, {
+    timestamp: bucketTimestamp,
+    value,
+    closeValue: value,
+    day,
+    live: true,
+    intervalSeconds: 10,
+  })
+
+  return [...map.values()]
+    .sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp))
+    .slice(-MAX_LIVE_POINTS)
 }
 
 export function splitThemeLineSegments<T extends { timestamp: string; day: string }>(source: T[], maxGapMs = MAX_LINE_GAP_MS) {
@@ -60,12 +159,36 @@ export function splitThemeLineSegments<T extends { timestamp: string; day: strin
 }
 
 export default function ThemeAverageCandleChart({ theme, accent }: { theme: ThemeGroup; accent: string }) {
-  const points = (theme.points ?? [])
-    .map((point) => ({ ...point, lineValue: point.value }))
-    .filter((point) => Number.isFinite(point.lineValue))
-    .sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp))
+  const [livePoints, setLivePoints] = useState<ThemePoint[]>(() => readLiveSeries(theme.name))
 
-  if (!points.length) return <div className="theme-chart-empty">테마 거래대금 가중 3분 선차트 데이터 수집 중</div>
+  useEffect(() => {
+    setLivePoints(readLiveSeries(theme.name))
+  }, [theme.name])
+
+  useEffect(() => {
+    const timestamp = theme.liveUpdatedAt
+    const value = theme.currentValue
+    if (!timestamp || value == null || !Number.isFinite(value)) return
+    setLivePoints((current) => {
+      const next = appendTenSecondPoint(current, timestamp, value)
+      const before = current.at(-1)
+      const after = next.at(-1)
+      if (before?.timestamp === after?.timestamp && before?.value === after?.value && current.length === next.length) return current
+      writeLiveSeries(theme.name, next)
+      return next
+    })
+  }, [theme.currentValue, theme.liveUpdatedAt, theme.name])
+
+  const usingLive10s = livePoints.length >= 2
+  const points = useMemo(() => {
+    const source = usingLive10s ? livePoints : (theme.points ?? [])
+    return source
+      .map((point) => ({ ...point, lineValue: point.value }))
+      .filter((point) => Number.isFinite(point.lineValue))
+      .sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp))
+  }, [livePoints, theme.points, usingLive10s])
+
+  if (!points.length) return <div className="theme-chart-empty">테마 거래대금 가중 10초 실시간 선차트 데이터 수집 중</div>
 
   const width = 900
   const height = 258
@@ -103,16 +226,22 @@ export default function ThemeAverageCandleChart({ theme, accent }: { theme: Them
   const currentLabelHeight = 26
   const currentLabelX = latestX > width - currentLabelWidth - 14 ? latestX - currentLabelWidth - 10 : latestX + 10
   const currentLabelY = Math.max(chartTop + 4, Math.min(chartBottom - currentLabelHeight - 4, latestY - currentLabelHeight / 2))
+  const chartModeLabel = usingLive10s
+    ? '테마 거래대금 가중 10초 실시간 선차트'
+    : '10초 실시간 선차트 준비 중'
+  const chartModeDetail = usingLive10s
+    ? '10초 스냅샷 · 실제 가중 등락률'
+    : '첫 2개 실시간 포인트가 쌓일 때까지 기존 기록 임시 표시'
 
   return <div className="theme-chart-wrap theme-chart-emphasis" style={{ ['--theme-accent' as string]: accent }}>
     <div className="theme-chart-title">
-      <span className="theme-chart-name">테마 거래대금 가중 3분 선차트 <small>강한 자동 확대축 · 실제 가중 등락률</small></span>
+      <span className="theme-chart-name">{chartModeLabel} <small>{chartModeDetail}</small></span>
       <div className="theme-chart-metrics">
         <span>구간 고점 <b>{fmtRate(rawMax)}</b></span>
         <span>구간 저점 <b>{fmtRate(rawMin)}</b></span>
       </div>
     </div>
-    <svg className="theme-chart theme-chart-expanded" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" role="img" aria-label={`${theme.name} 구성종목 거래대금 가중 3분 선차트`}>
+    <svg className="theme-chart theme-chart-expanded" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" role="img" aria-label={`${theme.name} 구성종목 거래대금 가중 ${usingLive10s ? '10초 실시간' : '준비 중'} 선차트`}>
       {[.25, .5, .75].map((ratio) => <line key={ratio} x1="0" x2={width} y1={chartTop + (chartBottom - chartTop) * ratio} y2={chartTop + (chartBottom - chartTop) * ratio} className="theme-chart-grid" />)}
       {lo < 0 && hi > 0 && <line x1="0" x2={width} y1={y(0)} y2={y(0)} className="theme-zero-line" />}
       {ticks.map((tick) => {
@@ -133,7 +262,7 @@ export default function ThemeAverageCandleChart({ theme, accent }: { theme: Them
       })}
       <circle cx={latestX} cy={latestY} r="9" className="theme-average-current-halo" aria-hidden="true" />
       <circle cx={latestX} cy={latestY} r="4.8" className="theme-average-current-dot">
-        <title>{`${compactDay(latest.day)} · ${fmtRate(latest.lineValue)}`}</title>
+        <title>{`${compactDay(latest.day)} ${displayClock(latest.timestamp)} · ${fmtRate(latest.lineValue)}`}</title>
       </circle>
       <g className="theme-current-label" transform={`translate(${currentLabelX} ${currentLabelY})`}>
         <rect width={currentLabelWidth} height={currentLabelHeight} rx="6" />
