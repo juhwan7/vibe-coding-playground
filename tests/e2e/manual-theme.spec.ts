@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test'
 
+test.use({ serviceWorkers: 'block' })
+
 test('국내 테마 화면에서 재사용 테마를 만들고 종목에 수동 지정할 수 있다', async ({ page }) => {
   const state = {
     updatedAt: null as string | null,
@@ -78,6 +80,7 @@ test('국내 테마 화면에서 재사용 테마를 만들고 종목에 수동 
   await expect(manager).toBeVisible()
   await expect(manager.getByRole('heading', { name: /수동 테마 사전/ })).toBeVisible()
   await expect(manager.getByText('원전', { exact: true }).first()).toBeVisible()
+  await expect(manager.getByLabel('종목 선택')).toBeEnabled()
 
   await manager.getByLabel('새 테마').fill('대미투자')
   await manager.getByRole('button', { name: '+ 테마 추가' }).click()
@@ -85,10 +88,10 @@ test('국내 테마 화면에서 재사용 테마를 만들고 종목에 수동 
 
   await manager.getByLabel('종목 선택').selectOption('034020')
   await manager.getByText('원전', { exact: true }).last().click()
-  await manager.getByText('대미투자', { exact: true }).last().click()
+  // 새 테마는 생성 직후 선택 후보에 추가되므로 현재 종목에 함께 체크된 상태다.
   await manager.getByRole('button', { name: '선택 테마 등록' }).click()
 
-  await expect(manager).toContainText('두산에너빌리티 → 원전, 대미투자 등록 완료')
+  await expect(manager).toContainText('두산에너빌리티 → 대미투자, 원전 등록 완료')
   await expect(manager).toContainText('수동 지정 사용 중')
 
   await manager.getByRole('button', { name: '자동분류로 복귀' }).click()
