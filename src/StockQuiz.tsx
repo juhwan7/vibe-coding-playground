@@ -194,10 +194,6 @@ export default function StockQuiz() {
       kosdaq150: buildQuizRound(pools.kosdaq150.slice(0, 150), Math.min(150, pools.kosdaq150.length)),
     }
     setPreparedRounds(nextRounds)
-    for (const nextPool of ['kospi200', 'kosdaq150'] as QuizPool[]) {
-      const first = nextRounds[nextPool][0]
-      if (first) void fetchDescriptionBatch(first.options).catch(() => {})
-    }
   }, [pools, universeLoading])
 
   const start = (nextPool: QuizPool) => {
@@ -244,23 +240,6 @@ export default function StockQuiz() {
     return () => { active = false }
   }, [question, descriptionAttempt])
 
-  useEffect(() => {
-    const upcoming = questions[questionIndex + 1]
-    if (!upcoming) return
-    let active = true
-    const timer = window.setTimeout(() => {
-      void fetchDescriptionBatch(upcoming.options)
-        .then(() => {
-          if (active) setDescriptions((current) => ({ ...current, ...descriptionSnapshot() }))
-        })
-        .catch(() => {})
-    }, 0)
-    return () => {
-      active = false
-      window.clearTimeout(timer)
-    }
-  }, [questionIndex, questions])
-
   const choiceDescriptions = useMemo(() => {
     if (!question) return []
     return question.options.map((option) => {
@@ -270,6 +249,32 @@ export default function StockQuiz() {
   }, [question, descriptions])
 
   const ready = Boolean(question && choiceDescriptions.length === 4 && choiceDescriptions.every(Boolean))
+
+  useEffect(() => {
+    if (!ready) return
+    const upcoming = questions.slice(questionIndex + 1, questionIndex + 3)
+    if (!upcoming.length) return
+
+    let active = true
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        for (const nextQuestion of upcoming) {
+          try {
+            await fetchDescriptionBatch(nextQuestion.options)
+            if (!active) return
+            setDescriptions((current) => ({ ...current, ...descriptionSnapshot() }))
+          } catch {
+            // Prefetch failure must never block the current question.
+          }
+        }
+      })()
+    }, 0)
+
+    return () => {
+      active = false
+      window.clearTimeout(timer)
+    }
+  }, [ready, questionIndex, questions])
 
   const choose = (choiceIndex: number) => {
     if (selected !== null || !question || !ready) return
@@ -288,7 +293,7 @@ export default function StockQuiz() {
     <section className="index-quiz-select">
       <p className="index-quiz-eyebrow">STOCK COMPANY QUIZ</p>
       <h1>어느 시장의 기업을 더 많이 알고 있을까?</h1>
-      <p className="index-quiz-lead">KOSPI 200과 KOSDAQ 150을 따로 선택합니다. 종목명 목록은 미리 준비하고, 기업 설명은 현재 문제와 다음 문제에 필요한 4개씩만 앞서 불러옵니다.</p>
+      <p className="index-quiz-lead">페이지가 열리면 KOSPI 200·KOSDAQ 150 종목명만 먼저 준비합니다. 시장을 선택하면 현재 문제의 기업 설명 4개를 우선 불러오고, 준비가 끝난 뒤 다음 문제와 다다음 문제를 4개씩 미리 받아둡니다.</p>
       <div className="index-pool-grid">
         <button onClick={() => start('kospi200')} data-testid="quiz-pool-kospi200" disabled={universeLoading && livePools.kospi200.length < 4}><span>KOSPI</span><strong>KOSPI 200</strong><em>{livePools.kospi200.length || pools.kospi200.length}개 종목 전체 출제</em><small>{usingFallback.kospi200 ? 'KRX 연결 전 임시 목록' : '현재 KRX 지수 구성종목 기준'}</small></button>
         <button onClick={() => start('kosdaq150')} data-testid="quiz-pool-kosdaq150" disabled={universeLoading && livePools.kosdaq150.length < 4}><span>KOSDAQ</span><strong>KOSDAQ 150</strong><em>{livePools.kosdaq150.length || pools.kosdaq150.length}개 종목 전체 출제</em><small>{usingFallback.kosdaq150 ? 'KRX 연결 전 임시 목록' : '현재 KRX 지수 구성종목 기준'}</small></button>
@@ -314,7 +319,7 @@ export default function StockQuiz() {
         <p>아래 4개 기업 설명 중 이 종목에 해당하는 설명을 선택하세요.</p>
       </article>
 
-      {descriptionLoading && !ready && <div className="index-description-state"><strong>기업개요 불러오는 중</strong><span>이 문제에 필요한 4개 설명만 준비하고 있습니다. 다음 문제 설명은 뒤에서 미리 불러옵니다.</span></div>}
+      {descriptionLoading && !ready && <div className="index-description-state"><strong>기업개요 불러오는 중</strong><span>현재 문제에 필요한 4개 설명만 먼저 준비하고 있습니다. 완료되면 다음 두 문제를 뒤에서 미리 불러옵니다.</span></div>}
       {descriptionError && !ready && <div className="index-description-state error"><strong>기업개요를 아직 불러오지 못했습니다.</strong><span>{descriptionError}</span><button onClick={() => setDescriptionAttempt((value) => value + 1)}>다시 불러오기</button></div>}
 
       <div className="index-quiz-choices description-choices">
