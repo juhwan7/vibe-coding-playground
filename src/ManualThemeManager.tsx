@@ -147,13 +147,15 @@ export default function ManualThemeManager() {
     }
   }, [host, loadAdmin, loadRankings])
 
+  const selectedAssignmentKey = JSON.stringify(admin?.assignments?.[selectedSymbol] ?? [])
+
   useEffect(() => {
     if (!selectedSymbol) {
       setSelectedThemes([])
       return
     }
-    setSelectedThemes([...(admin?.assignments?.[selectedSymbol] ?? [])])
-  }, [selectedSymbol, admin?.updatedAt, admin?.assignments])
+    setSelectedThemes(JSON.parse(selectedAssignmentKey) as string[])
+  }, [selectedSymbol, selectedAssignmentKey])
 
   const selectedStock = useMemo(
     () => rankings.find((item) => item.symbol === selectedSymbol) ?? null,
@@ -341,7 +343,7 @@ export default function ManualThemeManager() {
 
     {(message || error) && <div className={`manual-theme-feedback${error ? ' is-error' : ''}`} role="status">
       {error ?? message}
-    </div>}
+    </div>
   </section>
 
   return createPortal(content, host)
