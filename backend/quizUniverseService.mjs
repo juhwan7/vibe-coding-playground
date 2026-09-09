@@ -2,6 +2,7 @@ import fs from 'node:fs/promises'
 
 const KRX_JSON_URL = 'https://data.krx.co.kr/comm/bldAttendant/getJsonData.cmd'
 const KRX_BUSINESS_DAY_URL = 'https://data.krx.co.kr/comm/bldAttendant/executeForResourceBundle.cmd'
+export const KRX_INDEX_CONSTITUENTS_BLD = 'dbms/MDC/STAT/standard/MDCSTAT00701'
 const KRX_HEADERS = {
   'User-Agent': 'Mozilla/5.0 (X11; Linux aarch64) AppleWebKit/537.36 Chrome/126 Safari/537.36',
   Referer: 'https://data.krx.co.kr/contents/MDC/MDI/outerLoader/index.cmd',
@@ -54,7 +55,7 @@ async function latestBusinessDay() {
 async function fetchIndexMembers(code, date, expected) {
   const { indIdx, indIdx2 } = splitIndexCode(code)
   const body = new URLSearchParams({
-    bld: 'dbms/MDC/STAT/standard/MDCSTAT00601',
+    bld: KRX_INDEX_CONSTITUENTS_BLD,
     indIdx,
     indIdx2,
     param1indIdx_finder_equidx0_1: '',

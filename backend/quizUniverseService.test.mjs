@@ -1,6 +1,10 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { capIndexMembers, filterStockRows, splitIndexCode } from './quizUniverseService.mjs'
+import { KRX_INDEX_CONSTITUENTS_BLD, capIndexMembers, filterStockRows, splitIndexCode } from './quizUniverseService.mjs'
+
+test('uses the KRX index-constituents endpoint instead of the all-index quote endpoint', () => {
+  assert.equal(KRX_INDEX_CONSTITUENTS_BLD, 'dbms/MDC/STAT/standard/MDCSTAT00701')
+})
 
 test('splits KRX index codes for KOSPI200 and KOSDAQ150', () => {
   assert.deepEqual(splitIndexCode('1028'), { indIdx: '1', indIdx2: '028' })
