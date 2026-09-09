@@ -26,7 +26,45 @@ export function prioritizeQuizTargets(universe = {}) {
   return result
 }
 
+export function recoverQuizUniverseFromDescriptionCache(service) {
+  const entries = service?.cache instanceof Map ? [...service.cache.values()] : []
+  const build = (pool, limit) => {
+    const seen = new Set()
+    return entries.flatMap((item) => {
+      const code = String(item?.code ?? '').trim()
+      const name = String(item?.name ?? '').trim()
+      if (item?.pool !== pool || !/^\d{6}$/.test(code) || !name || !item?.description || seen.has(code)) return []
+      seen.add(code)
+      return [{ code, name, pool }]
+    }).slice(0, limit)
+  }
+
+  const kospi200 = build('kospi200', 200)
+  const kosdaq150 = build('kosdaq150', 150)
+  if (kospi200.length < 4 || kosdaq150.length < 4) return null
+
+  const counts = { kospi200: kospi200.length, kosdaq150: kosdaq150.length }
+  const payload = {
+    ok: true,
+    source: 'Raspberry Pi 마지막 완성 종목퀴즈 캐시 복구',
+    sourceDate: null,
+    universeMode: 'description-cache-recovery',
+    benchmarkProxy: false,
+    recovered: true,
+    stale: true,
+    etfExcluded: true,
+    updatedAt: new Date().toISOString(),
+    expectedCounts: { kospi200: 200, kosdaq150: 150 },
+    counts,
+    kospi200,
+    kosdaq150,
+    warning: '실시간 지수 구성종목 조회가 실패해 마지막으로 검증·저장된 기업설명 캐시의 지수 소속을 사용합니다.',
+  }
+  return { payload, kospi200, kosdaq150, targets: prioritizeQuizTargets({ kospi200, kosdaq150 }) }
+}
+
 async function readOrFetchUniverse(service) {
+  await service.load?.().catch(() => {})
   let universe = await service.readUniverse()
   if ((universe.targets?.length ?? 0) < 4) {
     try {
@@ -39,6 +77,14 @@ async function readOrFetchUniverse(service) {
       console.warn('[market-backend] quiz universe bootstrap failed', error instanceof Error ? error.message : error)
     }
     universe = await service.readUniverse()
+  }
+
+  if ((universe.targets?.length ?? 0) < 4) {
+    const recovered = recoverQuizUniverseFromDescriptionCache(service)
+    if (recovered) {
+      console.warn(`[market-backend] quiz universe recovered from description cache: KOSPI200 ${recovered.kospi200.length}, KOSDAQ150 ${recovered.kosdaq150.length}`)
+      return recovered
+    }
   }
 
   return {
