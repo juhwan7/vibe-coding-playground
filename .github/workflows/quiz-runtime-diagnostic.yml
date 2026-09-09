@@ -25,39 +25,22 @@ jobs:
           echo '=== deployed checkout ==='
           git rev-parse HEAD || true
           echo
-          echo '=== running backend contains quiz fallback ==='
-          docker compose exec -T backend sh -c "grep -n 'benchmark-etf-composition-fallback\|KODEX 200' /app/quizUniverseService.mjs | head -n 20" || true
-          echo
           echo '=== quiz universe API ==='
           curl --silent --show-error --max-time 20 http://127.0.0.1:8080/api/quiz/universe || true
           echo
           echo
-          echo '=== Naver index constituent probes ==='
-          JAR=/tmp/naver-quiz-cookies.txt
-          curl --silent --show-error --max-time 10 -c "$JAR" -A 'Mozilla/5.0' 'https://finance.naver.com/' >/dev/null || true
-          for code in KPI200 KQ150 KOSDAQ150; do
-            body="$(curl --silent --show-error --max-time 10 -b "$JAR" -c "$JAR" -A 'Mozilla/5.0' -e 'https://finance.naver.com/' "https://finance.naver.com/sise/entryJongmok.naver?indCode=${code}&page=1" 2>/dev/null || true)"
-            count="$(printf '%s' "$body" | grep -Eo 'item/main\.naver\?code=[0-9]{6}' | sort -u | wc -l | tr -d ' ')"
-            echo "$code page1 => unique stock links: $count"
-            printf '%s' "$body" | grep -Eo 'item/main\.naver\?code=[0-9]{6}[^>]*>[^<]+' | head -n 3 || true
-          done
-          echo
-          echo '=== Toss KODEX composition response shape ==='
-          for ETF in A069500 A229200; do
-            body="$(curl --silent --show-error --max-time 15 -H 'Origin: https://tossinvest.com' -H 'Referer: https://tossinvest.com/' -H 'User-Agent: Mozilla/5.0' "https://wts-info-api.tossinvest.com/api/v2/stock-infos/${ETF}/compositions" 2>/dev/null || true)"
-            printf '%s' "$body" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{const j=JSON.parse(s);const r=j.result||{};const meta={top:Object.keys(j),result:Object.keys(r),items:Array.isArray(r.items)?r.items.length:null};for(const [k,v] of Object.entries(r)){if(/page|next|cursor|offset|total|count|more|has/i.test(k)) meta[k]=v}console.log(process.argv[1],meta); console.log('first',r.items?.[0]); console.log('last',r.items?.at?.(-1));}catch(e){console.log(process.argv[1],'parse error',e.message,s.slice(0,800))}})" "$ETF"
-          done
-          echo
-          echo '=== prepared quiz now ==='
-          curl --silent --show-error --max-time 10 http://127.0.0.1:8080/data/quiz-prepared.json || true
-          echo
-          echo
           echo '=== persistent quiz summary ==='
-          docker compose exec -T backend node -e "const fs=require('fs'); for (const p of ['/app/data/quiz-universe.json','/app/data/quiz-descriptions.json','/app/public-data/quiz-prepared.json']) { try { const s=fs.statSync(p); const j=JSON.parse(fs.readFileSync(p,'utf8')); const values=Object.values(j.items||{}); const poolCounts=values.reduce((a,x)=>{const k=x&&x.pool||'none';a[k]=(a[k]||0)+1;return a},{}); console.log(p, {bytes:s.size, source:j.source, sourceDate:j.sourceDate, ok:j.ok, stale:j.stale, counts:j.counts, expectedCounts:j.expectedCounts, cacheStatus:j.cacheStatus, itemCount:values.length||undefined, poolCounts, sample:values.slice(0,4).map(x=>({code:x.code,name:x.name,pool:x.pool,hasDescription:Boolean(x.description)})), error:j.error}); } catch(e) { console.log(p, 'ERROR', e.message); } }" || true
+          docker compose exec -T backend node -e "const fs=require('fs'); for (const p of ['/app/data/quiz-universe.json','/app/data/quiz-descriptions.json','/app/public-data/quiz-prepared.json']) { try { const s=fs.statSync(p); const j=JSON.parse(fs.readFileSync(p,'utf8')); const values=Object.values(j.items||{}); const poolCounts=values.reduce((a,x)=>{const k=x&&x.pool||'none';a[k]=(a[k]||0)+1;return a},{}); console.log(p, {bytes:s.size, source:j.source, sourceDate:j.sourceDate, ok:j.ok, stale:j.stale, counts:j.counts, expectedCounts:j.expectedCounts, cacheStatus:j.cacheStatus, itemCount:values.length||undefined, poolCounts, sample:values.slice(0,8).map(x=>({code:x.code,name:x.name,pool:x.pool,hasDescription:Boolean(x.description)})), error:j.error}); } catch(e) { console.log(p, 'ERROR', e.message); } }" || true
           echo
-          echo '=== persistent quiz files ==='
-          docker compose exec -T backend sh -c 'ls -lh /app/data/quiz-universe.json /app/data/quiz-descriptions.json /app/public-data/quiz-prepared.json 2>/dev/null || true; echo; head -c 1600 /app/data/quiz-universe.json 2>/dev/null || true' || true
+          echo '=== Toss KODEX composition response shape from backend container ==='
+          docker compose exec -T backend node -e "const headers={'Origin':'https://tossinvest.com','Referer':'https://tossinvest.com/','User-Agent':'Mozilla/5.0'}; for (const etf of ['A069500','A229200']) { const j=await fetch('https://wts-info-api.tossinvest.com/api/v2/stock-infos/'+etf+'/compositions',{headers}).then(r=>r.json()); const r=j.result||{}; const meta={top:Object.keys(j),result:Object.keys(r),items:Array.isArray(r.items)?r.items.length:null}; for(const [k,v] of Object.entries(r)) if(/page|next|cursor|offset|total|count|more|has/i.test(k)) meta[k]=v; console.log(etf,meta); console.log('first',r.items?.[0]); console.log('last',r.items?.at?.(-1)); }" || true
           echo
+          echo '=== Naver KPI200 page count probe ==='
+          for page in 1 2 19 20 21; do
+            body="$(curl --silent --show-error --max-time 10 -A 'Mozilla/5.0' -e 'https://finance.naver.com/' "https://finance.naver.com/sise/entryJongmok.naver?indCode=KPI200&page=${page}" 2>/dev/null || true)"
+            count="$(printf '%s' "$body" | grep -Eo 'item/main\.naver\?code=[0-9]{6}' | sort -u | wc -l | tr -d ' ')"
+            echo "KPI200 page${page} => ${count}"
+          done
           echo
           echo '=== backend quiz logs ==='
           docker compose logs --since=10m backend 2>&1 | grep -Ei 'quiz|KRX|KODEX|description|prewarm|fallback' | tail -n 120 || true
