@@ -1,50 +1,56 @@
 .daily-issues-page {
-  padding: 10px;
+  width: min(1880px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 16px 0 80px;
   display: grid;
-  gap: 10px;
+  gap: 16px;
+  font-family: "Segoe UI", "Malgun Gothic", Arial, sans-serif;
+  font-variant-numeric: tabular-nums;
 }
 
 .daily-issues-head {
   display: flex;
   justify-content: space-between;
-  gap: 20px;
+  gap: 30px;
   align-items: flex-start;
-  padding: 16px 18px;
+  padding: 28px 30px;
 }
 
 .daily-issues-head p,
 .daily-issues-detail-head p {
-  margin: 0 0 5px;
-  font-size: 9px;
+  margin: 0 0 9px;
+  font-size: 18px;
   font-weight: 900;
-  letter-spacing: .12em;
+  letter-spacing: .1em;
   color: #607b8e;
 }
 
-.daily-issues-head h1 { margin: 0 0 6px; font-size: 23px; }
-.daily-issues-head small { color: #728898; line-height: 1.55; }
-.daily-issues-head aside { display: grid; justify-items: end; gap: 4px; white-space: nowrap; }
-.daily-issues-head aside b { font-size: 11px; }
+.daily-issues-head h1 { margin: 0 0 12px; font-size: 46px; line-height: 1.08; letter-spacing: -.035em; }
+.daily-issues-head small { display: block; max-width: 1380px; color: #728898; font-size: 20px; line-height: 1.62; }
+.daily-issues-head aside { display: grid; justify-items: end; gap: 8px; white-space: nowrap; padding-top: 4px; }
+.daily-issues-head aside b { font-size: 21px; }
 .daily-issues-head aside b.ready { color: #1aa66f; }
 .daily-issues-head aside b.waiting { color: #6f8494; }
-.daily-issues-head aside span { font-size: 10px; color: #7b8f9e; }
+.daily-issues-head aside span { font-size: 17px; color: #7b8f9e; }
 
 .daily-issues-wait {
-  min-height: 240px;
+  min-height: 340px;
   display: grid;
   place-items: center;
   align-content: center;
-  gap: 8px;
+  gap: 14px;
+  padding: 34px;
   text-align: center;
   color: #708797;
+  font-size: 20px;
 }
-.daily-issues-wait strong { font-size: 16px; color: #d8e3e9; }
-.daily-issues-wait small { color: #d26b6b; }
+.daily-issues-wait strong { font-size: 29px; color: #d8e3e9; }
+.daily-issues-wait small { color: #d26b6b; font-size: 18px; }
 
 .daily-issues-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 10px;
+  gap: 14px;
   align-items: start;
 }
 
@@ -52,48 +58,48 @@
 .daily-issues-detail { min-width: 0; overflow: hidden; }
 
 .daily-issues-list-title {
-  min-height: 46px;
-  padding: 10px 12px;
+  min-height: 70px;
+  padding: 14px 17px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 16px;
   border-bottom: 1px solid #1d313e;
 }
-.daily-issues-list-title > div { display: grid; gap: 2px; }
-.daily-issues-list-title b { font-size: 10px; letter-spacing: .08em; color: #91a6b4; }
-.daily-issues-list-title span { font-size: 9px; color: #687f8f; }
-.daily-issues-list-title > strong { font-size: 11px; color: #9bb0bd; white-space: nowrap; }
+.daily-issues-list-title > div { display: grid; gap: 4px; }
+.daily-issues-list-title b { font-size: 18px; letter-spacing: .07em; color: #91a6b4; }
+.daily-issues-list-title span { font-size: 16px; color: #687f8f; }
+.daily-issues-list-title > strong { font-size: 18px; color: #9bb0bd; white-space: nowrap; }
 
 .daily-issues-list-head,
 .daily-issues-list-row {
   display: grid;
-  grid-template-columns: 38px minmax(116px, .9fr) 68px 88px minmax(170px, 2.2fr);
+  grid-template-columns: 42px minmax(160px, .95fr) 82px 100px minmax(190px, 1.5fr);
   align-items: center;
-  column-gap: 9px;
+  column-gap: 12px;
   width: 100%;
 }
 
 .daily-issues-list-head {
-  padding: 8px 10px;
+  padding: 12px 14px;
   background: rgba(11, 26, 36, .84);
   border-bottom: 1px solid #1e3240;
   color: #718696;
-  font-size: 9px;
+  font-size: 16px;
   font-weight: 900;
-  letter-spacing: .04em;
+  letter-spacing: .03em;
 }
 
 .daily-issues-list-body {
-  max-height: calc(100vh - 190px);
-  min-height: 420px;
+  max-height: calc(100vh - 245px);
+  min-height: 560px;
   overflow-y: auto;
   scrollbar-gutter: stable;
 }
 
 .daily-issues-list-row {
-  min-height: 76px;
-  padding: 9px 10px;
+  min-height: 128px;
+  padding: 14px;
   border: 0;
   border-bottom: 1px solid #172a36;
   background: rgba(8, 20, 29, .28);
@@ -106,16 +112,42 @@
 .daily-issues-list-row:hover { background: rgba(48, 111, 150, .07); }
 .daily-issues-list-row.active {
   background: rgba(48, 111, 150, .12);
-  box-shadow: inset 3px 0 0 #4f9ed3;
+  box-shadow: inset 4px 0 0 #4f9ed3;
 }
-.daily-issues-list-row:focus-visible { outline: 2px solid #5fa9e7; outline-offset: -2px; }
+.daily-issues-list-row:focus-visible { outline: 3px solid #5fa9e7; outline-offset: -3px; }
 
-.daily-issues-rank { color: #6f8797; font-size: 12px; }
-.daily-issues-stock { display: grid; gap: 2px; min-width: 0; }
-.daily-issues-stock strong { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.daily-issues-stock small { color: #708797; font-size: 9px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.daily-issues-rank { color: #6f8797; font-size: 21px; align-self: start; padding-top: 4px; }
+.daily-issues-stock { display: grid; gap: 6px; min-width: 0; align-self: start; }
+.daily-issues-stock-title { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; min-width: 0; }
+.daily-issues-stock-title strong { font-size: 23px; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.daily-issues-stock-title span,
+.daily-issues-detail-title span {
+  display: inline-flex;
+  width: fit-content;
+  max-width: 100%;
+  padding: 4px 8px;
+  border: 1px solid #2a4354;
+  border-radius: 999px;
+  color: #9db4c2;
+  background: #0a1822;
+  font-size: 14px;
+  line-height: 1.25;
+  font-weight: 900;
+}
+.daily-issues-stock p {
+  margin: 0;
+  color: #9dafba;
+  font-size: 16px;
+  line-height: 1.42;
+  font-weight: 700;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.daily-issues-stock small { color: #708797; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .daily-issues-rate,
-.daily-issues-amount { font-size: 11px; text-align: right; white-space: nowrap; }
+.daily-issues-amount { font-size: 20px; text-align: right; white-space: nowrap; }
 .daily-issues-rate.up,
 .daily-issues-detail-price b.up,
 .daily-issues-chart-summary b.up { color: #ff5575; }
@@ -123,104 +155,125 @@
 .daily-issues-detail-price b.down,
 .daily-issues-chart-summary b.down { color: #4d95ff; }
 
-.daily-issues-summary { display: grid; gap: 4px; min-width: 0; }
-.daily-issues-summary > strong { font-size: 11px; line-height: 1.45; font-weight: 800; }
-.daily-issues-summary > small { color: #718796; font-size: 9px; }
+.daily-issues-summary { display: grid; gap: 7px; min-width: 0; align-self: start; }
+.daily-issues-summary > strong { font-size: 18px; line-height: 1.45; font-weight: 850; }
+.daily-issues-summary > small { color: #718796; font-size: 14px; line-height: 1.4; }
 .daily-issues-summary.compact > strong {
   display: -webkit-box;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+.daily-issues-reason-line { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; min-width: 0; }
+.daily-issues-reason-line > b { color: #9fb0bb; font-size: 14px; }
+.daily-issues-reason-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 25px;
+  padding: 3px 7px;
+  border: 1px solid #304656;
+  border-radius: 7px;
+  color: #9fb1bd;
+  background: #0b1821;
+  font-size: 13px;
+  line-height: 1.2;
+  font-weight: 900;
+  white-space: nowrap;
+}
+.daily-issues-reason-badge.direct-news { color: #48d79a; border-color: rgba(72, 215, 154, .4); background: rgba(72, 215, 154, .08); }
+.daily-issues-reason-badge.theme-news { color: #f0bc55; border-color: rgba(240, 188, 85, .42); background: rgba(240, 188, 85, .08); }
+.daily-issues-reason-badge.unconfirmed { color: #8ea1ae; }
 
 .daily-issues-detail {
   position: sticky;
-  top: 64px;
-  min-height: 560px;
-  padding: 14px;
+  top: 68px;
+  min-height: 690px;
+  padding: 22px;
   display: grid;
-  gap: 12px;
+  gap: 18px;
 }
 
 .daily-issues-detail-head {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 14px;
+  gap: 20px;
 }
-.daily-issues-detail-head h2 { margin: 0 0 4px; font-size: 22px; }
-.daily-issues-detail-head small { color: #718696; font-size: 10px; }
-.daily-issues-detail-price { display: grid; justify-items: end; gap: 2px; white-space: nowrap; }
-.daily-issues-detail-price > strong { font-size: 21px; }
-.daily-issues-detail-price > b { font-size: 12px; }
-.daily-issues-detail-price > span { color: #718696; font-size: 9px; }
+.daily-issues-detail-title { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.daily-issues-detail-head h2 { margin: 0; font-size: 36px; line-height: 1.12; letter-spacing: -.025em; }
+.daily-issues-company-summary { display: block; max-width: 610px; margin: 10px 0 7px; color: #9dafba; font-size: 20px; line-height: 1.5; }
+.daily-issues-detail-head small { color: #718696; font-size: 16px; }
+.daily-issues-detail-price { display: grid; justify-items: end; gap: 5px; white-space: nowrap; }
+.daily-issues-detail-price > strong { font-size: 32px; }
+.daily-issues-detail-price > b { font-size: 22px; }
+.daily-issues-detail-price > span { color: #718696; font-size: 16px; }
 
 .daily-issues-chart-wrap {
   border: 1px solid rgba(93, 123, 143, .22);
-  border-radius: 8px;
+  border-radius: 10px;
   background: rgba(6, 17, 24, .28);
-  padding: 10px 10px 8px;
+  padding: 15px 15px 12px;
   min-width: 0;
 }
 .daily-issues-chart-summary {
   display: flex;
   justify-content: flex-end;
   align-items: baseline;
-  gap: 8px;
-  min-height: 24px;
-  padding: 0 2px 4px;
+  gap: 12px;
+  min-height: 36px;
+  padding: 0 3px 7px;
 }
-.daily-issues-chart-summary span { margin-right: auto; color: #708696; font-size: 9px; }
-.daily-issues-chart-summary strong { font-size: 16px; }
-.daily-issues-chart-summary b { font-size: 10px; }
-.daily-issues-big-chart { width: 100%; height: 330px; overflow: visible; display: block; }
+.daily-issues-chart-summary span { margin-right: auto; color: #708696; font-size: 16px; font-weight: 800; }
+.daily-issues-chart-summary strong { font-size: 26px; }
+.daily-issues-chart-summary b { font-size: 18px; }
+.daily-issues-big-chart { width: 100%; height: 380px; overflow: visible; display: block; }
 .daily-issues-big-grid { stroke: rgba(113, 136, 153, .16); stroke-width: 1; vector-effect: non-scaling-stroke; }
 .daily-issues-big-tick { stroke: rgba(113, 136, 153, .4); stroke-width: 1; vector-effect: non-scaling-stroke; }
 .daily-issues-session-divider { stroke: rgba(113, 136, 153, .34); stroke-width: 1; stroke-dasharray: 4 5; vector-effect: non-scaling-stroke; }
 .daily-issues-big-y-label,
-.daily-issues-big-x-label { fill: #688091; font-size: 9px; }
-.daily-issues-big-day-label { fill: #9aafbd; font-size: 10px; font-weight: 900; }
-.daily-issues-big-line { stroke-width: 2.2; vector-effect: non-scaling-stroke; stroke-linecap: round; stroke-linejoin: round; }
+.daily-issues-big-x-label { fill: #688091; font-size: 14px; font-weight: 700; }
+.daily-issues-big-day-label { fill: #9aafbd; font-size: 16px; font-weight: 900; }
+.daily-issues-big-line { stroke-width: 2.4; vector-effect: non-scaling-stroke; stroke-linecap: round; stroke-linejoin: round; }
 .daily-issues-big-chart.up .daily-issues-big-line { stroke: #ff5575; }
 .daily-issues-big-chart.down .daily-issues-big-line { stroke: #4d95ff; }
 .daily-issues-chart-legend {
   display: flex;
   justify-content: center;
-  gap: 16px;
+  gap: 22px;
   flex-wrap: wrap;
-  padding-top: 4px;
+  padding-top: 7px;
   color: #708696;
-  font-size: 9px;
+  font-size: 15px;
 }
-.daily-issues-chart-legend span { display: inline-flex; gap: 5px; }
+.daily-issues-chart-legend span { display: inline-flex; gap: 7px; }
 .daily-issues-chart-legend b { color: #a2b4bf; }
 
 .daily-issues-detail-issue {
   display: grid;
-  gap: 6px;
-  padding: 12px;
+  gap: 10px;
+  padding: 18px;
   border: 1px solid rgba(93, 123, 143, .18);
-  border-radius: 7px;
+  border-radius: 9px;
   background: rgba(8, 21, 29, .18);
 }
-.daily-issues-detail-issue > span { color: #708696; font-size: 9px; font-weight: 900; letter-spacing: .08em; }
-.daily-issues-detail-issue > strong { font-size: 12px; line-height: 1.55; }
-.daily-issues-detail-issue > small { color: #718796; font-size: 9px; }
-.daily-issues-detail-issue > div { display: flex; flex-wrap: wrap; gap: 8px; }
-.daily-issues-detail-issue a { color: #5fa9e7; font-size: 9px; text-decoration: none; font-weight: 800; }
+.daily-issues-detail-issue > span { color: #708696; font-size: 17px; font-weight: 900; letter-spacing: .06em; }
+.daily-issues-detail-issue > strong { font-size: 21px; line-height: 1.58; }
+.daily-issues-detail-issue > small { color: #718796; font-size: 16px; line-height: 1.55; }
+.daily-issues-detail-issue > div { display: flex; flex-wrap: wrap; gap: 11px; }
+.daily-issues-detail-issue a { color: #5fa9e7; font-size: 16px; text-decoration: none; font-weight: 850; }
 .daily-issues-detail-issue a:hover { text-decoration: underline; }
-.daily-issues-detail-source { color: #627989; font-size: 8px; line-height: 1.5; }
+.daily-issues-detail-source { color: #627989; font-size: 14px; line-height: 1.55; }
 
 .daily-issues-chart-empty {
-  height: 60px;
+  height: 86px;
   display: grid;
   place-items: center;
   color: #718797;
-  font-size: 9px;
+  font-size: 16px;
   border: 1px dashed rgba(113, 135, 151, .2);
-  border-radius: 5px;
+  border-radius: 7px;
 }
-.daily-issues-chart-empty.large { height: 330px; font-size: 11px; }
+.daily-issues-chart-empty.large { height: 380px; font-size: 20px; }
 
 :root[data-theme='light'] .daily-issues-wait strong,
 :root:not([data-theme='dark']) .daily-issues-wait strong { color: #162b3d; }
@@ -249,20 +302,47 @@
 :root[data-theme='light'] .daily-issues-detail-issue,
 :root:not([data-theme='dark']) .daily-issues-detail-issue { background: #fbfdfe; border-color: #dce6ec; }
 
-@media (max-width: 1180px) {
+:root[data-theme='light'] .daily-issues-stock-title span,
+:root:not([data-theme='dark']) .daily-issues-stock-title span,
+:root[data-theme='light'] .daily-issues-detail-title span,
+:root:not([data-theme='dark']) .daily-issues-detail-title span,
+:root[data-theme='light'] .daily-issues-reason-badge,
+:root:not([data-theme='dark']) .daily-issues-reason-badge { background: #f5f9fb; }
+
+:root[data-theme='light'] .daily-issues-stock p,
+:root:not([data-theme='dark']) .daily-issues-stock p,
+:root[data-theme='light'] .daily-issues-company-summary,
+:root:not([data-theme='dark']) .daily-issues-company-summary { color: #486273; }
+
+@media (max-width: 1250px) {
   .daily-issues-layout { grid-template-columns: 1fr; }
   .daily-issues-detail { position: static; order: -1; }
   .daily-issues-list-body { max-height: none; }
+  .daily-issues-list-head,
+  .daily-issues-list-row { grid-template-columns: 48px minmax(220px, 1fr) 92px 120px minmax(260px, 1.6fr); }
 }
 
 @media (max-width: 760px) {
-  .daily-issues-head { flex-direction: column; }
+  .daily-issues-page { width: calc(100% - 16px); padding-top: 8px; }
+  .daily-issues-head { flex-direction: column; padding: 22px 20px; }
+  .daily-issues-head h1 { font-size: 38px; }
+  .daily-issues-head small { font-size: 17px; }
   .daily-issues-head aside { justify-items: start; }
   .daily-issues-list-head,
-  .daily-issues-list-row { grid-template-columns: 30px minmax(110px, 1fr) 62px 80px; }
+  .daily-issues-list-row { grid-template-columns: 36px minmax(130px, 1fr) 72px 88px; }
   .daily-issues-list-head span:last-child,
   .daily-issues-list-row .daily-issues-summary { display: none; }
+  .daily-issues-list-row { min-height: 118px; padding: 12px 10px; column-gap: 8px; }
+  .daily-issues-stock-title strong { font-size: 20px; }
+  .daily-issues-stock p { font-size: 14px; }
+  .daily-issues-rate,
+  .daily-issues-amount { font-size: 17px; }
+  .daily-issues-detail { padding: 17px; }
   .daily-issues-detail-head { flex-direction: column; }
-  .daily-issues-detail-price { justify-items: start; grid-auto-flow: column; align-items: baseline; gap: 8px; }
-  .daily-issues-big-chart { height: 280px; }
+  .daily-issues-detail-price { justify-items: start; grid-auto-flow: column; align-items: baseline; gap: 10px; }
+  .daily-issues-detail-head h2 { font-size: 31px; }
+  .daily-issues-company-summary { font-size: 17px; }
+  .daily-issues-big-chart { height: 300px; }
+  .daily-issues-chart-summary { flex-wrap: wrap; }
+  .daily-issues-chart-summary span { flex: 1 0 100%; }
 }
