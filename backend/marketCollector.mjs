@@ -2,6 +2,8 @@ import { WATCHLIST, WATCH_SYMBOLS } from './watchlist.mjs'
 import { TossApiError, sleep } from './tossClient.mjs'
 import { directNameFromRanking } from './stockMetadata.mjs'
 
+const NON_INDIVIDUAL_RANKING_NAME = /(ETF|ETN|KODEX|TIGER|RISE|ACE|PLUS|SOL|HANARO|KOSEF|TIMEFOLIO|ARIRANG|FOCUS|KBSTAR|리츠|스팩|인프라)/i
+
 function number(value) {
   const parsed = Number(value)
   return Number.isFinite(parsed) ? parsed : null
@@ -107,6 +109,13 @@ export function rankingItem(item, fallbackName = null) {
   }
 }
 
+export function isDisplayableIndividualRanking(item = {}) {
+  const symbol = String(item?.symbol ?? '').trim()
+  const name = String(item?.name ?? '').trim()
+  if (!/^\d{6}$/.test(symbol) || !name || name === symbol || /^\d{6}$/.test(name)) return false
+  return !NON_INDIVIDUAL_RANKING_NAME.test(name)
+}
+
 export class MarketCollector {
   constructor(client, { fastMs = 60000, slowMs = 60000 } = {}) {
     this.client = client
@@ -180,7 +189,7 @@ export class MarketCollector {
         const parsed = rankingItem(item, symbol ? this.rankingNames.get(symbol) ?? null : null)
         if (parsed.symbol && parsed.name) this.rankingNames.set(parsed.symbol, parsed.name)
         return parsed
-      }).filter((item) => item.symbol)
+      }).filter(isDisplayableIndividualRanking)
       const indices = new Map((indicesPayload?.result ?? []).map((item) => [item.symbol, item]))
       const stocks = {}
 
@@ -245,8 +254,8 @@ export class MarketCollector {
         indices: indexResult,
         stocks,
         topRankings: normalizedRankings,
-        marketTradingAmount: rankings.reduce((sum, item) => sum + (number(item.tradingAmount) ?? 0), 0),
-        marketTradingAmountCoverage: 'top100-1d',
+        marketTradingAmount: normalizedRankings.reduce((sum, item) => sum + (item.tradingAmount ?? 0), 0),
+        marketTradingAmountCoverage: 'top100-source-stock-only',
         marketInvestors: this.marketInvestors,
         programSummary,
         futures: {
@@ -289,7 +298,7 @@ export class MarketCollector {
       stocks: {},
       topRankings: [],
       marketTradingAmount: null,
-      marketTradingAmountCoverage: 'top100-1d',
+      marketTradingAmountCoverage: 'top100-source-stock-only',
       marketInvestors: this.marketInvestors,
       programSummary: null,
       futures: { available: false, source: null },
