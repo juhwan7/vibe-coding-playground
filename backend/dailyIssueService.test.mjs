@@ -48,15 +48,15 @@ test('buildTwoDayIntraday keeps latest two trading days separate and preserves e
   })
 })
 
-test('buildDailyBars keeps only the latest requested real daily OHLC bars', () => {
+test('buildDailyBars keeps only the latest requested real daily OHLC bars including the 15:30 close bar', () => {
   const bars = buildDailyBars([
     candle('2026-09-05T15:30:00+09:00', 80, 85, 78, 84, 10000),
     candle('2026-09-08T15:30:00+09:00', 84, 90, 82, 89, 12000),
-    candle('2026-09-09T15:20:00+09:00', 89, 94, 87, 93, 14000),
+    candle('2026-09-09T15:30:00+09:00', 89, 94, 87, 93, 14000),
   ], 2)
-  assert.deepEqual(bars.map((bar) => bar.timestamp), ['2026-09-08T15:30:00+09:00', '2026-09-09T15:20:00+09:00'])
+  assert.deepEqual(bars.map((bar) => bar.timestamp), ['2026-09-08T15:30:00+09:00', '2026-09-09T15:30:00+09:00'])
   assert.deepEqual(bars[1], {
-    timestamp: '2026-09-09T15:20:00+09:00',
+    timestamp: '2026-09-09T15:30:00+09:00',
     open: 89,
     high: 94,
     low: 87,

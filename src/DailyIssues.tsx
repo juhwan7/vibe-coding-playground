@@ -40,6 +40,7 @@ type DailyIssuePayload = {
   targetTime?: string | null
   source?: string | null
   rows?: DailyIssueRow[]
+  stale?: boolean | null
   error?: string | null
 }
 
@@ -137,7 +138,7 @@ function companyText(row: DailyIssueRow) {
   return '기업개요 확인 중'
 }
 
-function DailyOhlcChart({ daily }: { daily?: OhlcPoint[] | null }) {
+function DailyOhlcChart({ daily, finalized }: { daily?: OhlcPoint[] | null; finalized: boolean }) {
   const bars = normalizeDaily(daily)
   if (bars.length < 2) return <div className="daily-issues-chart-empty daily">최근 일봉 OHLC 준비 중</div>
 
@@ -164,7 +165,7 @@ function DailyOhlcChart({ daily }: { daily?: OhlcPoint[] | null }) {
 
   return <div className="daily-issues-chart-wrap daily-context" data-testid="daily-issues-daily-chart">
     <div className="daily-issues-chart-summary compact-chart-summary">
-      <span>최근 {bars.length}거래일 · 실제 일봉 OHLC · 당일 봉은 15:20 스냅샷</span>
+      <span>최근 {bars.length}거래일 · 실제 일봉 OHLC · {finalized ? '당일 봉은 15:30 종가 기준' : '15:30 종가 OHLC 갱신 중'}</span>
       <strong>{fmtChartPrice(bars.at(-1)!.close)}</strong>
     </div>
     <svg className="daily-issues-daily-chart" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" role="img" aria-label="최근 거래일 실제 일봉 OHLC 막대차트">
@@ -225,7 +226,7 @@ function TwoDayIntradayBarChart({ intraday }: { intraday?: IntradayValue | null 
 
   return <div className="daily-issues-chart-wrap" data-testid="daily-issues-intraday-chart">
     <div className="daily-issues-chart-summary">
-      <span>전일+오늘 · 실제 1분 OHLC 막대 · 압축/보간 없음</span>
+      <span>전일+오늘 · 실제 1분 OHLC 막대 · 15:30 정규장 종가까지 · 압축/보간 없음</span>
       <strong>{latest != null ? fmtChartPrice(latest) : '-'}</strong>
       <b className={(twoDayRate ?? 0) >= 0 ? 'up' : 'down'}>{twoDayRate == null ? '-' : `${twoDayRate > 0 ? '+' : ''}${twoDayRate.toFixed(2)}%`}</b>
     </div>
@@ -285,36 +286,46 @@ export default function DailyIssues() {
       } catch (error) {
         if ((error as Error).name === 'AbortError') return
       } finally {
-        if (!controller.signal.aborted) timer = window.setTimeout(load, payload.ok ? 300000 : 30000)
+        const finalized = payload.ok && payload.status === 'finalized' && !payload.stale
+        if (!controller.signal.aborted) timer = window.setTimeout(load, finalized ? 300000 : 15000)
       }
     }
     void load()
     return () => { controller.abort(); if (timer) window.clearTimeout(timer) }
-  }, [payload.ok])
+  }, [payload.ok, payload.status, payload.stale])
 
   const rows = useMemo(() => [...(payload.rows ?? [])].sort((a, b) => (b.changeRate ?? -Infinity) - (a.changeRate ?? -Infinity) || (b.tradingAmount ?? 0) - (a.tradingAmount ?? 0)), [payload.rows])
   const selectedRow = rows.find((row) => row.symbol === selectedSymbol) ?? rows[0] ?? null
+  const hasRows = rows.length > 0
+  const finalized = Boolean(payload.ok && payload.status === 'finalized' && !payload.stale)
+  const statusText = finalized
+    ? '● 종가 정리 완료'
+    : payload.status === 'generating'
+      ? '● 종가 기준 업데이트 중'
+      : payload.status === 'pending'
+        ? '● 재생성 대기'
+        : '● 15:30 종가 대기'
 
   return <main className="daily-issues-page" data-testid="daily-issues">
     <section className="daily-issues-head panel">
       <div>
-        <p>DAILY MARKET ISSUE DIGEST / 15:20 KST</p>
+        <p>DAILY MARKET ISSUE DIGEST / 15:30 CLOSE</p>
         <h1>금일 이슈 정리</h1>
-        <small>거래대금 상위 개별주를 등락률 순으로 정리합니다. 왼쪽에서는 선택 종목의 최근 30거래일 실제 일봉과 전일+오늘 실제 1분 OHLC 막대를 함께 보고, 오른쪽에서는 종목별 기업개요·테마·금일 상승 이유를 비교합니다. 직접 종목 기사가 없으면 같은 테마 상승 종목 기사 기반 추정임을 별도로 표시합니다.</small>
+        <small>거래대금 상위 개별주를 15:30 정규장 종가 기준 등락률 순으로 정리합니다. 왼쪽에서는 선택 종목의 최근 30거래일 실제 일봉과 전일+오늘 실제 1분 OHLC 막대를 함께 보고, 오른쪽에서는 종목별 기업개요·테마·금일 상승 이유를 비교합니다. 직접 종목 기사가 없으면 같은 테마 상승 종목 기사 기반 추정임을 별도로 표시합니다.</small>
       </div>
       <aside>
-        <b className={payload.ok ? 'ready' : 'waiting'}>{payload.ok ? '● 정리 완료' : payload.status === 'generating' ? '● 생성 중' : '● 15:20 대기'}</b>
-        <span>{payload.ok ? `${payload.date} · ${displayTime(payload.capturedAt)}` : `오늘 ${payload.targetTime ?? '15:20'} 자동 생성`}</span>
+        <b className={finalized ? 'ready' : 'waiting'}>{statusText}</b>
+        <span>{hasRows ? `${payload.date} · ${displayTime(payload.capturedAt)}${finalized ? '' : ' · 기존/부분 데이터 표시 중'}` : `오늘 ${payload.targetTime ?? '15:30'} 종가 확정 후 자동 생성`}</span>
       </aside>
     </section>
 
-    {!payload.ok && <section className="daily-issues-wait panel">
-      <strong>{payload.status === 'generating' ? '금일 TOP100 · 기업 분류 · 뉴스 · 일봉 · 전일+오늘 실제 1분 OHLC를 종합하고 있습니다.' : '15:20이 되면 오늘의 거래대금 TOP100을 확정합니다.'}</strong>
-      <span>확정 후 왼쪽에는 선택 종목의 일봉/분봉 막대차트, 오른쪽에는 종목 성격·테마·상승 이유가 저장됩니다.</span>
+    {!hasRows && <section className="daily-issues-wait panel">
+      <strong>{payload.status === 'generating' ? '금일 TOP100 목록부터 먼저 준비한 뒤 일봉·전일+오늘 실제 1분 OHLC를 순차 갱신하고 있습니다.' : '15:30 종가가 확정되면 오늘의 거래대금 TOP100을 종가 기준으로 정리합니다.'}</strong>
+      <span>목록이 준비되는 즉시 먼저 표시하고, 차트는 뒤에서 계속 채워집니다. 기존 데이터가 있으면 새 데이터 생성 중에도 빈 화면으로 숨기지 않습니다.</span>
       {payload.error && <small>{payload.error}</small>}
     </section>}
 
-    {payload.ok && <section className="daily-issues-layout" data-testid="daily-issues-split-layout">
+    {hasRows && <section className="daily-issues-layout" data-testid="daily-issues-split-layout">
       <aside className="daily-issues-detail panel" data-testid="daily-issues-chart-panel">
         {selectedRow ? <>
           <div className="daily-issues-detail-head">
@@ -326,7 +337,7 @@ export default function DailyIssues() {
             </div>
             <div className="daily-issues-detail-price"><strong>{selectedRow.price?.toLocaleString() ?? '-'}</strong><b className={(selectedRow.changeRate ?? 0) >= 0 ? 'up' : 'down'}>{fmtRate(selectedRow.changeRate)}</b><span>거래대금 {fmtAmount(selectedRow.tradingAmount)}</span></div>
           </div>
-          <DailyOhlcChart daily={selectedRow.daily} />
+          <DailyOhlcChart daily={selectedRow.daily} finalized={finalized} />
           <TwoDayIntradayBarChart intraday={selectedRow.intraday} />
           <div className="daily-issues-detail-issue">
             <div className="daily-issues-reason-line"><span className={`daily-issues-reason-badge ${selectedRow.reasonType ?? 'unconfirmed'}`}>{reasonLabel(selectedRow)}</span>{selectedRow.reasonTheme && <b>{selectedRow.reasonTheme}</b>}</div>
@@ -345,7 +356,7 @@ export default function DailyIssues() {
 
       <section className="daily-issues-list panel">
         <div className="daily-issues-list-title">
-          <div><b>TOP100 ISSUE LIST</b><span>등락률 높은 순 · 종목을 눌러 좌측 차트 변경</span></div>
+          <div><b>TOP100 ISSUE LIST</b><span>15:30 종가 기준 등락률 높은 순 · 종목을 눌러 좌측 차트 변경</span></div>
           <strong>{rows.length}종목</strong>
         </div>
         <div className="daily-issues-list-head">
