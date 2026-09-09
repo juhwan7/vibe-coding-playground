@@ -123,7 +123,7 @@ export function findIntradayCandleGaps(candles = [], {
   const ordered = [...candles]
     .filter((candle) => candle?.timestamp && candle?.closePrice != null && Number.isFinite(Date.parse(candle.timestamp)))
     .sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp))
-  if (ordered.length < 2) return []
+  if (!ordered.length) return []
 
   const days = [...new Set(ordered.map((candle) => dateKey(candle.timestamp)))].sort().slice(-Math.max(1, dayCount))
   const gaps = []
@@ -134,6 +134,24 @@ export function findIntradayCandleGaps(candles = [], {
       const minute = minuteOfDay(candle.timestamp)
       return minute >= sessionStartMinute && minute <= sessionEndMinute
     })
+    if (!session.length) continue
+
+    // 기존에는 09:00 이전 기준점이 없으면 '09:00~첫 수집 시각' 누락을 찾지 못했다.
+    // 첫 정규장 캔들이 15분 넘게 늦게 시작하면 장 초반 원자료가 빠진 것으로 보고 과거 1분봉을 다시 가져온다.
+    const first = session[0]
+    const firstMinute = minuteOfDay(first.timestamp)
+    const leadingGapMs = Math.max(0, firstMinute - sessionStartMinute) * 60000
+    if (leadingGapMs > minGapMs) {
+      const firstTime = Date.parse(first.timestamp)
+      gaps.push({
+        day,
+        from: Number.isFinite(firstTime) ? new Date(firstTime - leadingGapMs).toISOString() : first.timestamp,
+        to: first.timestamp,
+        gapMs: leadingGapMs,
+        edge: 'session-start',
+      })
+    }
+
     for (let index = 1; index < session.length; index += 1) {
       const previous = session[index - 1]
       const current = session[index]
@@ -144,6 +162,7 @@ export function findIntradayCandleGaps(candles = [], {
           from: previous.timestamp,
           to: current.timestamp,
           gapMs,
+          edge: 'inside-session',
         })
       }
     }
@@ -585,7 +604,7 @@ export class ThemeFlowService {
           chart: 'averaged-OHLC-candles',
           tradingAmount: 'market-ranking-1d',
           historyTradingDays: 2,
-          gapRepair: '15m+ regular-session gap -> historical 1m candle backfill',
+          gapRepair: '15m+ opening/internal regular-session gap -> historical 1m candle backfill',
           persisted: true,
         },
         error: null,
