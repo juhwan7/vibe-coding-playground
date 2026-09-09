@@ -65,6 +65,18 @@ test('buildDailyBars keeps only the latest requested real daily OHLC bars includ
   })
 })
 
+test('buildDailyBars defaults to the latest 60 real daily OHLC bars', () => {
+  const candles = Array.from({ length: 65 }, (_, index) => {
+    const timestamp = new Date(Date.UTC(2026, 5, 1 + index, 6, 30)).toISOString()
+    const open = 100 + index
+    return candle(timestamp, open, open + 3, open - 2, open + 1, 10000 + index)
+  })
+  const bars = buildDailyBars(candles)
+  assert.equal(bars.length, 60)
+  assert.equal(bars[0].timestamp, candles[5].timestamp)
+  assert.equal(bars.at(-1)?.timestamp, candles.at(-1)?.timestamp)
+})
+
 test('compactCompanySummary prefers the core business sentence over company history', () => {
   const summary = compactCompanySummary('1999년 설립되었음. 메모리 반도체와 HBM 제품을 생산하고 판매하는 사업을 영위하고 있음. 최대주주가 변경되었음.')
   assert.match(summary, /메모리 반도체|HBM/)

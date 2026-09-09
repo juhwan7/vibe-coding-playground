@@ -11,9 +11,9 @@ const TARGET_CLOSE_TIME = '15:30'
 const REGULAR_SESSION_START_MINUTE = 9 * 60
 const REGULAR_SESSION_END_MINUTE = 15 * 60 + 30
 const TWO_DAY_BACKFILL_MAX_PAGES = 6
-const DAILY_CONTEXT_COUNT = 30
+const DAILY_CONTEXT_COUNT = 60
 const STOCK_META_CHUNK_SIZE = 25
-const DAILY_ISSUE_SCHEMA_VERSION = 5
+const DAILY_ISSUE_SCHEMA_VERSION = 6
 const EXCHANGE_TRADED_NAME = /(ETF|ETN|KODEX|TIGER|RISE|ACE|PLUS|SOL|HANARO|KOSEF|TIMEFOLIO|ARIRANG|FOCUS|KBSTAR|리츠|스팩|인프라)/i
 const POSITIVE_NEWS_CUE = /(상승|강세|급등|상한가|오름세|랠리|수혜|호재|기대감|부각|신고가)/i
 const BUSINESS_HINT = /(주력|주요|사업|영위|생산|제조|판매|개발|서비스|플랫폼|제품|매출|반도체|메모리|HBM|DRAM|NAND|배터리|이차전지|2차전지|자동차|바이오|의약|원전|조선|방산|전력|변압기|금융|은행|증권|보험|통신|게임|화학|철강|건설|로봇|콘텐츠|유통)/i
@@ -564,7 +564,7 @@ export class DailyIssueService {
         status: 'finalized',
         targetTime: TARGET_CLOSE_TIME,
         capturedAt: new Date().toISOString(),
-        source: '토스증권 Open API 15:30 종가 거래대금 랭킹/전일+오늘 실제 1분 OHLC/최근 30거래일 일봉 OHLC + Google News RSS + Npay/FnGuide 기업개요 캐시',
+        source: '토스증권 Open API 15:30 종가 거래대금 랭킹/전일+오늘 실제 1분 OHLC/최근 60거래일 일봉 OHLC + Google News RSS + Npay/FnGuide 기업개요 캐시',
         stale: false,
         error: null,
       }
