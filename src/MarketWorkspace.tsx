@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import MarketDashboard from './MarketDashboard'
+import ThemeAverageCandleChart from './ThemeAverageCandleChart'
 import './marketWorkspace.css'
 import './marketWorkspaceEnhancements.css'
 
@@ -32,6 +33,10 @@ type Snapshot = {
 type ThemePoint = {
   timestamp: string
   value: number
+  openValue?: number | null
+  highValue?: number | null
+  lowValue?: number | null
+  closeValue?: number | null
   volume: number
   tradingAmount?: number
   memberCount: number
@@ -105,11 +110,6 @@ function fmtRate(value: number | null | undefined) {
   return `${value > 0 ? '+' : ''}${value.toFixed(2)}%`
 }
 
-function fmtPointRate(value: number | null | undefined) {
-  if (value == null || !Number.isFinite(value)) return '-'
-  return `${value > 0 ? '+' : ''}${value.toFixed(2)}%p`
-}
-
 function fmtWon(value: number | null | undefined) {
   if (value == null || !Number.isFinite(value)) return '-'
   const sign = value > 0 ? '+' : value < 0 ? '-' : ''
@@ -163,75 +163,6 @@ function isIndividualStock(item: RankingItem) {
   return !NON_STOCK_NAME.test(String(item.name ?? ''))
 }
 
-function ThemeBarChart({ theme, accent }: { theme: ThemeGroup; accent: string }) {
-  const points = theme.points ?? []
-  const movements = points.flatMap((point, index) => {
-    const previous = points[index - 1]
-    if (!previous || previous.day !== point.day) return []
-    return [{ point, delta: point.value - previous.value }]
-  })
-  if (!movements.length) return <div className="theme-chart-empty">테마 3분 변화 데이터 수집 중</div>
-
-  const width = 900
-  const height = 190
-  const chartTop = 25
-  const chartBottom = 145
-  const zeroY = (chartTop + chartBottom) / 2
-  const halfHeight = (chartBottom - chartTop) / 2 - 5
-  const days = [...new Set(points.map((point) => point.day))].sort()
-  const domainMinutes = Math.max(SESSION_MINUTES, days.length * SESSION_MINUTES)
-  const xForTimestamp = (timestamp: string, day: string) => {
-    const dayIndex = Math.max(0, days.indexOf(day))
-    const minute = Math.max(0, Math.min(SESSION_MINUTES, timeParts(timestamp).total - SESSION_START))
-    return (dayIndex * SESSION_MINUTES + minute) / domainMinutes * width
-  }
-  const xForMinute = (dayIndex: number, minute: number) => (dayIndex * SESSION_MINUTES + minute) / domainMinutes * width
-  const maxAbs = Math.max(.03, ...movements.map(({ delta }) => Math.abs(delta))) * 1.08
-  const barWidth = Math.max(1.4, Math.min(5, width / Math.max(1, days.length * 240) * 1.7))
-  const risePeak = movements.reduce((best, item) => item.delta > best.delta ? item : best, movements[0])
-  const fallPeak = movements.reduce((best, item) => item.delta < best.delta ? item : best, movements[0])
-  const ticks = days.flatMap((day, dayIndex) => [8, 10, 12, 14, 16, 18, 20].map((hour) => ({ day, dayIndex, hour, minute: (hour - 8) * 60 })))
-
-  return <div className="theme-chart-wrap" style={{ ['--theme-accent' as string]: accent }}>
-    <div className="theme-chart-title">
-      <span className="theme-chart-name">테마 평균 3분 변화 막대 <small>자동 확대축 · 실제 %p</small></span>
-      <div className="theme-chart-metrics">
-        <span>최대 상승 <b>{timeLabel(risePeak.point.timestamp)} · {fmtPointRate(risePeak.delta)}</b></span>
-        <span>최대 하락 <b>{timeLabel(fallPeak.point.timestamp)} · {fmtPointRate(fallPeak.delta)}</b></span>
-      </div>
-    </div>
-    <svg className="theme-chart" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" role="img" aria-label={`${theme.name} 구성종목의 3분 평균 등락 변화 막대 차트`}>
-      <line x1="0" x2={width} y1={zeroY} y2={zeroY} className="theme-zero-line" />
-      {[.25, .75].map((ratio) => <line key={ratio} x1="0" x2={width} y1={chartTop + (chartBottom - chartTop) * ratio} y2={chartTop + (chartBottom - chartTop) * ratio} className="theme-chart-grid" />)}
-      {ticks.map((tick) => {
-        const x = xForMinute(tick.dayIndex, tick.minute)
-        return <g key={`${tick.day}-${tick.hour}`}>
-          <line x1={x} x2={x} y1={chartTop} y2={chartBottom} className={tick.hour === 8 ? 'theme-day-line' : 'theme-hour-line'} />
-          <text x={Math.min(width - 30, x + 3)} y="182" className="theme-hour-label">{String(tick.hour).padStart(2, '0')}:00</text>
-        </g>
-      })}
-      {days.map((day, dayIndex) => <text key={`${day}-label`} x={xForMinute(dayIndex, 0) + 4} y="15" className="theme-day-label">{compactDay(day)} {dayIndex === days.length - 1 ? '오늘' : '전일'}</text>)}
-      <text x="4" y={chartTop + 9} className="theme-axis-scale">+{maxAbs.toFixed(2)}%p</text>
-      <text x="4" y={zeroY - 4} className="theme-axis-scale">0</text>
-      <text x="4" y={chartBottom - 3} className="theme-axis-scale">-{maxAbs.toFixed(2)}%p</text>
-      {movements.map(({ point, delta }) => {
-        const x = xForTimestamp(point.timestamp, point.day)
-        const magnitude = Math.min(1, Math.abs(delta) / maxAbs) * halfHeight
-        const y = delta >= 0 ? zeroY - magnitude : zeroY
-        const barClass = delta > .0001 ? 'positive' : delta < -.0001 ? 'negative' : 'flat'
-        return <rect
-          key={`${point.timestamp}-move`}
-          x={Math.max(0, x - barWidth / 2)}
-          y={y}
-          width={barWidth}
-          height={Math.max(1, magnitude)}
-          className={`theme-move-bar ${barClass}`}
-        ><title>{`${compactDay(point.day)} ${timeLabel(point.timestamp)} · 3분 변화 ${fmtPointRate(delta)} · 누적 평균 ${fmtRate(point.value)}`}</title></rect>
-      })}
-    </svg>
-  </div>
-}
-
 function StockCandleChart({ payload, accent }: { payload: StockChartPayload; accent: string }) {
   const points = payload.points ?? []
   if (!points.length) return <div className="theme-stock-preview-loading"><strong>{payload.name ?? payload.symbol} 3분봉 없음</strong><span>{payload.error ?? '저장된 3분봉을 아직 준비하지 못했습니다.'}</span></div>
@@ -243,13 +174,16 @@ function StockCandleChart({ payload, accent }: { payload: StockChartPayload; acc
   const prices = points.flatMap((point) => [point.lowPrice, point.highPrice]).filter(Number.isFinite)
   const minPrice = Math.min(...prices)
   const maxPrice = Math.max(...prices)
-  const pad = Math.max(1, (maxPrice - minPrice) * .08)
-  const lo = minPrice - pad
-  const hi = maxPrice + pad
+  const rawRange = Math.max(0, maxPrice - minPrice)
+  const visibleRange = Math.max(rawRange, Math.max(1, Math.abs((maxPrice + minPrice) / 2) * .002))
+  const center = (maxPrice + minPrice) / 2
+  const pad = visibleRange * .08
+  const lo = center - visibleRange / 2 - pad
+  const hi = center + visibleRange / 2 + pad
   const range = Math.max(1, hi - lo)
   const y = (price: number) => chartBottom - ((price - lo) / range) * (chartBottom - chartTop)
   const x = (point: StockCandlePoint) => Math.max(0, Math.min(width, (timeParts(point.timestamp).total - SESSION_START) / SESSION_MINUTES * width))
-  const candleWidth = Math.max(1.8, Math.min(5.5, width / 240 * 1.35))
+  const candleWidth = Math.max(1.8, Math.min(5.5, width / Math.max(1, points.length) * .72))
   const first = points[0]
   const last = points.at(-1)!
   const dayChange = first.openPrice ? (last.closePrice / first.openPrice - 1) * 100 : null
@@ -270,8 +204,8 @@ function StockCandleChart({ payload, accent }: { payload: StockChartPayload; acc
         return <g key={hour}><line x1={tx} x2={tx} y1={chartTop} y2={chartBottom} className={hour === 8 ? 'theme-day-line' : 'theme-hour-line'} /><text x={Math.min(width - 30, tx + 3)} y="182" className="theme-hour-label">{String(hour).padStart(2, '0')}:00</text></g>
       })}
       <text x="4" y="15" className="theme-day-label">{compactDay(payload.day)} · 3분 OHLC</text>
-      <text x={width - 5} y={chartTop + 8} textAnchor="end" className="theme-candle-price-label">{Math.round(maxPrice).toLocaleString()}</text>
-      <text x={width - 5} y={chartBottom - 3} textAnchor="end" className="theme-candle-price-label">{Math.round(minPrice).toLocaleString()}</text>
+      <text x={width - 5} y={chartTop + 8} textAnchor="end" className="theme-candle-price-label">{Math.round(hi).toLocaleString()}</text>
+      <text x={width - 5} y={chartBottom - 3} textAnchor="end" className="theme-candle-price-label">{Math.round(lo).toLocaleString()}</text>
       {points.map((point) => {
         const cx = x(point)
         const openY = y(point.openPrice)
@@ -359,7 +293,7 @@ function ThemeRow({ theme, rank }: { theme: ThemeGroup; rank: number }) {
         ? <StockCandleChart payload={stockPreview} accent={accent} />
         : previewError
           ? <div className="theme-stock-preview-loading"><strong>3분봉을 표시하지 못했습니다.</strong><span>{previewError}</span></div>
-          : <ThemeBarChart theme={theme} accent={accent} />}
+          : <ThemeAverageCandleChart theme={theme} accent={accent} />}
 
     <div className="theme-window-stats">
       <div><span>전일 시작 대비</span><strong className={(theme.currentValue ?? 0) >= 0 ? 'up' : 'down'}>{fmtRate(theme.currentValue)}</strong></div>
@@ -390,7 +324,7 @@ export default function MarketWorkspace() {
       } catch (error) {
         if ((error as Error).name === 'AbortError') return
       } finally {
-        timer = window.setTimeout(load, 60000)
+        timer = window.setTimeout(load, 10000)
       }
     }
     void load()
@@ -398,8 +332,13 @@ export default function MarketWorkspace() {
   }, [])
 
   const rankings = useMemo(() => {
-    const enriched = themeFlow.topRankings?.length ? themeFlow.topRankings : snapshot?.topRankings ?? []
-    return enriched
+    const metadata = new Map((themeFlow.topRankings ?? []).filter((item) => item.symbol).map((item) => [item.symbol, item]))
+    const live = snapshot?.topRankings?.length ? snapshot.topRankings : themeFlow.topRankings ?? []
+    return live
+      .map((item) => {
+        const meta = item.symbol ? metadata.get(item.symbol) : null
+        return meta ? { ...meta, ...item, securityType: meta.securityType ?? item.securityType } : item
+      })
       .filter((item): item is RankingItem & { symbol: string } => Boolean(item.symbol) && isIndividualStock(item))
       .slice(0, 100)
   }, [themeFlow.topRankings, snapshot?.topRankings])
@@ -417,15 +356,15 @@ export default function MarketWorkspace() {
           <div>
             <p>THEME ROTATION / INDIVIDUAL STOCKS</p>
             <h1>테마 강도 비교 <span>(개별주식 거래대금 기준 · 4개 유지)</span></h1>
-            <small>ETF·ETN·리츠 등 비개별주 상품은 제외합니다. 기본은 거래대금 TOP50에서 같은 테마 3종 이상을 찾고, 항상 4개를 채우기 위해 부족할 때만 TOP50/100의 더 적은 구성종목 조건으로 보강합니다. 매 1분 재계산해 더 강한 후보가 올라오면 4위 테마와 교체합니다.</small>
+            <small>ETF·ETN·리츠 등 비개별주 상품은 제외합니다. 거래대금·현재가·등락률은 장중 10초마다 갱신하고, 테마 구성종목과 저장 1분봉은 1분 단위로 재계산합니다. 평균 차트는 실제 3분 OHLC를 사용하며 Y축만 자동 확대해 작은 평균 움직임도 잘 보이게 합니다.</small>
           </div>
           <div className="theme-board-controls">
-            <span className={themeFlow.ok ? 'flow-live' : 'flow-loading'}>{themeFlow.ok ? '● 1분 최신화' : '● 데이터 준비 중'}</span>
+            <span className={themeFlow.ok ? 'flow-live' : 'flow-loading'}>{themeFlow.ok ? '● 거래대금 10초 최신화' : '● 데이터 준비 중'}</span>
             <div className="segmented-control"><button className="active">전일 + 오늘</button><button disabled>3일</button><button disabled>5일</button></div>
           </div>
         </header>
 
-        <div className="theme-method-strip"><span>대상 <b>개별주(STOCK)만</b></span><span>테마 <b>4개 · 강도순 자동교체</b></span><span>차트 <b>3분 변화 막대 · 2시간 눈금</b></span><span>최신화 <b>1분 · {displayTime(themeFlow.updatedAt)}</b></span></div>
+        <div className="theme-method-strip"><span>대상 <b>개별주(STOCK)만</b></span><span>테마 <b>4개 · 강도순 자동교체</b></span><span>차트 <b>평균 3분 캔들 · 자동 확대축</b></span><span>최신화 <b>10초 · {displayTime(themeFlow.updatedAt)}</b></span></div>
 
         <div className="theme-strength-list">
           {themes.map((theme, index) => <ThemeRow key={theme.name} theme={theme} rank={index + 1} />)}

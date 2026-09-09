@@ -1,0 +1,123 @@
+.daily-issues-page {
+  padding: 10px;
+  display: grid;
+  gap: 10px;
+}
+
+.daily-issues-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  align-items: flex-start;
+  padding: 16px 18px;
+}
+
+.daily-issues-head p {
+  margin: 0 0 5px;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: .12em;
+  color: #607b8e;
+}
+
+.daily-issues-head h1 { margin: 0 0 6px; font-size: 23px; }
+.daily-issues-head small { color: #728898; line-height: 1.55; }
+.daily-issues-head aside { display: grid; justify-items: end; gap: 4px; white-space: nowrap; }
+.daily-issues-head aside b { font-size: 11px; }
+.daily-issues-head aside b.ready { color: #1aa66f; }
+.daily-issues-head aside b.waiting { color: #6f8494; }
+.daily-issues-head aside span { font-size: 10px; color: #7b8f9e; }
+
+.daily-issues-wait {
+  min-height: 240px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 8px;
+  text-align: center;
+  color: #708797;
+}
+.daily-issues-wait strong { font-size: 16px; color: #d8e3e9; }
+.daily-issues-wait small { color: #d26b6b; }
+
+.daily-issues-table { overflow: hidden; }
+.daily-issues-table-head,
+.daily-issues-row {
+  display: grid;
+  grid-template-columns: 44px minmax(130px, 1.05fr) minmax(105px, .8fr) 82px 78px 94px minmax(300px, 2.4fr) minmax(220px, 1.55fr);
+  align-items: center;
+  column-gap: 10px;
+}
+
+.daily-issues-table-head {
+  min-width: 1120px;
+  padding: 9px 12px;
+  background: rgba(11, 26, 36, .84);
+  border-bottom: 1px solid #1e3240;
+  color: #718696;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: .04em;
+}
+
+.daily-issues-table-body { overflow-x: auto; }
+.daily-issues-row {
+  min-width: 1120px;
+  min-height: 92px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #172a36;
+  background: rgba(8, 20, 29, .28);
+}
+.daily-issues-row:last-child { border-bottom: 0; }
+.daily-issues-row:hover { background: rgba(48, 111, 150, .06); }
+
+.daily-issues-rank { color: #6f8797; font-size: 12px; }
+.daily-issues-stock { display: grid; gap: 2px; }
+.daily-issues-stock strong { font-size: 13px; }
+.daily-issues-stock small { color: #708797; font-size: 9px; }
+.daily-issues-theme { color: #7e94a3; font-size: 10px; line-height: 1.35; }
+.daily-issues-price,
+.daily-issues-rate,
+.daily-issues-amount { font-size: 11px; text-align: right; }
+.daily-issues-rate.up { color: #ff5575; }
+.daily-issues-rate.down { color: #4d95ff; }
+
+.daily-issues-summary { display: grid; gap: 4px; min-width: 0; }
+.daily-issues-summary > strong { font-size: 11px; line-height: 1.45; font-weight: 800; }
+.daily-issues-summary > small { color: #718796; font-size: 9px; }
+.daily-issues-summary > div { display: flex; gap: 8px; }
+.daily-issues-summary a { color: #5fa9e7; font-size: 9px; text-decoration: none; font-weight: 800; }
+.daily-issues-summary a:hover { text-decoration: underline; }
+
+.daily-issues-chart-cell { display: grid; gap: 2px; }
+.daily-issues-chart-cell > small { color: #687f90; font-size: 8px; text-align: right; }
+.daily-issues-chart { width: 100%; height: 60px; overflow: visible; }
+.daily-issues-chart-grid { stroke: rgba(113, 136, 153, .18); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.daily-issues-chart-line { stroke-width: 1.7; vector-effect: non-scaling-stroke; }
+.daily-issues-chart.up .daily-issues-chart-line { stroke: #ff5575; }
+.daily-issues-chart.down .daily-issues-chart-line { stroke: #4d95ff; }
+.daily-issues-chart-empty { height: 60px; display: grid; place-items: center; color: #718797; font-size: 9px; border: 1px dashed rgba(113, 135, 151, .2); border-radius: 5px; }
+
+:root[data-theme='light'] .daily-issues-wait strong,
+:root:not([data-theme='dark']) .daily-issues-wait strong { color: #162b3d; }
+
+:root[data-theme='light'] .daily-issues-table-head,
+:root:not([data-theme='dark']) .daily-issues-table-head {
+  background: #f3f7fa;
+  border-color: #dbe4eb;
+  color: #506779;
+}
+
+:root[data-theme='light'] .daily-issues-row,
+:root:not([data-theme='dark']) .daily-issues-row {
+  background: #fff;
+  border-color: #e0e7ed;
+}
+
+:root[data-theme='light'] .daily-issues-row:hover,
+:root:not([data-theme='dark']) .daily-issues-row:hover { background: #f8fbfd; }
+
+@media (max-width: 760px) {
+  .daily-issues-head { flex-direction: column; }
+  .daily-issues-head aside { justify-items: start; }
+}

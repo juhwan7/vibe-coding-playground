@@ -2,8 +2,9 @@ import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEven
 import './featureNews.css'
 import './featureNewsEnhancements.css'
 
-type RankingItem = { symbol?: string | null; name?: string | null; tradingAmount?: number | null }
+type RankingItem = { symbol?: string | null; name?: string | null; tradingAmount?: number | null; changeRate?: number | null }
 type Snapshot = { topRankings?: RankingItem[] }
+type MatchedStock = { symbol?: string | null; name?: string | null; tradingAmount?: number | null; changeRate?: number | null; rank?: number | null }
 type NewsItem = {
   title: string
   summary?: string | null
@@ -14,6 +15,9 @@ type NewsItem = {
   lastPublishedAt?: string | null
   duplicateCount?: number | null
   sourceCount?: number | null
+  category?: string | null
+  importance?: number | null
+  matches?: MatchedStock[] | null
 }
 type NewsPayload = { ok?: boolean; updatedAt?: string | null; windowStart?: string | null; source?: string | null; items?: NewsItem[]; error?: string | null }
 
@@ -72,6 +76,11 @@ function looksPromotional(item: NewsItem) {
   return PROMO_WORDS.some((word) => text.includes(word.toLowerCase()))
 }
 
+function fmtRate(value?: number | null) {
+  if (value == null || !Number.isFinite(value)) return null
+  return `${value > 0 ? '+' : ''}${value.toFixed(1)}%`
+}
+
 export default function FeatureNews() {
   const [news, setNews] = useState<NewsPayload>({ ok: false, items: [] })
   const [snapshot, setSnapshot] = useState<Snapshot>({})
@@ -109,7 +118,7 @@ export default function FeatureNews() {
       } catch (error) {
         if ((error as Error).name === 'AbortError') return
       } finally {
-        if (!controller.signal.aborted) snapshotTimer = window.setTimeout(loadSnapshot, 60000)
+        if (!controller.signal.aborted) snapshotTimer = window.setTimeout(loadSnapshot, 10000)
       }
     }
 
@@ -135,7 +144,8 @@ export default function FeatureNews() {
       })
       .map((item) => {
         const summary = conciseTitle(item)
-        const matches = topStocks.filter((stock) => stock.name && summary.includes(stock.name)).slice(0, 3)
+        const fallbackMatches = topStocks.filter((stock) => stock.name && summary.includes(stock.name)).slice(0, 3)
+        const matches = item.matches?.length ? item.matches : fallbackMatches
         return { ...item, summary, matches, theme: matchTheme(summary) }
       })
       .filter((item) => {
@@ -145,7 +155,7 @@ export default function FeatureNews() {
         return true
       })
       .sort((a, b) => timestamp(a.publishedAt) - timestamp(b.publishedAt))
-      .slice(-48)
+      .slice(-64)
   }, [news.items, topStocks])
 
   useEffect(() => {
@@ -206,8 +216,8 @@ export default function FeatureNews() {
 
   return <section className="feature-news-shell" data-testid="feature-news">
     <header className="feature-news-head">
-      <div><p>FEATURE STOCK ISSUE TIMELINE</p><h2>특징주 이슈</h2><small>오늘 오전 6시 이후 올라온 이슈만 시간순으로 표시합니다. 같은 이슈는 묶고 명시적인 광고·홍보성 제목은 제외합니다.</small></div>
-      <div><b>{news.ok ? '● 뉴스 3분 최신화' : '● 뉴스 연결 중'}</b><span>{displayTime(news.updatedAt)}</span></div>
+      <div><p>MARKET BRIEF / HIGH SIGNAL</p><h2>시황 요약</h2><small>오늘 오전 6시 이후 급등·거래대금 집중 종목의 핵심 재료와 국내외 증시에 영향이 큰 매크로·지정학 이슈만 선별합니다. 중복·광고·저가치 기사는 제외하고 시간당 최대 8건으로 압축합니다.</small></div>
+      <div><b>{news.ok ? '● 시황 3분 최신화' : '● 시황 연결 중'}</b><span>{displayTime(news.updatedAt)}</span></div>
     </header>
     <div
       className={`feature-news-timeline${dragging ? ' dragging' : ''}`}
@@ -224,14 +234,15 @@ export default function FeatureNews() {
         <div className="feature-news-time"><time>{displayClock(item.publishedAt)}</time><span>{index + 1}</span></div>
         <h3>{item.summary}</h3>
         <div className="feature-news-tags">
-          {item.matches.map((stock) => <span key={stock.symbol ?? stock.name ?? ''}>{stock.name}</span>)}
+          {item.category && <em>{item.category}</em>}
+          {item.matches.map((stock) => <span key={stock.symbol ?? stock.name ?? ''}>{stock.name}{fmtRate(stock.changeRate) ? ` ${fmtRate(stock.changeRate)}` : ''}</span>)}
           {item.theme && <em>{item.theme}</em>}
-          {(item.duplicateCount ?? 1) > 1 && <b>{item.duplicateCount}건 묶음</b>}
+          {(item.duplicateCount ?? 1) > 1 && <b>{item.duplicateCount}건 종합</b>}
         </div>
-        <div className="feature-news-source"><span>{(item.sourceCount ?? 1) > 1 ? `${item.sourceCount}개 매체` : item.source || '뉴스'}</span>{item.matches.length > 0 && <b>TOP50 연관</b>}</div>
+        <div className="feature-news-source"><span>{(item.sourceCount ?? 1) > 1 ? `${item.sourceCount}개 매체 종합` : item.source || '뉴스'}</span>{item.matches.length > 0 && <b>거래대금 상위 연관</b>}</div>
       </a>)}
-      {!items.length && <div className="feature-news-empty"><strong>오늘 06:00 이후 특징주 이슈가 아직 없습니다.</strong><span>새 기사가 확인되면 시간순으로 두 줄에 추가됩니다.</span>{news.error && <small>{news.error}</small>}</div>}
+      {!items.length && <div className="feature-news-empty"><strong>오늘 06:00 이후 중요 시황 이슈를 선별 중입니다.</strong><span>급등·거래대금 집중 종목 또는 시장 영향도가 높은 새 이슈가 확인되면 추가됩니다.</span>{news.error && <small>{news.error}</small>}</div>}
     </div>
-    <footer>마우스 휠 또는 클릭한 채 좌우로 끌어서 이동할 수 있습니다. 카드 클릭 시 대표 기사 원문이 열리며, 뉴스와 주가의 인과관계는 자동 판단하지 않습니다.</footer>
+    <footer>마우스 휠 또는 클릭한 채 좌우로 끌어서 이동할 수 있습니다. 같은 사건의 반복 기사는 하나로 묶고, 시장에 의미가 낮은 기사보다 종목 재료·CPI/FOMC·전쟁·유가·환율 같은 영향도 높은 이슈를 우선합니다.</footer>
   </section>
 }
