@@ -1,4 +1,4 @@
-function stockRecords(payload) {
+export function stockRecords(payload) {
   const result = payload?.result
   if (Array.isArray(result)) return result
   if (Array.isArray(result?.stocks)) return result.stocks
@@ -41,8 +41,9 @@ export function directNameFromRanking(item = {}) {
 }
 
 export class StockMetadataCache {
-  constructor({ ttlMs = 6 * 60 * 60 * 1000 } = {}) {
+  constructor({ ttlMs = 6 * 60 * 60 * 1000, chunkSize = 25 } = {}) {
     this.ttlMs = ttlMs
+    this.chunkSize = chunkSize
     this.items = new Map()
     this.updatedAt = 0
   }
@@ -55,10 +56,11 @@ export class StockMetadataCache {
     const unique = [...new Set(symbols.map((symbol) => String(symbol ?? '').trim()).filter(Boolean))]
     if (!unique.length) return this.items
     const missing = unique.filter((symbol) => !this.items.has(symbol))
-    if (!missing.length && Date.now() - this.updatedAt < this.ttlMs) return this.items
+    const targets = missing.length ? missing : (Date.now() - this.updatedAt >= this.ttlMs ? unique : [])
+    if (!targets.length) return this.items
 
-    for (let index = 0; index < unique.length; index += 100) {
-      const chunk = unique.slice(index, index + 100)
+    for (let index = 0; index < targets.length; index += this.chunkSize) {
+      const chunk = targets.slice(index, index + this.chunkSize)
       const payload = await client.request(`/api/v1/stocks?symbols=${encodeURIComponent(chunk.join(','))}`)
       for (const record of stockRecords(payload)) {
         const meta = stockMeta(record)
