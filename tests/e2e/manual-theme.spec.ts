@@ -87,8 +87,8 @@ test('국내 테마 화면에서 재사용 테마를 만들고 종목에 수동 
   await expect(manager.getByText('대미투자', { exact: true }).first()).toBeVisible()
 
   await manager.getByLabel('종목 선택').selectOption('034020')
+  await manager.getByText('대미투자', { exact: true }).last().click()
   await manager.getByText('원전', { exact: true }).last().click()
-  // 새 테마는 생성 직후 선택 후보에 추가되므로 현재 종목에 함께 체크된 상태다.
   await manager.getByRole('button', { name: '선택 테마 등록' }).click()
 
   await expect(manager).toContainText('두산에너빌리티 → 대미투자, 원전 등록 완료')
