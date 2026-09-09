@@ -1,0 +1,86 @@
+name: Market Runtime Diagnostic
+
+on:
+  workflow_run:
+    workflows: ["Deploy to Raspberry Pi"]
+    types: [completed]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: market-runtime-diagnostic
+  cancel-in-progress: true
+
+jobs:
+  inspect:
+    if: >-
+      ${{ github.event.workflow_run.conclusion == 'success' &&
+          github.event.workflow_run.head_branch == 'main' &&
+          github.event.workflow_run.head_repository.full_name == github.repository }}
+    runs-on: [self-hosted, linux, ARM64, k-market-pi]
+    timeout-minutes: 3
+
+    steps:
+      - name: Inspect live domestic market snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # 배포 직후 startup-cache가 먼저 노출될 수 있으므로 실제 live/degraded
+          # 수집 결과가 나타날 시간을 짧게 준다. 마지막 정상 캐시 자체는 실패로
+          # 간주하지 않고 아래 JSON에 mode/updatedAt을 그대로 남긴다.
+          sleep 8
+
+          curl --fail --silent --show-error \
+            http://localhost:8080/api/health \
+            >/tmp/market-runtime-health.json
+          curl --fail --silent --show-error \
+            http://localhost:8080/api/market/snapshot \
+            >/tmp/market-runtime-snapshot.json
+
+          node <<'NODE'
+          const fs = require('fs')
+          const health = JSON.parse(fs.readFileSync('/tmp/market-runtime-health.json', 'utf8'))
+          const snapshot = JSON.parse(fs.readFileSync('/tmp/market-runtime-snapshot.json', 'utf8'))
+          const skHynix = snapshot?.topRankings?.find((item) => item?.symbol === '000660')
+            ?? snapshot?.stocks?.['000660']
+            ?? null
+
+          const diagnostic = {
+            checkedAt: new Date().toISOString(),
+            health: {
+              marketReady: health?.marketReady ?? null,
+              marketMode: health?.marketMode ?? null,
+              updatedAt: health?.updatedAt ?? null,
+              lastError: health?.lastError ?? null,
+            },
+            snapshot: {
+              ok: snapshot?.ok ?? null,
+              mode: snapshot?.mode ?? null,
+              updatedAt: snapshot?.updatedAt ?? null,
+              marketSession: snapshot?.marketSession ?? null,
+              rankingDuration: snapshot?.rankingDuration ?? null,
+              rankingPolicy: snapshot?.rankingPolicy ?? null,
+              rankedAt: snapshot?.rankedAt ?? null,
+              rankingRankedAt: snapshot?.rankingRankedAt ?? null,
+              skHynix: skHynix ? {
+                symbol: skHynix.symbol ?? '000660',
+                name: skHynix.name ?? 'SK하이닉스',
+                tradingAmount: skHynix.tradingAmount ?? null,
+                tradingVolume: skHynix.tradingVolume ?? null,
+                tradingAmountSource: skHynix.tradingAmountSource ?? null,
+                rankingAmounts: skHynix.rankingAmounts ?? null,
+                lastPrice: skHynix.lastPrice ?? null,
+              } : null,
+            },
+          }
+
+          console.log('=== Domestic market runtime diagnostic ===')
+          console.log(JSON.stringify(diagnostic, null, 2))
+          console.log('=== End domestic market runtime diagnostic ===')
+
+          if (!snapshot || !Object.prototype.hasOwnProperty.call(snapshot, 'updatedAt')) {
+            process.exitCode = 1
+          }
+          NODE
