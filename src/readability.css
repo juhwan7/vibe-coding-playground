@@ -1,5 +1,10 @@
 html { font-size: 17px; }
-body { font-size: 16px; }
+body {
+  font-size: 16px;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  font-kerning: normal;
+}
 
 .global-nav .brand { font-size: 14px !important; letter-spacing: .10em; }
 .global-nav > div button,
@@ -64,6 +69,103 @@ body { font-size: 16px; }
 .daily-issue-row { font-size: 13px !important; }
 .daily-issue-name strong { font-size: 15px !important; }
 .daily-issue-summary { font-size: 13px !important; line-height: 1.5 !important; }
+
+/*
+ * 4K / ultra-wide readability profile.
+ * 화면 전체를 CSS transform으로 확대하지 않고 실제 글자 크기와 행간만 키워
+ * 차트/패널 비율과 데이터 밀도는 유지한다.
+ * 4K 100~150% 배율에서 주로 적용되고, 일반 FHD/QHD 화면은 기존 크기를 유지한다.
+ */
+@media (min-width: 2200px) {
+  html { font-size: 20px; }
+  body { font-size: 18px; line-height: 1.48; }
+
+  .global-nav .brand {
+    font-size: 17px !important;
+    font-weight: 900 !important;
+    letter-spacing: .11em;
+  }
+  .global-nav > div button,
+  .manual-refresh,
+  .theme-toggle { font-size: 16px !important; font-weight: 750 !important; }
+  .live-dot { font-size: 13px !important; font-weight: 800 !important; }
+
+  .feature-news-head h2,
+  .theme-board-head h1,
+  .daily-issues-head h1 { font-size: 29px !important; }
+  .feature-news-head small,
+  .theme-board-head small,
+  .daily-issues-head p { font-size: 15px !important; line-height: 1.6 !important; }
+  .feature-news-item h3 { font-size: 17px !important; line-height: 1.5 !important; }
+  .feature-news-time time,
+  .feature-news-source,
+  .feature-news-tags { font-size: 13px !important; }
+
+  .theme-rank-line h2 { font-size: 25px !important; }
+  .theme-summary-cell > strong { font-size: 30px !important; }
+  .theme-summary-cell p,
+  .theme-summary-cell div,
+  .theme-cell-title { font-size: 15px !important; line-height: 1.5 !important; }
+  .theme-member-list > button { font-size: 16px !important; min-height: 34px; }
+  .theme-member-list > button strong { font-size: 15px !important; font-weight: 850 !important; }
+  .theme-chart-name { font-size: 16px !important; font-weight: 850 !important; }
+  .theme-chart-name small { font-size: 13px !important; }
+  .theme-chart-metrics { font-size: 14px !important; }
+  .theme-window-stats span { font-size: 13px !important; }
+  .theme-window-stats strong { font-size: 17px !important; }
+  .theme-method-strip { font-size: 14px !important; }
+  .theme-hour-label,
+  .theme-day-label,
+  .theme-candle-price-label,
+  .theme-axis-scale { font-size: 13px !important; font-weight: 900 !important; }
+  .theme-current-label text { font-size: 14px !important; font-weight: 900 !important; }
+
+  .top100-head h2 { font-size: 23px !important; }
+  .top100-list-head { font-size: 13px !important; font-weight: 850 !important; }
+  .top100-row > b { font-size: 14px !important; }
+  .top100-stock strong { font-size: 17px !important; font-weight: 850 !important; }
+  .top100-stock small { font-size: 13px !important; }
+  .top100-rate,
+  .top100-amount { font-size: 15px !important; font-weight: 800 !important; }
+
+  .market-mini-panel > span { font-size: 14px !important; }
+  .market-mini-panel > strong { font-size: 22px !important; }
+  .market-mini-panel > b { font-size: 14px !important; }
+
+  .data-status { font-size: 14px !important; font-weight: 750 !important; }
+  .market-strip span,
+  .market-strip em { font-size: 14px !important; }
+  .market-strip strong { font-size: 22px !important; }
+  .panel-head p { font-size: 13px !important; line-height: 1.5 !important; }
+  .panel-head h2 { font-size: 23px !important; }
+  .panel-head > span,
+  .panel-head > strong { font-size: 14px !important; }
+  .comparison-card > span { font-size: 14px !important; }
+  .comparison-card > strong { font-size: 24px !important; }
+  .comparison-lines small { font-size: 13px !important; }
+  .market-map-tile .map-title span { font-size: 18px !important; font-weight: 850 !important; }
+  .market-map-tile > strong { font-size: 25px !important; }
+  .market-map-tile small { font-size: 13px !important; }
+  .ranking-list button { font-size: 15px !important; }
+  .ranking-list small { font-size: 13px !important; }
+
+  .daily-issues-table,
+  .daily-issue-row { font-size: 15px !important; }
+  .daily-issue-name strong { font-size: 18px !important; }
+  .daily-issue-summary { font-size: 15px !important; line-height: 1.55 !important; }
+
+  :root[data-theme='light'] .theme-summary-cell p,
+  :root:not([data-theme='dark']) .theme-summary-cell p,
+  :root[data-theme='light'] .theme-cell-title,
+  :root:not([data-theme='dark']) .theme-cell-title,
+  :root[data-theme='light'] .top100-stock small,
+  :root:not([data-theme='dark']) .top100-stock small,
+  :root[data-theme='light'] .panel-head p,
+  :root:not([data-theme='dark']) .panel-head p {
+    color: #3f5569 !important;
+    font-weight: 650 !important;
+  }
+}
 
 @media (max-width: 900px) {
   html { font-size: 16px; }
