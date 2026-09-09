@@ -82,6 +82,7 @@ type StockChartPayload = {
 }
 
 type DescriptionPayload = {
+  complete?: boolean
   items?: Array<{ code?: string | null; description?: string | null }>
 }
 
@@ -143,14 +144,9 @@ function isIndividualStock(item: RankingItem) {
   return !NON_STOCK_NAME.test(String(item.name ?? ''))
 }
 
-function compactCompanySummary(description: string | null | undefined, fallbackTheme?: string | null, fallbackMarket?: string | null) {
-  const fallback = fallbackTheme
-    ? `${fallbackTheme} 관련 핵심 종목`
-    : fallbackMarket
-      ? `${fallbackMarket} 거래대금 상위 종목`
-      : '거래대금 상위 주요 종목'
+function compactCompanySummary(description: string | null | undefined) {
   const text = String(description ?? '').replace(/\s+/g, ' ').trim()
-  if (!text) return fallback
+  if (!text) return null
 
   const sentences = text.split(/(?<=[.!?])\s+/).map((sentence) => sentence.trim()).filter(Boolean)
   const selected = (sentences.length ? sentences : [text])
@@ -161,6 +157,7 @@ function compactCompanySummary(description: string | null | undefined, fallbackT
     .sort((a, b) => b.score - a.score)[0]?.sentence ?? text
 
   let concise = selected
+    .replace(/^기업개요\s*/, '')
     .replace(/^(동사|당사|회사는)\s*/, '')
     .replace(/\s*(하고|하며)\s*있음\.?$/, '')
     .replace(/\s*영위하고\s*있음\.?$/, ' 영위')
@@ -175,7 +172,7 @@ function compactCompanySummary(description: string | null | undefined, fallbackT
     const boundary = Math.max(...boundaries)
     concise = boundary >= 18 ? concise.slice(0, boundary).trim() : `${concise.slice(0, 32).trim()}…`
   }
-  return concise || fallback
+  return concise || null
 }
 
 function themeIcon(name: string) {
@@ -314,7 +311,8 @@ export default function MarketWorkspace() {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null)
   const [themeFlow, setThemeFlow] = useState<ThemeFlowResponse>({ ok: false, themes: [], topRankings: [] })
   const [companyDescriptions, setCompanyDescriptions] = useState<Record<string, string>>({})
-  const requestedDescriptions = useRef(new Set<string>())
+  const [descriptionRetryTick, setDescriptionRetryTick] = useState(0)
+  const descriptionRequestsInFlight = useRef(new Set<string>())
 
   useEffect(() => {
     const controller = new AbortController()
@@ -385,40 +383,57 @@ export default function MarketWorkspace() {
 
   useEffect(() => {
     let active = true
+    let retryTimer: number | undefined
     const missing = rankings
       .map((item) => item.symbol)
-      .filter((code) => /^\d{6}$/.test(code) && !companyDescriptions[code] && !requestedDescriptions.current.has(code))
+      .filter((code) => /^\d{6}$/.test(code) && !companyDescriptions[code] && !descriptionRequestsInFlight.current.has(code))
 
     if (!missing.length) return () => { active = false }
-    for (const code of missing) requestedDescriptions.current.add(code)
+    for (const code of missing) descriptionRequestsInFlight.current.add(code)
 
     const fillTop100Descriptions = async () => {
+      let retryNeeded = false
       for (let offset = 0; offset < missing.length && active; offset += 10) {
         const batch = missing.slice(offset, offset + 10)
         const params = new URLSearchParams({ codes: batch.join(',') })
         const response = await fetch(`/api/quiz/descriptions?${params.toString()}`, {
           headers: { Accept: 'application/json' },
         }).catch(() => null)
-        const payload = response?.ok
+        const payload = response
           ? await response.json().catch(() => null) as DescriptionPayload | null
           : null
+        const described = new Set<string>()
         if (active && payload?.items?.length) {
           const next: Record<string, string> = {}
           for (const item of payload.items) {
             const code = String(item.code ?? '')
-            if (/^\d{6}$/.test(code) && item.description) next[code] = item.description
+            if (/^\d{6}$/.test(code) && item.description) {
+              next[code] = item.description
+              described.add(code)
+            }
           }
           if (Object.keys(next).length) setCompanyDescriptions((current) => ({ ...current, ...next }))
         }
+        for (const code of batch) {
+          descriptionRequestsInFlight.current.delete(code)
+          if (!described.has(code)) retryNeeded = true
+        }
         if (offset + 10 < missing.length && active) {
-          await new Promise((resolve) => window.setTimeout(resolve, 250))
+          await new Promise((resolve) => window.setTimeout(resolve, 500))
         }
       }
+      if (active && retryNeeded) retryTimer = window.setTimeout(() => setDescriptionRetryTick((value) => value + 1), 15000)
     }
 
     void fillTop100Descriptions()
-    return () => { active = false }
-  }, [rankings, companyDescriptions])
+    return () => {
+      active = false
+      if (retryTimer) window.clearTimeout(retryTimer)
+      for (const code of missing) descriptionRequestsInFlight.current.delete(code)
+    }
+    // companyDescriptions intentionally stays out of this dependency list.
+    // Updating one successful batch must not cancel the remaining TOP100 batches.
+  }, [rankings, descriptionRetryTick])
 
   const themes = (themeFlow.themes ?? []).slice(0, 5)
   const themeMembershipBySymbol = new Map<string, { name: string; accent: string; rank: number }>()
@@ -473,17 +488,16 @@ export default function MarketWorkspace() {
       <div className="top100-list-head"><span>순위</span><span>종목명 · 핵심사업</span><span>등락률</span><span>거래대금 / 비중</span></div>
       <div className="top100-list">
         {rankings.map((item, index) => {
-          const amount = item.tradingAmount ?? 0
           const displayName = validStockName(item.name, item.symbol)
           const themeMembership = themeMembershipBySymbol.get(item.symbol)
           const catalogTheme = themeMembership?.name ?? item.catalogThemes?.[0] ?? null
           const fullDescription = companyDescriptions[item.symbol] ?? null
-          const companySummary = compactCompanySummary(fullDescription, catalogTheme, item.market)
-          const share = totalAmount > 0 ? amount / totalAmount * 100 : null
+          const companySummary = compactCompanySummary(fullDescription)
+          const share = totalAmount > 0 ? (item.tradingAmount ?? 0) / totalAmount * 100 : null
           const tooltip = [
             themeMembership ? `현재 ${themeMembership.rank}위 테마 · ${themeMembership.name}` : (item.catalogThemes?.length ? `검증 테마 · ${item.catalogThemes.join(', ')}` : null),
             `${item.symbol} · 현재가 ${item.lastPrice?.toLocaleString() ?? '-'}`,
-            fullDescription ?? companySummary,
+            fullDescription,
           ].filter(Boolean).join('\n')
           return <div
             className={`top100-row${themeMembership ? ' top100-row-themed' : ''}`}
@@ -497,7 +511,7 @@ export default function MarketWorkspace() {
               <strong>{displayName ?? '종목명 확인 중'}</strong>
               <div className="top100-company-summary">
                 {catalogTheme && <span className={`top100-theme-label${themeMembership ? '' : ' is-passive'}`}>{catalogTheme}</span>}
-                <span>{companySummary}</span>
+                <span>{companySummary ?? '실제 기업개요 불러오는 중…'}</span>
               </div>
             </div>
             <strong className={`top100-rate ${(item.changeRate ?? 0) >= 0 ? 'up' : 'down'}`}><FlashValue value={item.changeRate}>{fmtRate(item.changeRate)}</FlashValue></strong>
