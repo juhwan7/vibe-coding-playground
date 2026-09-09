@@ -69,8 +69,15 @@ function weightedLiveDelta(entries) {
 export function buildLiveThemePayload(payload, snapshot) {
   if (!payload?.ok || !snapshot?.topRankings?.length) return payload
   const bySymbol = liveMap(snapshot)
+  const baseBySymbol = new Map((payload.topRankings ?? []).filter((item) => item?.symbol).map((item) => [item.symbol, item]))
 
-  const topRankings = (payload.topRankings ?? []).map((item) => withCatalogThemes(mergeRanking(item, bySymbol.get(item.symbol))))
+  // 우측 TOP100은 실시간 snapshot 순위를 기준으로 렌더링한다.
+  // 따라서 테마 서비스 payload에 포함된 종목만 분류하면, snapshot에는 있지만 payload에는 없는 종목의 배지가 비게 된다.
+  // 실시간 TOP100 전체를 기준으로 분류하되, payload 메타데이터가 있으면 합쳐서 유지한다.
+  const topRankings = (snapshot.topRankings ?? []).map((live) => {
+    const base = baseBySymbol.get(live.symbol) ?? live
+    return withCatalogThemes(mergeRanking(base, live))
+  })
   const themes = (payload.themes ?? []).map((theme) => {
     const deltaEntries = []
     const members = (theme.members ?? []).map((member) => {
