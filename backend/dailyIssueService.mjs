@@ -6,7 +6,11 @@ import { sleep } from './tossClient.mjs'
 
 const NEWS_URL = 'https://news.google.com/rss/search'
 const FINALIZE_MINUTE = 15 * 60 + 20
+const REGULAR_SESSION_START_MINUTE = 9 * 60
+const REGULAR_SESSION_END_MINUTE = 15 * 60 + 30
 const CHART_BUCKET_MS = 5 * 60 * 1000
+const TWO_DAY_BACKFILL_MAX_PAGES = 6
+const DAILY_ISSUE_SCHEMA_VERSION = 2
 const EXCHANGE_TRADED_NAME = /(ETF|ETN|KODEX|TIGER|RISE|ACE|PLUS|SOL|HANARO|KOSEF|TIMEFOLIO|ARIRANG|FOCUS|KBSTAR|리츠|스팩|인프라)/i
 
 function number(value) {
@@ -78,21 +82,58 @@ function candleRecords(payload) {
   })).filter((candle) => candle.timestamp && candle.closePrice != null)
 }
 
-export function buildIntradayLine(candles = []) {
-  const ordered = [...candles].sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp))
-  if (!ordered.length) return []
-  const latestDay = kstParts(ordered.at(-1).timestamp).day
-  const buckets = new Map()
-  for (const candle of ordered) {
-    const parsed = Date.parse(candle.timestamp)
-    if (!Number.isFinite(parsed) || kstParts(candle.timestamp).day !== latestDay) continue
-    const { hour, minute } = kstParts(candle.timestamp)
-    const marketMinute = hour * 60 + minute
-    if (marketMinute < 9 * 60 || marketMinute > FINALIZE_MINUTE + 10) continue
-    const key = Math.floor(parsed / CHART_BUCKET_MS) * CHART_BUCKET_MS
-    buckets.set(key, { timestamp: new Date(key).toISOString(), value: number(candle.closePrice) })
+function mergeCandles(existing = [], incoming = []) {
+  const byTimestamp = new Map()
+  for (const candle of [...existing, ...incoming]) {
+    if (!candle?.timestamp || candle.closePrice == null) continue
+    byTimestamp.set(candle.timestamp, candle)
   }
-  return [...buckets.values()].filter((point) => point.value != null).sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp))
+  return [...byTimestamp.values()].sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp))
+}
+
+function hasFullPreviousTradingDay(candles = []) {
+  const days = [...new Set(candles.map((candle) => kstParts(candle.timestamp).day))].sort()
+  if (days.length < 2) return false
+  const previousDay = days.at(-2)
+  const previous = candles.filter((candle) => kstParts(candle.timestamp).day === previousDay)
+  if (!previous.length) return false
+  const firstMinute = Math.min(...previous.map((candle) => {
+    const { hour, minute } = kstParts(candle.timestamp)
+    return hour * 60 + minute
+  }))
+  return firstMinute <= REGULAR_SESSION_START_MINUTE + 5
+}
+
+export function buildTwoDayIntraday(candles = [], dayCount = 2) {
+  const ordered = [...candles]
+    .filter((candle) => candle?.timestamp && candle.closePrice != null && Number.isFinite(Date.parse(candle.timestamp)))
+    .sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp))
+  const selectedDays = [...new Set(ordered.map((candle) => kstParts(candle.timestamp).day))]
+    .sort()
+    .slice(-Math.max(1, dayCount))
+
+  return selectedDays.map((day) => {
+    const buckets = new Map()
+    for (const candle of ordered) {
+      const parts = kstParts(candle.timestamp)
+      if (parts.day !== day) continue
+      const marketMinute = parts.hour * 60 + parts.minute
+      if (marketMinute < REGULAR_SESSION_START_MINUTE || marketMinute > REGULAR_SESSION_END_MINUTE) continue
+      const parsed = Date.parse(candle.timestamp)
+      const key = Math.floor(parsed / CHART_BUCKET_MS) * CHART_BUCKET_MS
+      buckets.set(key, { timestamp: new Date(key).toISOString(), value: number(candle.closePrice) })
+    }
+    return {
+      date: day,
+      points: [...buckets.values()]
+        .filter((point) => point.value != null)
+        .sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp)),
+    }
+  }).filter((day) => day.points.length)
+}
+
+export function buildIntradayLine(candles = []) {
+  return buildTwoDayIntraday(candles, 1).at(-1)?.points ?? []
 }
 
 function normalizeIssueText(text = '') {
@@ -168,7 +209,7 @@ export class DailyIssueService {
     this.client = client
     this.cachePath = cachePath
     this.checkMs = Math.max(10000, Number(checkMs) || 30000)
-    this.payload = { ok: false, status: 'waiting', date: null, capturedAt: null, rows: [], error: null }
+    this.payload = { ok: false, status: 'waiting', schemaVersion: DAILY_ISSUE_SCHEMA_VERSION, date: null, capturedAt: null, rows: [], error: null }
     this.timer = null
     this.running = false
     this.generating = null
@@ -219,10 +260,11 @@ export class DailyIssueService {
     const now = kstParts()
     const currentDay = now.day
     const marketMinute = now.hour * 60 + now.minute
-    if (this.payload?.ok && this.payload.date === currentDay) return this.payload
+    if (this.payload?.ok && this.payload.date === currentDay && this.payload.schemaVersion === DAILY_ISSUE_SCHEMA_VERSION) return this.payload
     return {
       ok: false,
       status: marketMinute < FINALIZE_MINUTE ? 'waiting' : this.generating ? 'generating' : 'pending',
+      schemaVersion: DAILY_ISSUE_SCHEMA_VERSION,
       date: currentDay,
       capturedAt: null,
       targetTime: '15:20',
@@ -235,11 +277,30 @@ export class DailyIssueService {
     const now = kstParts()
     const marketMinute = now.hour * 60 + now.minute
     if (marketMinute < FINALIZE_MINUTE) return this.currentPayload()
-    if (this.payload?.ok && this.payload.date === now.day) return this.payload
+    if (this.payload?.ok && this.payload.date === now.day && this.payload.schemaVersion === DAILY_ISSUE_SCHEMA_VERSION) return this.payload
     if (!this.client.configured) return this.currentPayload()
     if (this.generating) return this.generating
     this.generating = this.generate(now.day).finally(() => { this.generating = null })
     return this.generating
+  }
+
+  async fetchTwoTradingDayCandles(symbol) {
+    let before = null
+    let merged = []
+    for (let page = 0; page < TWO_DAY_BACKFILL_MAX_PAGES; page += 1) {
+      const query = new URLSearchParams({ symbol, interval: '1m', count: '200', adjusted: 'true' })
+      if (before) query.set('before', before)
+      const payload = await this.client.request(`/api/v1/candles?${query.toString()}`, { priority: 'background', dedupe: false }).catch(() => null)
+      const candles = candleRecords(payload)
+      if (!candles.length) break
+      merged = mergeCandles(merged, candles)
+      if (hasFullPreviousTradingDay(merged)) break
+      const nextBefore = payload?.result?.nextBefore ?? null
+      if (!nextBefore || nextBefore === before) break
+      before = nextBefore
+      await sleep(40)
+    }
+    return merged
   }
 
   async generate(day) {
@@ -266,9 +327,8 @@ export class DailyIssueService {
       const chartMap = new Map()
 
       await mapLimit(stocks, 4, async (stock) => {
-        const query = new URLSearchParams({ symbol: stock.symbol, interval: '1m', count: '400', adjusted: 'true' })
-        const payload = await this.client.request(`/api/v1/candles?${query.toString()}`, { priority: 'background', dedupe: false }).catch(() => null)
-        chartMap.set(stock.symbol, buildIntradayLine(candleRecords(payload)))
+        const candles = await this.fetchTwoTradingDayCandles(stock.symbol)
+        chartMap.set(stock.symbol, buildTwoDayIntraday(candles, 2))
         await sleep(40)
       })
 
@@ -294,10 +354,11 @@ export class DailyIssueService {
       this.payload = {
         ok: true,
         status: 'finalized',
+        schemaVersion: DAILY_ISSUE_SCHEMA_VERSION,
         date: day,
         targetTime: '15:20',
         capturedAt: new Date().toISOString(),
-        source: '토스증권 Open API 거래대금 랭킹/1분봉 + Google News RSS',
+        source: '토스증권 Open API 거래대금 랭킹/실제 1분봉 2거래일 + Google News RSS',
         sort: 'changeRate-desc',
         rows,
         error: null,

@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { buildIntradayLine, sortDailyIssueRows, summarizeStockIssues } from './dailyIssueService.mjs'
+import { buildIntradayLine, buildTwoDayIntraday, sortDailyIssueRows, summarizeStockIssues } from './dailyIssueService.mjs'
 
 test('buildIntradayLine keeps latest trading day and compresses to 5-minute closes', () => {
   const points = buildIntradayLine([
@@ -13,6 +13,21 @@ test('buildIntradayLine keeps latest trading day and compresses to 5-minute clos
   assert.equal(points.length, 2)
   assert.equal(points[0].value, 104)
   assert.equal(points[1].value, 106)
+})
+
+test('buildTwoDayIntraday keeps only the latest two trading days as separate real-data series', () => {
+  const days = buildTwoDayIntraday([
+    { timestamp: '2026-09-07T09:00:00+09:00', closePrice: 80 },
+    { timestamp: '2026-09-08T09:00:00+09:00', closePrice: 90 },
+    { timestamp: '2026-09-08T09:04:00+09:00', closePrice: 94 },
+    { timestamp: '2026-09-08T09:05:00+09:00', closePrice: 93 },
+    { timestamp: '2026-09-09T09:00:00+09:00', closePrice: 100 },
+    { timestamp: '2026-09-09T09:04:00+09:00', closePrice: 104 },
+    { timestamp: '2026-09-09T09:05:00+09:00', closePrice: 103 },
+  ])
+  assert.deepEqual(days.map((day) => day.date), ['2026-09-08', '2026-09-09'])
+  assert.deepEqual(days[0].points.map((point) => point.value), [94, 93])
+  assert.deepEqual(days[1].points.map((point) => point.value), [104, 103])
 })
 
 test('summarizeStockIssues combines duplicate same-stock reports and keeps sources', () => {
