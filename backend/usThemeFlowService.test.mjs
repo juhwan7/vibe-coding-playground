@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { buildUsThemeGroups } from './usThemeCatalog.mjs'
-import { aggregateUsThemeSeries, loadUsRanking } from './usThemeFlowService.mjs'
+import { buildUsThemeGroups, selectUsThemeGroups } from './usThemeCatalog.mjs'
+import { aggregateUsThemeSeries, isUsIndividualStock, loadUsRanking } from './usThemeFlowService.mjs'
 
 test('buildUsThemeGroups requires three US top50 members and sorts by turnover', () => {
   const rankings = [
@@ -22,7 +22,32 @@ test('buildUsThemeGroups requires three US top50 members and sorts by turnover',
   assert.equal(groups[1].tradingAmount, 210)
 })
 
-test('aggregateUsThemeSeries normalizes members and averages them into 3-minute buckets', () => {
+test('selectUsThemeGroups fixes the US board to five themes using only top50 stocks', () => {
+  const rankings = [
+    { symbol: 'NVDA', tradingAmount: 500 }, { symbol: 'AMD', tradingAmount: 480 }, { symbol: 'AVGO', tradingAmount: 460 },
+    { symbol: 'MSFT', tradingAmount: 440 }, { symbol: 'META', tradingAmount: 420 }, { symbol: 'GOOGL', tradingAmount: 400 },
+    { symbol: 'PLTR', tradingAmount: 380 }, { symbol: 'CRM', tradingAmount: 360 }, { symbol: 'NOW', tradingAmount: 340 },
+    { symbol: 'TSLA', tradingAmount: 320 }, { symbol: 'RIVN', tradingAmount: 300 }, { symbol: 'GM', tradingAmount: 280 },
+    { symbol: 'JPM', tradingAmount: 260 }, { symbol: 'BAC', tradingAmount: 240 }, { symbol: 'GS', tradingAmount: 220 },
+    ...Array.from({ length: 35 }, (_, index) => ({ symbol: `ZZ${index}`, tradingAmount: 200 - index })),
+    { symbol: 'XOM', tradingAmount: 9999 }, { symbol: 'CVX', tradingAmount: 9998 }, { symbol: 'COP', tradingAmount: 9997 },
+  ]
+  const groups = selectUsThemeGroups(rankings, { targetCount: 5, limit: 50 })
+  assert.equal(groups.length, 5)
+  assert.deepEqual(groups.map((group) => group.name), [
+    'AI 반도체', 'AI 플랫폼·빅테크', 'AI 소프트웨어', '전기차·자율주행', '금융·결제',
+  ])
+  assert.equal(groups.some((group) => group.members.some((member) => member.symbol === 'XOM')), false)
+})
+
+test('US individual-stock filter excludes ETF and ETN metadata before TOP50 is built', () => {
+  assert.equal(isUsIndividualStock({ symbol: 'NVDA', name: 'NVIDIA', securityType: 'STOCK' }), true)
+  assert.equal(isUsIndividualStock({ symbol: 'SPY', name: 'SPDR S&P 500 ETF Trust', securityType: 'ETF' }), false)
+  assert.equal(isUsIndividualStock({ symbol: 'QQQ', name: 'Invesco QQQ Trust' }), false)
+  assert.equal(isUsIndividualStock({ symbol: 'TEST', name: 'Example ETN' }), false)
+})
+
+test('aggregateUsThemeSeries normalizes members and uses 3-minute turnover-weighted returns', () => {
   const memberSeries = [
     {
       symbol: 'NVDA',
@@ -45,7 +70,7 @@ test('aggregateUsThemeSeries normalizes members and averages them into 3-minute 
   assert.equal(points.length, 2)
   assert.equal(points[0].memberCount, 2)
   assert.equal(points[0].tradingAmount, 4000)
-  assert.ok(Math.abs(points[0].value - 0) < 1e-9)
+  assert.ok(Math.abs(points[0].value - 0.005) < 1e-9)
   assert.ok(Math.abs(points[1].value - 2) < 1e-9)
   assert.equal(points[1].tradingAmount, 2040)
 })
