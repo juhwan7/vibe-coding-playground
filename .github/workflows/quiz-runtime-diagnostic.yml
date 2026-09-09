@@ -30,10 +30,21 @@ jobs:
           echo
           echo
           echo '=== persistent quiz summary ==='
-          docker compose exec -T backend node -e "const fs=require('fs'); for (const p of ['/app/data/quiz-universe.json','/app/data/quiz-descriptions.json','/app/public-data/quiz-prepared.json']) { try { const s=fs.statSync(p); const j=JSON.parse(fs.readFileSync(p,'utf8')); const values=Object.values(j.items||{}); const poolCounts=values.reduce((a,x)=>{const k=x&&x.pool||'none';a[k]=(a[k]||0)+1;return a},{}); console.log(p, {bytes:s.size, source:j.source, sourceDate:j.sourceDate, ok:j.ok, stale:j.stale, counts:j.counts, expectedCounts:j.expectedCounts, cacheStatus:j.cacheStatus, itemCount:values.length||undefined, poolCounts, sample:values.slice(0,8).map(x=>({code:x.code,name:x.name,pool:x.pool,hasDescription:Boolean(x.description)})), error:j.error}); } catch(e) { console.log(p, 'ERROR', e.message); } }" || true
+          docker compose exec -T backend node -e "const fs=require('fs'); for (const p of ['/app/data/quiz-universe.json','/app/data/quiz-descriptions.json','/app/public-data/quiz-prepared.json']) { try { const s=fs.statSync(p); const j=JSON.parse(fs.readFileSync(p,'utf8')); const values=Object.values(j.items||{}); const poolCounts=values.reduce((a,x)=>{const k=x&&x.pool||'none';a[k]=(a[k]||0)+1;return a},{}); console.log(p, {bytes:s.size, source:j.source, sourceDate:j.sourceDate, ok:j.ok, stale:j.stale, counts:j.counts, expectedCounts:j.expectedCounts, cacheStatus:j.cacheStatus, itemCount:values.length||undefined, poolCounts, error:j.error}); } catch(e) { console.log(p, 'ERROR', e.message); } }" || true
           echo
-          echo '=== Toss KODEX composition response shape from backend container ==='
-          docker compose exec -T backend node -e "const headers={'Origin':'https://tossinvest.com','Referer':'https://tossinvest.com/','User-Agent':'Mozilla/5.0'}; for (const etf of ['A069500','A229200']) { const j=await fetch('https://wts-info-api.tossinvest.com/api/v2/stock-infos/'+etf+'/compositions',{headers}).then(r=>r.json()); const r=j.result||{}; const meta={top:Object.keys(j),result:Object.keys(r),items:Array.isArray(r.items)?r.items.length:null}; for(const [k,v] of Object.entries(r)) if(/page|next|cursor|offset|total|count|more|has/i.test(k)) meta[k]=v; console.log(etf,meta); console.log('first',r.items?.[0]); console.log('last',r.items?.at?.(-1)); }" || true
+          echo '=== official benchmark ETF raw holdings probes ==='
+          for row in \
+            'RISE200|https://www.riseetf.co.kr/prod/finderDetail/4435?searchFlag=viewtab3' \
+            'RISEKQ150|https://www.riseetf.co.kr/prod/finderDetail/4459?searchFlag=viewtab3' \
+            'PLUS200|https://www.plusetf.co.kr/product/detail?n=006184' \
+            'PLUSKQ150|https://www.plusetf.co.kr/product/detail?n=006318'; do
+            label="${row%%|*}"
+            url="${row#*|}"
+            body="$(curl --silent --show-error --max-time 20 -L -A 'Mozilla/5.0' -H 'Accept-Language: ko-KR,ko;q=0.9' "$url" 2>/dev/null || true)"
+            rise_isin="$(printf '%s' "$body" | grep -Eo 'KR7[0-9]{9}' | sort -u | wc -l | tr -d ' ')"
+            six_codes="$(printf '%s' "$body" | grep -Eo '(^|[^0-9])[0-9]{6}([^0-9]|$)' | grep -Eo '[0-9]{6}' | sort -u | wc -l | tr -d ' ')"
+            echo "$label bytes=${#body} riseISIN=$rise_isin sixDigitTokens=$six_codes"
+          done
           echo
           echo '=== Naver KPI200 page count probe ==='
           for page in 1 2 19 20 21; do
