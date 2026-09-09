@@ -6,6 +6,7 @@ import {
   marketSessionLabel,
   mergeMarketTradingAmountRankings,
   nxtAfterMarketActive,
+  nxtRealtimeRankingActive,
   rankingItem,
 } from './marketCollector.mjs'
 
@@ -22,6 +23,11 @@ test('classifies NXT after-market from 15:30 through 20:00 in Korea time', () =>
   assert.match(marketSessionLabel(new Date('2026-09-09T11:00:00Z')), /NXT AFTER/)
 })
 
+test('classifies the short post-close settlement grace period separately', () => {
+  assert.match(marketSessionLabel(new Date('2026-09-09T11:01:00Z')), /종료 정산/)
+  assert.match(marketSessionLabel(new Date('2026-09-09T11:30:00Z')), /종료 정산/)
+})
+
 test('domestic fast collection is active only from 08:00 through exactly 20:00 KST', () => {
   assert.equal(domesticCollectionActive(new Date('2026-09-08T22:59:59Z')), false)
   assert.equal(domesticCollectionActive(new Date('2026-09-08T23:00:00Z')), true)
@@ -29,11 +35,19 @@ test('domestic fast collection is active only from 08:00 through exactly 20:00 K
   assert.equal(domesticCollectionActive(new Date('2026-09-09T11:00:01Z')), false)
 })
 
-test('NXT realtime ranking collection starts at 15:30 and stops after 20:00 KST', () => {
+test('NXT chart session remains bounded to 15:30 through exactly 20:00 KST', () => {
   assert.equal(nxtAfterMarketActive(new Date('2026-09-09T06:29:59Z')), false)
   assert.equal(nxtAfterMarketActive(new Date('2026-09-09T06:30:00Z')), true)
   assert.equal(nxtAfterMarketActive(new Date('2026-09-09T11:00:00Z')), true)
   assert.equal(nxtAfterMarketActive(new Date('2026-09-09T11:00:01Z')), false)
+})
+
+test('NXT realtime ranking finalization remains available until 20:30 KST', () => {
+  assert.equal(nxtRealtimeRankingActive(new Date('2026-09-09T06:29:59Z')), false)
+  assert.equal(nxtRealtimeRankingActive(new Date('2026-09-09T06:30:00Z')), true)
+  assert.equal(nxtRealtimeRankingActive(new Date('2026-09-09T11:00:01Z')), true)
+  assert.equal(nxtRealtimeRankingActive(new Date('2026-09-09T11:30:00Z')), true)
+  assert.equal(nxtRealtimeRankingActive(new Date('2026-09-09T11:30:01Z')), false)
 })
 
 test('TOP100 랭킹의 displayName을 실제 종목명으로 사용한다', () => {
