@@ -58,7 +58,8 @@ test('360px 모바일에서 주요 화면이 잘리지 않고 상단 메뉴만 �
   await page.screenshot({ path: testInfo.outputPath('mobile-360-market-replay.png'), fullPage: true })
 
   await page.getByRole('button', { name: '종목 퀴즈' }).click()
-  await expect(page.locator('.game-shell')).toBeVisible()
+  await expect(page.getByTestId('index-quiz')).toBeVisible()
   await expectNoPageOverflow(page)
-  await expectVisibleInsideViewport(page, '.quiz-layout')
+  await expectVisibleInsideViewport(page, '.index-quiz-shell')
+  await expectVisibleInsideViewport(page, '.index-quiz-select')
 })
