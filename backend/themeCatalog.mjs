@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { cachedDescriptionForStock } from './stockClassification.mjs'
+import { manualThemesForStock } from './manualThemeStore.mjs'
 
 const catalogPath = process.env.THEME_CATALOG_PATH || new URL('./data/themes.kr.json', import.meta.url)
 const rawCatalog = JSON.parse(readFileSync(catalogPath, 'utf8'))
@@ -51,6 +52,17 @@ export function inferThemeFromOverview(symbol, name = '', description = null) {
 export function themeMembershipsForStock(symbol, name = '', description = null) {
   const result = new Map()
   const code = String(symbol ?? '').trim()
+
+  // 사용자가 대시보드에서 직접 지정한 테마가 있으면 자동 카탈로그/키워드 추론보다 우선한다.
+  // 수동 지정을 비우면 저장소의 override가 제거되어 즉시 기존 자동 분류로 복귀한다.
+  const manualThemes = manualThemesForStock(code)
+  if (manualThemes?.length) {
+    return manualThemes.map((theme) => ({
+      name: theme,
+      source: 'manual-user',
+      confidence: 'user',
+    }))
+  }
 
   for (const [theme, symbols] of Object.entries(CATALOG)) {
     if (symbols.has(code)) result.set(theme, { name: theme, source: 'catalog-symbol', confidence: 'verified' })
