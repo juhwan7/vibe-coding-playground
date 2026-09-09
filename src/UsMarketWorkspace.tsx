@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import './marketWorkspace.css'
+import { splitUsThemeLineSegments, usMarketBreadth, usThemeConcentration, usThemeStrengthClass, usTurnoverHeat } from './usThemeFlowSaas'
 
 type RankingItem = {
   symbol: string | null
@@ -70,6 +71,11 @@ function fmtRate(value: number | null | undefined) {
   return `${value > 0 ? '+' : ''}${value.toFixed(2)}%`
 }
 
+function fmtShare(value: number | null | undefined) {
+  if (value == null || !Number.isFinite(value)) return '-'
+  return `${value.toFixed(value < 1 ? 2 : 1)}%`
+}
+
 function displayKstTime(iso?: string | null) {
   if (!iso) return '-'
   return new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(iso))
@@ -118,7 +124,7 @@ function themeIcon(name: string) {
 }
 
 function UsThemeChart({ theme, accent }: { theme: ThemeGroup; accent: string }) {
-  const points = theme.points ?? []
+  const points = [...(theme.points ?? [])].sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp))
   if (points.length < 2) return <div className="theme-chart-empty">미국 전일 + 오늘 1분봉 복원 중</div>
 
   const width = 900
@@ -144,7 +150,7 @@ function UsThemeChart({ theme, accent }: { theme: ThemeGroup; accent: string }) 
   const hi = max + pad
   const range = Math.max(.01, hi - lo)
   const y = (value: number) => chartBottom - ((value - lo) / range) * (chartBottom - chartTop)
-  const path = points.map((point, index) => `${index === 0 ? 'M' : 'L'}${xForPoint(point).toFixed(1)},${y(point.value).toFixed(1)}`).join(' ')
+  const lineSegments = splitUsThemeLineSegments(points)
   const maxTurnover = Math.max(1, ...points.map((point) => point.tradingAmount ?? 0))
   const turnoverPeak = points.reduce<ThemePoint | null>((best, point) => !best || (point.tradingAmount ?? 0) > (best.tradingAmount ?? 0) ? point : best, null)
   let risePeak: { point: ThemePoint; delta: number } | null = null
@@ -154,9 +160,24 @@ function UsThemeChart({ theme, accent }: { theme: ThemeGroup; accent: string }) 
     if (!risePeak || delta > risePeak.delta) risePeak = { point: points[index], delta }
   }
 
-  return <div className="theme-chart-wrap" style={{ ['--theme-accent' as string]: accent }}>
+  const eventMarkers = [
+    turnoverPeak ? {
+      key: `turnover-${turnoverPeak.timestamp}`,
+      timestamp: turnoverPeak.timestamp,
+      className: 'is-turnover',
+      label: `${etTimeLabel(turnoverPeak.timestamp)} ET · 3분 거래대금 피크 ${fmtUsdAmount(turnoverPeak.tradingAmount)}`,
+    } : null,
+    risePeak && risePeak.delta > 0 ? {
+      key: `rise-${risePeak.point.timestamp}`,
+      timestamp: risePeak.point.timestamp,
+      className: 'is-rise',
+      label: `${etTimeLabel(risePeak.point.timestamp)} ET · 3분 상승 피크 ${fmtRate(risePeak.delta)}`,
+    } : null,
+  ].filter((marker): marker is { key: string; timestamp: string; className: string; label: string } => Boolean(marker))
+
+  return <div className="theme-chart-wrap us-theme-chart-wrap" style={{ ['--theme-accent' as string]: accent }}>
     <div className="theme-chart-title">
-      <span className="theme-chart-name">테마 평균 3분 차트 · ET / KST</span>
+      <span className="theme-chart-name">테마 평균 3분 차트 · ET / KST <small>실제 데이터 공백은 선을 끊어 표시</small></span>
       <div className="theme-chart-metrics">
         <span>최대 3분 거래대금 <b>{etTimeLabel(turnoverPeak?.timestamp)} ET · {fmtUsdAmount(turnoverPeak?.tradingAmount)}</b></span>
         <span>최대 3분 상승 <b>{etTimeLabel(risePeak?.point.timestamp)} ET · {fmtRate(risePeak?.delta)}</b></span>
@@ -185,25 +206,40 @@ function UsThemeChart({ theme, accent }: { theme: ThemeGroup; accent: string }) 
         const barHeight = Math.max(1, ((point.tradingAmount ?? 0) / maxTurnover) * (turnoverBottom - turnoverTop))
         return <rect key={`${point.timestamp}-amount`} x={Math.max(0, x - 1.2)} y={turnoverBottom - barHeight} width="2.4" height={barHeight} className="theme-volume-bar"><title>{`${compactDay(point.day)} ${etTimeLabel(point.timestamp)} ET · KST ${displayKstTime(point.timestamp)} · 평균 ${fmtRate(point.value)} · 3분 거래대금 ${fmtUsdAmount(point.tradingAmount)}`}</title></rect>
       })}
-      <path d={path} className="theme-price-line" />
+      {lineSegments.map((segment, index) => {
+        if (segment.length < 2) return null
+        const path = segment.map((point, pointIndex) => `${pointIndex === 0 ? 'M' : 'L'}${xForPoint(point).toFixed(1)},${y(point.value).toFixed(1)}`).join(' ')
+        return <path key={`${segment[0].timestamp}-${index}`} d={path} className="theme-price-line" />
+      })}
       {points.filter((_, index) => index % Math.max(1, Math.floor(points.length / 80)) === 0).map((point) => <circle key={`${point.timestamp}-c`} cx={xForPoint(point)} cy={y(point.value)} r="1.7" className="theme-price-dot"><title>{`${compactDay(point.day)} ${etTimeLabel(point.timestamp)} ET · ${fmtRate(point.value)}`}</title></circle>)}
     </svg>
+    {eventMarkers.length > 0 && <div className="theme-event-layer us-theme-event-layer">
+      {eventMarkers.map((marker) => {
+        const point = points.find((item) => item.timestamp === marker.timestamp)
+        if (!point) return null
+        return <button key={marker.key} className={`theme-event-marker us-theme-event-marker ${marker.className}`} type="button" style={{ left: `${xForPoint(point) / width * 100}%` }} data-label={marker.label} title={marker.label} aria-label={marker.label}><i /></button>
+      })}
+    </div>}
   </div>
 }
 
 function UsThemeRow({ theme, rank }: { theme: ThemeGroup; rank: number }) {
   const accent = ACCENTS[(rank - 1) % ACCENTS.length]
   const members = [...theme.members].sort((a, b) => (b.tradingAmount ?? 0) - (a.tradingAmount ?? 0)).slice(0, 7)
-  return <article className="theme-strength-row" style={{ ['--theme-accent' as string]: accent }}>
+  const concentration = usThemeConcentration(theme)
+  const rowClass = `theme-strength-row theme-saas-row ${usThemeStrengthClass(theme.currentValue)}${rank === 1 ? ' theme-leader-row' : ''}`
+
+  return <article className={rowClass} style={{ ['--theme-accent' as string]: accent } as CSSProperties} data-testid={rank === 1 ? 'us-theme-leader' : undefined}>
     <div className="theme-summary-cell">
       <div className="theme-rank-line"><b>{rank}</b><span className="theme-icon">{themeIcon(theme.name)}</span><h2>{theme.name}</h2></div>
       <p>{theme.memberCount}개 종목 · 미국 거래대금 50위 내</p>
       <strong className={(theme.currentValue ?? 0) >= 0 ? 'up' : 'down'}>{fmtRate(theme.currentValue)}</strong>
       <div><span>1일 누적 거래대금 합계</span><b>{fmtUsdAmount(theme.tradingAmount)}</b></div>
+      {concentration != null && <div className="theme-concentration-stat"><span>최대 종목 거래대금 비중</span><b>{concentration.toFixed(0)}%</b><span className="theme-concentration-track" aria-label={`최대 종목 거래대금 비중 ${concentration.toFixed(0)}%`}><i style={{ width: `${concentration}%` }} /></span></div>}
     </div>
 
     <div className="theme-members-cell">
-      <div className="theme-cell-title">포함 종목 <span>({theme.memberCount})</span></div>
+      <div className="theme-cell-title">포함 종목 <span>({theme.memberCount}) · 거래대금 순</span></div>
       <div className="theme-member-list">
         {members.map((member, index) => <div key={member.symbol ?? index}><b>{index + 1}</b><span>{member.symbol} · {member.name ?? member.englishName ?? ''}</span><strong>{fmtUsdAmount(member.tradingAmount)}</strong></div>)}
       </div>
@@ -246,6 +282,18 @@ export default function UsMarketWorkspace() {
   const themes = flow.themes ?? []
   const topAmount = Math.max(1, rankings[0]?.tradingAmount ?? 1)
   const totalAmount = flow.marketTradingAmount ?? rankings.reduce((sum, item) => sum + (item.tradingAmount ?? 0), 0)
+  const breadth = useMemo(() => usMarketBreadth(rankings), [rankings])
+  const leadConcentration = usThemeConcentration(themes[0])
+  const themeMembership = useMemo(() => {
+    const map = new Map<string, { name: string; accent: string }>()
+    themes.forEach((theme, themeIndex) => {
+      const accent = ACCENTS[themeIndex % ACCENTS.length]
+      theme.members.forEach((member) => {
+        if (member.symbol && !map.has(member.symbol)) map.set(member.symbol, { name: theme.name, accent })
+      })
+    })
+    return map
+  }, [themes])
 
   return <div className="market-workspace theme-flow-workspace us-theme-workspace">
     <section className="workspace-main">
@@ -262,6 +310,19 @@ export default function UsMarketWorkspace() {
           </div>
         </header>
 
+        <div className="theme-saas-summary-bar us-theme-saas-summary-bar" data-testid="us-market-pulse">
+          <div className="theme-saas-summary-lead"><span className="theme-saas-kicker">US MARKET PULSE</span><strong>현재 미국 시장 주도 테마</strong></div>
+          <div className="theme-saas-leaders">
+            {themes.slice(0, 3).map((theme, index) => <span className={`theme-saas-leader-chip theme-saas-leader-${index + 1}`} key={theme.name}><b>{index + 1}</b><span>{theme.name}</span><strong>{fmtRate(theme.currentValue)}</strong></span>)}
+            {!themes.length && <span className="theme-saas-summary-empty">미국 테마 순위 계산 중</span>}
+          </div>
+          <div className="theme-saas-summary-metrics">
+            <span><small>1위 테마 집중도</small><b>{leadConcentration == null ? '-' : `${leadConcentration.toFixed(1)}%`}</b></span>
+            <span><small>상승 종목 확산도</small><b>{breadth.percent == null ? '확인 중' : `${breadth.label} · ${breadth.percent.toFixed(0)}%`}</b></span>
+            <span><small>TOP100 거래대금</small><b>{fmtUsdAmount(totalAmount)}</b></span>
+          </div>
+        </div>
+
         <div className="theme-method-strip"><span>선정조건 <b>미국 TOP50 내 3종+</b></span><span>정렬 <b>테마 거래대금 합계</b></span><span>차트 <b>정규장 3분 평균 · ET/KST</b></span><span>최신화 <b>1분 · {displayKstTime(flow.updatedAt)}</b></span></div>
 
         <div className="theme-strength-list">
@@ -272,8 +333,8 @@ export default function UsMarketWorkspace() {
 
       <section className="market-bottom-strip" style={{ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}>
         <div className="market-mini-panel panel"><span>미국 TOP100 1일 누적 거래대금</span><strong>{fmtUsdAmount(totalAmount)}</strong><b>{rankings.length}/100 종목</b></div>
-        <div className="market-mini-panel panel"><span>테마 생성 기준</span><strong>TOP50 · 3종+</strong><b>테마별 거래대금 합계 순</b></div>
-        <div className="market-mini-panel panel"><span>차트 시간</span><strong>09:30~16:00 ET</strong><b>1분봉 저장 → 3분 평균 · KST 병기</b></div>
+        <div className="market-mini-panel panel"><span>테마 생성 기준</span><strong>TOP50 · 3종+</strong><b>최대 10개 · 테마별 거래대금 합계 순</b></div>
+        <div className="market-mini-panel panel"><span>차트 이벤트</span><strong>거래대금 · 상승 피크</strong><b>실제 3분 데이터에서만 표시</b></div>
       </section>
     </section>
 
@@ -285,11 +346,21 @@ export default function UsMarketWorkspace() {
         {rankings.map((item, index) => {
           const amount = item.tradingAmount ?? 0
           const width = amount / topAmount * 100
-          return <div className="top100-row" key={`${item.symbol}-${index}`}>
+          const share = totalAmount > 0 ? amount / totalAmount * 100 : null
+          const themeInfo = themeMembership.get(item.symbol)
+          const rowStyle = {
+            ['--top100-heat-alpha' as string]: usTurnoverHeat(amount, topAmount),
+            ...(themeInfo ? { ['--top100-theme-accent' as string]: themeInfo.accent } : {}),
+          } as CSSProperties
+          return <div className={`top100-row${themeInfo ? ' top100-row-themed' : ''}`} style={rowStyle} key={`${item.symbol}-${index}`}>
             <b>{index + 1}</b>
-            <div className="top100-stock"><strong>{item.symbol} · {item.name ?? item.englishName ?? item.symbol}</strong><small>{item.market ?? 'US'} · {fmtUsdPrice(item.lastPrice)}</small><div className="top100-mini-track"><i style={{ width: `${width}%` }} /></div></div>
+            <div className="top100-stock">
+              <strong>{item.symbol} · {item.name ?? item.englishName ?? item.symbol}</strong>
+              <small><span className="top100-stock-meta">{item.market ?? 'US'} · {fmtUsdPrice(item.lastPrice)}</span>{themeInfo && <span className="top100-theme-label">{themeInfo.name}</span>}</small>
+              <div className="top100-mini-track"><i style={{ width: `${width}%` }} /></div>
+            </div>
             <strong className={`top100-rate ${(item.changeRate ?? 0) >= 0 ? 'up' : 'down'}`}>{fmtRate(item.changeRate)}</strong>
-            <strong className="top100-amount">{fmtUsdAmount(item.tradingAmount)}</strong>
+            <div className="top100-amount"><strong>{fmtUsdAmount(item.tradingAmount)}</strong><span className="top100-share">TOP100 {fmtShare(share)}</span></div>
           </div>
         })}
         {!rankings.length && <div className="workspace-empty">미국 TOP100 데이터 연결 대기 중</div>}
