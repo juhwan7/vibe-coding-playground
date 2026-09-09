@@ -89,7 +89,7 @@ function readLiveSeries(themeName: string) {
     const today = kstDay(new Date().toISOString())
     return parsed
       .map((point) => normalizeStoredPoint(point))
-      .filter((point): point is ThemePoint => Boolean(point) && point.day === today)
+      .filter((point): point is ThemePoint => point != null && point.day === today)
       .sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp))
       .slice(-MAX_LIVE_POINTS)
   } catch {
