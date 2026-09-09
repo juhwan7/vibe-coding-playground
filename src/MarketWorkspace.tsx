@@ -12,6 +12,7 @@ type RankingItem = {
   securityType?: string | null
   isCommonShare?: boolean | null
   status?: string | null
+  catalogThemes?: string[]
   lastPrice: number | null
   changeRate: number | null
   tradingAmount: number | null
@@ -367,6 +368,7 @@ export default function MarketWorkspace() {
         name,
         market: item.market ?? meta?.market ?? null,
         securityType: item.securityType ?? meta?.securityType ?? null,
+        catalogThemes: item.catalogThemes ?? meta?.catalogThemes ?? [],
       } as RankingItem
     }).filter((item): item is RankingItem & { symbol: string } => Boolean(item.symbol) && isIndividualStock(item)).slice(0, 100)
   }, [themeFlow.topRankings, themeFlow.themes, snapshot?.topRankings, snapshot?.stocks])
@@ -427,17 +429,18 @@ export default function MarketWorkspace() {
           const amount = item.tradingAmount ?? 0
           const displayName = validStockName(item.name, item.symbol)
           const themeMembership = themeMembershipBySymbol.get(item.symbol)
+          const catalogTheme = themeMembership?.name ?? item.catalogThemes?.[0] ?? null
           const fullDescription = companyDescriptions[item.symbol] ?? null
-          const companySummary = compactCompanySummary(fullDescription, themeMembership?.name)
+          const companySummary = compactCompanySummary(fullDescription, catalogTheme)
           const share = totalAmount > 0 ? amount / totalAmount * 100 : null
           const tooltip = [
-            themeMembership ? `현재 ${themeMembership.rank}위 테마 · ${themeMembership.name}` : null,
+            themeMembership ? `현재 ${themeMembership.rank}위 테마 · ${themeMembership.name}` : (item.catalogThemes?.length ? `검증 테마 · ${item.catalogThemes.join(', ')}` : null),
             `${item.symbol} · 현재가 ${item.lastPrice?.toLocaleString() ?? '-'}`,
             fullDescription ?? companySummary,
           ].filter(Boolean).join('\n')
           return <div
             className={`top100-row${themeMembership ? ' top100-row-themed' : ''}`}
-            data-theme-name={themeMembership?.name}
+            data-theme-name={catalogTheme ?? undefined}
             key={`${item.symbol}-${index}`}
             style={themeMembership ? { ['--top100-theme-accent' as string]: themeMembership.accent } : undefined}
             title={tooltip}
@@ -446,7 +449,7 @@ export default function MarketWorkspace() {
             <div className="top100-stock">
               <strong>{displayName ?? '종목명 확인 중'}</strong>
               <div className="top100-company-summary">
-                {themeMembership && <span className="top100-theme-label">{themeMembership.name}</span>}
+                {catalogTheme && <span className={`top100-theme-label${themeMembership ? '' : ' is-passive'}`}>{catalogTheme}</span>}
                 <span>{companySummary}</span>
               </div>
             </div>
