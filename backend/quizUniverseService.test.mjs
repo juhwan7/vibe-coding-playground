@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { KRX_INDEX_CONSTITUENTS_BLD, capIndexMembers, filterStockRows, splitIndexCode } from './quizUniverseService.mjs'
+import { KRX_INDEX_CONSTITUENTS_BLD, capIndexMembers, filterStockRows, parseTossEtfComposition, splitIndexCode } from './quizUniverseService.mjs'
 
 test('uses the KRX index-constituents endpoint instead of the all-index quote endpoint', () => {
   assert.equal(KRX_INDEX_CONSTITUENTS_BLD, 'dbms/MDC/STAT/standard/MDCSTAT00701')
@@ -19,6 +19,23 @@ test('quiz universe keeps six-digit stocks and excludes ETF/ETN products', () =>
     { ISU_SRT_CD: '000660', ISU_ABBRV: 'SK하이닉스' },
     { ISU_SRT_CD: '000660', ISU_ABBRV: 'SK하이닉스' },
   ])
+  assert.deepEqual(rows, [
+    { code: '005930', name: '삼성전자' },
+    { code: '000660', name: 'SK하이닉스' },
+  ])
+})
+
+test('Toss ETF composition fallback normalizes A-prefixed Korean stock codes', () => {
+  const rows = parseTossEtfComposition({
+    result: {
+      items: [
+        { stockCode: 'A005930', name: '삼성전자' },
+        { stockCode: 'A000660', name: 'SK하이닉스' },
+        { stockCode: 'A069500', name: 'KODEX 200' },
+        { stockCode: null, name: '현금' },
+      ],
+    },
+  }, 200)
   assert.deepEqual(rows, [
     { code: '005930', name: '삼성전자' },
     { code: '000660', name: 'SK하이닉스' },

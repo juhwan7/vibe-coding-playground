@@ -9,12 +9,25 @@ const KRX_HEADERS = {
   Origin: 'https://data.krx.co.kr',
 }
 
+const TOSS_WTS_COMPOSITION_URL = (code) => `https://wts-info-api.tossinvest.com/api/v2/stock-infos/A${code}/compositions`
+const TOSS_WTS_HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (X11; Linux aarch64) AppleWebKit/537.36 Chrome/126 Safari/537.36',
+  Origin: 'https://tossinvest.com',
+  Referer: 'https://tossinvest.com/',
+  Accept: 'application/json',
+}
+
 const INDEXES = {
-  kospi200: { code: '1028', label: 'KOSPI 200', expected: 200 },
-  kosdaq150: { code: '2203', label: 'KOSDAQ 150', expected: 150 },
+  kospi200: { code: '1028', label: 'KOSPI 200', expected: 200, proxyEtfCode: '069500', proxyEtfName: 'KODEX 200' },
+  kosdaq150: { code: '2203', label: 'KOSDAQ 150', expected: 150, proxyEtfCode: '229200', proxyEtfName: 'KODEX 코스닥150' },
 }
 
 const EXCHANGE_TRADED_PRODUCT = /(ETF|ETN|KODEX|TIGER|RISE|ACE|PLUS|SOL|HANARO|KOSEF|TIMEFOLIO|ARIRANG|FOCUS|KBSTAR)/i
+
+function kstDateKey() {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit' })
+    .format(new Date()).replaceAll('-', '')
+}
 
 export function splitIndexCode(code) {
   return { indIdx: String(code)[0], indIdx2: String(code).slice(1) }
@@ -24,7 +37,7 @@ export function filterStockRows(rows = []) {
   const seen = new Set()
   return rows
     .map((row) => ({
-      code: String(row?.ISU_SRT_CD ?? row?.code ?? '').trim(),
+      code: String(row?.ISU_SRT_CD ?? row?.code ?? '').trim().replace(/^A(?=\d{6}$)/, ''),
       name: String(row?.ISU_ABBRV ?? row?.name ?? '').trim(),
     }))
     .filter((row) => /^\d{6}$/.test(row.code) && row.name && !EXCHANGE_TRADED_PRODUCT.test(row.name))
@@ -41,12 +54,22 @@ export function capIndexMembers(rows = [], expected) {
   return rows.slice(0, Math.floor(limit))
 }
 
+export function parseTossEtfComposition(payload, expected) {
+  const rows = (payload?.result?.items ?? []).map((item) => ({
+    code: typeof item?.stockCode === 'string' ? item.stockCode.replace(/^A(?=\d{6}$)/, '') : '',
+    name: String(item?.name ?? '').trim(),
+  }))
+  return capIndexMembers(filterStockRows(rows), expected)
+}
+
 async function latestBusinessDay() {
-  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit' })
-    .format(new Date()).replaceAll('-', '')
+  const today = kstDateKey()
   const params = new URLSearchParams({ baseName: 'krx.mdc.i18n.component', key: 'B161.bld', inDate: today })
   const response = await fetch(`${KRX_BUSINESS_DAY_URL}?${params}`, { headers: KRX_HEADERS, signal: AbortSignal.timeout(8000) })
-  if (!response.ok) throw new Error(`KRX 영업일 조회 실패 (${response.status})`)
+  if (!response.ok) {
+    const body = await response.text().catch(() => '')
+    throw new Error(`KRX 영업일 조회 실패 (${response.status}${body ? ` · ${body.slice(0, 80)}` : ''})`)
+  }
   const payload = await response.json()
   const value = payload?.result?.output?.[0]?.bis_work_dt
   return /^\d{8}$/.test(String(value)) ? String(value) : today
@@ -69,10 +92,25 @@ async function fetchIndexMembers(code, date, expected) {
     body,
     signal: AbortSignal.timeout(10000),
   })
-  if (!response.ok) throw new Error(`KRX 지수 구성종목 조회 실패 (${response.status})`)
+  if (!response.ok) {
+    const responseBody = await response.text().catch(() => '')
+    throw new Error(`KRX 지수 구성종목 조회 실패 (${response.status}${responseBody ? ` · ${responseBody.slice(0, 80)}` : ''})`)
+  }
   const payload = await response.json()
   const rows = capIndexMembers(filterStockRows(payload?.output ?? payload?.block1 ?? []), expected)
   if (rows.length < 50) throw new Error(`${code} 구성종목 응답이 비정상적으로 적습니다 (${rows.length})`)
+  return rows
+}
+
+async function fetchProxyEtfMembers(index) {
+  const response = await fetch(TOSS_WTS_COMPOSITION_URL(index.proxyEtfCode), {
+    headers: TOSS_WTS_HEADERS,
+    signal: AbortSignal.timeout(12000),
+  })
+  if (!response.ok) throw new Error(`${index.proxyEtfName} 구성종목 조회 실패 (${response.status})`)
+  const payload = await response.json()
+  const rows = parseTossEtfComposition(payload, index.expected)
+  if (rows.length < 50) throw new Error(`${index.proxyEtfName} 구성종목 응답이 비정상적으로 적습니다 (${rows.length})`)
   return rows
 }
 
@@ -141,8 +179,16 @@ export class QuizUniverseService {
     return this.loading
   }
 
+  async persistPayload(payload) {
+    this.payload = payload
+    await fs.mkdir(this.cachePath.split('/').slice(0, -1).join('/') || '.', { recursive: true })
+    await fs.writeFile(this.cachePath, JSON.stringify(payload), 'utf8')
+    return payload
+  }
+
   async refresh(cachedOverride = null) {
     const cached = cachedOverride ?? await this.readCached()
+    let krxError = null
 
     try {
       const date = await latestBusinessDay()
@@ -150,10 +196,12 @@ export class QuizUniverseService {
         fetchIndexMembers(INDEXES.kospi200.code, date, INDEXES.kospi200.expected),
         fetchIndexMembers(INDEXES.kosdaq150.code, date, INDEXES.kosdaq150.expected),
       ])
-      const payload = {
+      return this.persistPayload({
         ok: true,
         source: 'KRX Data Marketplace · 지수구성종목',
         sourceDate: date,
+        universeMode: 'krx-index-constituents',
+        benchmarkProxy: false,
         updatedAt: new Date().toISOString(),
         stale: false,
         etfExcluded: true,
@@ -161,13 +209,34 @@ export class QuizUniverseService {
         kospi200,
         kosdaq150,
         counts: { kospi200: kospi200.length, kosdaq150: kosdaq150.length },
-      }
-      this.payload = payload
-      await fs.mkdir(this.cachePath.split('/').slice(0, -1).join('/') || '.', { recursive: true })
-      await fs.writeFile(this.cachePath, JSON.stringify(payload), 'utf8')
-      return payload
+      })
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
+      krxError = error instanceof Error ? error.message : String(error)
+    }
+
+    try {
+      const [kospi200, kosdaq150] = await Promise.all([
+        fetchProxyEtfMembers(INDEXES.kospi200),
+        fetchProxyEtfMembers(INDEXES.kosdaq150),
+      ])
+      return this.persistPayload({
+        ok: true,
+        source: 'Toss Securities · KODEX 200 / KODEX 코스닥150 구성종목',
+        sourceDate: kstDateKey(),
+        universeMode: 'benchmark-etf-composition-fallback',
+        benchmarkProxy: true,
+        warning: `KRX 비로그인 조회가 불가해 지수 추종 ETF 구성종목으로 자동 대체했습니다. ${krxError}`,
+        updatedAt: new Date().toISOString(),
+        stale: false,
+        etfExcluded: true,
+        expectedCounts: { kospi200: INDEXES.kospi200.expected, kosdaq150: INDEXES.kosdaq150.expected },
+        kospi200,
+        kosdaq150,
+        counts: { kospi200: kospi200.length, kosdaq150: kosdaq150.length },
+      })
+    } catch (fallbackError) {
+      const fallbackMessage = fallbackError instanceof Error ? fallbackError.message : String(fallbackError)
+      const message = [krxError, fallbackMessage].filter(Boolean).join(' / ')
       const fallback = normalizeCachedPayload(cached, true, message)
       if (fallback) {
         this.payload = fallback
@@ -175,7 +244,7 @@ export class QuizUniverseService {
       }
       this.payload = {
         ok: false,
-        source: 'KRX Data Marketplace · 지수구성종목',
+        source: 'KRX 지수구성종목 + Toss KODEX 구성종목 fallback',
         updatedAt: new Date().toISOString(),
         stale: false,
         etfExcluded: true,
