@@ -47,7 +47,7 @@ type UsThemeFlowResponse = {
   error?: string | null
 }
 
-const ACCENTS = ['#ff4d6d', '#39a0ff', '#37d67a', '#9d6cff', '#ff9a3d', '#31c6d4', '#f6d365', '#e879f9', '#22c55e', '#f97316']
+const ACCENTS = ['#ff4d6d', '#39a0ff', '#37d67a', '#9d6cff', '#ff9a3d']
 const SESSION_START = 9 * 60 + 30
 const SESSION_MINUTES = 390
 const SESSION_TICKS = [570, 630, 690, 750, 810, 870, 930, 960]
@@ -120,6 +120,9 @@ function themeIcon(name: string) {
   if (name.includes('바이오')) return '◉'
   if (name.includes('에너지')) return '●'
   if (name.includes('로봇')) return '⌘'
+  if (name.includes('클라우드') || name.includes('데이터센터')) return '▤'
+  if (name.includes('소비') || name.includes('유통')) return '▣'
+  if (name.includes('미디어') || name.includes('스트리밍')) return '▶'
   return '■'
 }
 
@@ -177,13 +180,13 @@ function UsThemeChart({ theme, accent }: { theme: ThemeGroup; accent: string }) 
 
   return <div className="theme-chart-wrap us-theme-chart-wrap" style={{ ['--theme-accent' as string]: accent }}>
     <div className="theme-chart-title">
-      <span className="theme-chart-name">테마 평균 3분 차트 · ET / KST <small>실제 데이터 공백은 선을 끊어 표시</small></span>
+      <span className="theme-chart-name">테마 거래대금 가중 3분 평균 차트 · ET / KST <small>국내 테마 흐름과 동일하게 거래대금이 큰 종목을 더 크게 반영</small></span>
       <div className="theme-chart-metrics">
         <span>최대 3분 거래대금 <b>{etTimeLabel(turnoverPeak?.timestamp)} ET · {fmtUsdAmount(turnoverPeak?.tradingAmount)}</b></span>
         <span>최대 3분 상승 <b>{etTimeLabel(risePeak?.point.timestamp)} ET · {fmtRate(risePeak?.delta)}</b></span>
       </div>
     </div>
-    <svg className="theme-chart" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" role="img" aria-label={`${theme.name} 미국 거래대금 상위50 포함종목 전일과 오늘 3분 평균 차트`}>
+    <svg className="theme-chart" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" role="img" aria-label={`${theme.name} 미국 개별주 거래대금 TOP50 포함종목 전일과 오늘 3분 평균 차트`}>
       {[.25, .5, .75].map((ratio) => <line key={ratio} x1="0" x2={width} y1={chartTop + (chartBottom - chartTop) * ratio} y2={chartTop + (chartBottom - chartTop) * ratio} className="theme-chart-grid" />)}
       {lo < 0 && hi > 0 && <line x1="0" x2={width} y1={y(0)} y2={y(0)} className="theme-zero-line" />}
       {days.flatMap((day, dayIndex) => SESSION_TICKS.map((minute) => ({ day, dayIndex, minute }))).map((tick) => {
@@ -232,7 +235,7 @@ function UsThemeRow({ theme, rank }: { theme: ThemeGroup; rank: number }) {
   return <article className={rowClass} style={{ ['--theme-accent' as string]: accent } as CSSProperties} data-testid={rank === 1 ? 'us-theme-leader' : undefined}>
     <div className="theme-summary-cell">
       <div className="theme-rank-line"><b>{rank}</b><span className="theme-icon">{themeIcon(theme.name)}</span><h2>{theme.name}</h2></div>
-      <p>{theme.memberCount}개 종목 · 미국 거래대금 50위 내</p>
+      <p>{theme.memberCount}개 종목 · ETF/ETN 제외 TOP50</p>
       <strong className={(theme.currentValue ?? 0) >= 0 ? 'up' : 'down'}>{fmtRate(theme.currentValue)}</strong>
       <div><span>1일 누적 거래대금 합계</span><b>{fmtUsdAmount(theme.tradingAmount)}</b></div>
       {concentration != null && <div className="theme-concentration-stat"><span>최대 종목 거래대금 비중</span><b>{concentration.toFixed(0)}%</b><span className="theme-concentration-track" aria-label={`최대 종목 거래대금 비중 ${concentration.toFixed(0)}%`}><i style={{ width: `${concentration}%` }} /></span></div>}
@@ -278,8 +281,8 @@ export default function UsMarketWorkspace() {
     return () => { controller.abort(); if (timer) window.clearTimeout(timer) }
   }, [flow.ok])
 
-  const rankings = useMemo(() => (flow.topRankings ?? []).filter((item): item is RankingItem & { symbol: string } => Boolean(item.symbol)).slice(0, 100), [flow.topRankings])
-  const themes = flow.themes ?? []
+  const rankings = useMemo(() => (flow.topRankings ?? []).filter((item): item is RankingItem & { symbol: string } => Boolean(item.symbol)).slice(0, 50), [flow.topRankings])
+  const themes = (flow.themes ?? []).slice(0, 5)
   const topAmount = Math.max(1, rankings[0]?.tradingAmount ?? 1)
   const totalAmount = flow.marketTradingAmount ?? rankings.reduce((sum, item) => sum + (item.tradingAmount ?? 0), 0)
   const breadth = useMemo(() => usMarketBreadth(rankings), [rankings])
@@ -300,47 +303,47 @@ export default function UsMarketWorkspace() {
       <section className="theme-strength-board panel" data-testid="us-theme-strength-board">
         <header className="theme-board-head">
           <div>
-            <p>US THEME ROTATION / TOP 50</p>
-            <h1>미국 테마 강도 비교 <span>(1일 누적 거래대금 상위 50 기준)</span></h1>
-            <small>미국 거래대금 상위 50종목에서 같은 테마가 3종 이상일 때 표시합니다. 전일과 오늘 정규장 1분봉을 Raspberry Pi에 저장·복원하고, 구성종목을 기준시점 0%로 정규화해 3분 평균 수익률과 3분 거래대금을 함께 표시합니다.</small>
+            <p>US THEME ROTATION / STOCK TOP 50</p>
+            <h1>미국 테마 강도 비교 <span>(ETF/ETN 제외 · 개별주 거래대금 TOP50)</span></h1>
+            <small>미국 시장 거래대금 랭킹에서 ETF·ETN 등 상장지수상품을 먼저 제거한 뒤 개별주 상위 50개만 테마 후보로 사용합니다. 테마는 거래대금 합계 순으로 5개를 유지하고, 중앙 차트는 국내 테마 흐름처럼 구성종목의 3분 거래대금으로 가중한 평균 수익률을 표시합니다.</small>
           </div>
           <div className="theme-board-controls">
-            <span className={flow.ok ? 'flow-live' : 'flow-loading'}>{flow.stage === 'ready' ? '● 1분 최신화' : flow.ok ? '● TOP100 연결 · 차트 복원 중' : '● 데이터 준비 중'}</span>
+            <span className={flow.ok ? 'flow-live' : 'flow-loading'}>{flow.stage === 'ready' ? '● 1분 최신화' : flow.ok ? '● TOP50 개별주 연결 · 차트 복원 중' : '● 데이터 준비 중'}</span>
             <div className="segmented-control"><button className="active">전일 + 오늘</button><button disabled>3일</button><button disabled>5일</button></div>
           </div>
         </header>
 
         <div className="theme-saas-summary-bar us-theme-saas-summary-bar" data-testid="us-market-pulse">
-          <div className="theme-saas-summary-lead"><span className="theme-saas-kicker">US MARKET PULSE</span><strong>현재 미국 시장 주도 테마</strong></div>
+          <div className="theme-saas-summary-lead"><span className="theme-saas-kicker">US MARKET PULSE</span><strong>현재 미국 시장 주도 테마 5</strong></div>
           <div className="theme-saas-leaders">
             {themes.slice(0, 3).map((theme, index) => <span className={`theme-saas-leader-chip theme-saas-leader-${index + 1}`} key={theme.name}><b>{index + 1}</b><span>{theme.name}</span><strong>{fmtRate(theme.currentValue)}</strong></span>)}
             {!themes.length && <span className="theme-saas-summary-empty">미국 테마 순위 계산 중</span>}
           </div>
           <div className="theme-saas-summary-metrics">
             <span><small>1위 테마 집중도</small><b>{leadConcentration == null ? '-' : `${leadConcentration.toFixed(1)}%`}</b></span>
-            <span><small>상승 종목 확산도</small><b>{breadth.percent == null ? '확인 중' : `${breadth.label} · ${breadth.percent.toFixed(0)}%`}</b></span>
-            <span><small>TOP100 거래대금</small><b>{fmtUsdAmount(totalAmount)}</b></span>
+            <span><small>TOP50 상승 확산도</small><b>{breadth.percent == null ? '확인 중' : `${breadth.label} · ${breadth.percent.toFixed(0)}%`}</b></span>
+            <span><small>TOP50 거래대금</small><b>{fmtUsdAmount(totalAmount)}</b></span>
           </div>
         </div>
 
-        <div className="theme-method-strip"><span>선정조건 <b>미국 TOP50 내 3종+</b></span><span>정렬 <b>테마 거래대금 합계</b></span><span>차트 <b>정규장 3분 평균 · ET/KST</b></span><span>최신화 <b>1분 · {displayKstTime(flow.updatedAt)}</b></span></div>
+        <div className="theme-method-strip"><span>유니버스 <b>ETF/ETN 제외 · 개별주 TOP50</b></span><span>테마 <b>5개 고정 · 거래대금 합계 순</b></span><span>차트 <b>3분 거래대금 가중 평균 · ET/KST</b></span><span>최신화 <b>1분 · {displayKstTime(flow.updatedAt)}</b></span></div>
 
-        <div className="theme-strength-list">
+        <div className="theme-strength-list" data-testid="us-fixed-five-themes">
           {themes.map((theme, index) => <UsThemeRow key={theme.name} theme={theme} rank={index + 1} />)}
-          {!themes.length && <div className="workspace-empty theme-empty"><strong>미국 테마 평균 차트를 준비하고 있습니다.</strong><span>미국 거래대금 TOP100 → 종목명 확인 → TOP50 내 같은 테마 3종 이상 → 전일·오늘 정규장 1분봉 복원 → 3분 평균 계산 순서로 생성됩니다.</span>{flow.error && <small>{flow.error}</small>}</div>}
+          {!themes.length && <div className="workspace-empty theme-empty"><strong>미국 TOP50 테마 평균 차트를 준비하고 있습니다.</strong><span>미국 거래대금 랭킹 → ETF/ETN 제거 → 개별주 TOP50 → 테마 거래대금 합계 순 5개 → 전일·오늘 1분봉 복원 → 3분 거래대금 가중 평균 계산 순서로 생성됩니다.</span>{flow.error && <small>{flow.error}</small>}</div>}
         </div>
       </section>
 
       <section className="market-bottom-strip" style={{ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}>
-        <div className="market-mini-panel panel"><span>미국 TOP100 1일 누적 거래대금</span><strong>{fmtUsdAmount(totalAmount)}</strong><b>{rankings.length}/100 종목</b></div>
-        <div className="market-mini-panel panel"><span>테마 생성 기준</span><strong>TOP50 · 3종+</strong><b>최대 10개 · 테마별 거래대금 합계 순</b></div>
-        <div className="market-mini-panel panel"><span>차트 이벤트</span><strong>거래대금 · 상승 피크</strong><b>실제 3분 데이터에서만 표시</b></div>
+        <div className="market-mini-panel panel"><span>미국 개별주 TOP50 1일 누적 거래대금</span><strong>{fmtUsdAmount(totalAmount)}</strong><b>{rankings.length}/50 종목 · ETF/ETN 제외</b></div>
+        <div className="market-mini-panel panel"><span>테마 생성 기준</span><strong>TOP50 · 5개 고정</strong><b>3종 이상 우선 · 부족 시 TOP50 내부 후보로 보강</b></div>
+        <div className="market-mini-panel panel"><span>중앙 평균 차트</span><strong>3분 거래대금 가중</strong><b>국내 테마 흐름과 같은 방식</b></div>
       </section>
     </section>
 
     <aside className="top100-rail panel" data-testid="us-top100-ranking">
-      <div className="top100-tabs"><button className="active">미국 1일 거래대금 TOP100</button><button disabled>테마 요약</button></div>
-      <div className="top100-head"><div><p>US MARKET TURNOVER / 1 DAY</p><h2>미국 거래대금 TOP100</h2></div><span>{displayKstTime(flow.rankedAt ?? flow.updatedAt)}</span></div>
+      <div className="top100-tabs"><button className="active">미국 개별주 거래대금 TOP50</button><button disabled>ETF/ETN 제외</button></div>
+      <div className="top100-head"><div><p>US STOCK TURNOVER / 1 DAY</p><h2>미국 거래대금 TOP50 · 개별주만</h2></div><span>{displayKstTime(flow.rankedAt ?? flow.updatedAt)}</span></div>
       <div className="top100-list-head"><span>순위</span><span>종목명</span><span>등락률</span><span>거래대금</span></div>
       <div className="top100-list">
         {rankings.map((item, index) => {
@@ -360,10 +363,10 @@ export default function UsMarketWorkspace() {
               <div className="top100-mini-track"><i style={{ width: `${width}%` }} /></div>
             </div>
             <strong className={`top100-rate ${(item.changeRate ?? 0) >= 0 ? 'up' : 'down'}`}>{fmtRate(item.changeRate)}</strong>
-            <div className="top100-amount"><strong>{fmtUsdAmount(item.tradingAmount)}</strong><span className="top100-share">TOP100 {fmtShare(share)}</span></div>
+            <div className="top100-amount"><strong>{fmtUsdAmount(item.tradingAmount)}</strong><span className="top100-share">TOP50 {fmtShare(share)}</span></div>
           </div>
         })}
-        {!rankings.length && <div className="workspace-empty">미국 TOP100 데이터 연결 대기 중</div>}
+        {!rankings.length && <div className="workspace-empty">미국 ETF/ETN 제외 개별주 TOP50 데이터 연결 대기 중</div>}
       </div>
     </aside>
   </div>
