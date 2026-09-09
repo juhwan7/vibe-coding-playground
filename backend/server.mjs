@@ -7,7 +7,7 @@ import { buildLiveThemePayload } from './themeLiveView.mjs'
 import { UsThemeFlowService } from './usThemeFlowService.mjs'
 import { QuizUniverseService } from './quizUniverseService.mjs'
 import { QuizDescriptionService } from './quizDescriptionService.mjs'
-import { FeatureNewsService } from './featureNewsService.mjs'
+import { FeatureNewsTodayService } from './featureNewsTodayService.mjs'
 import { DailyIssueService } from './dailyIssueService.mjs'
 import { TossClient } from './tossClient.mjs'
 
@@ -33,7 +33,7 @@ const usThemeFlow = new UsThemeFlowService(client, {
 })
 const quizUniverse = new QuizUniverseService({ cachePath: process.env.QUIZ_UNIVERSE_CACHE_PATH || '/app/data/quiz-universe.json' })
 const quizDescriptions = new QuizDescriptionService({ cachePath: process.env.QUIZ_DESCRIPTION_CACHE_PATH || '/app/data/quiz-descriptions.json' })
-const featureNews = new FeatureNewsService({
+const featureNews = new FeatureNewsTodayService({
   refreshMs: Number(process.env.FEATURE_NEWS_REFRESH_MS || 180000),
   getSnapshot: () => collector.snapshot,
 })
@@ -145,6 +145,7 @@ const server = http.createServer(async (request, response) => {
         primaryMarketSeconds: Math.round(primaryRefreshMs / 1000),
         slowMarketSeconds: Math.round(collector.slowMs / 1000),
         featureNewsSeconds: Math.round(Number(process.env.FEATURE_NEWS_REFRESH_MS || 180000) / 1000),
+        featureNewsWindow: '00:00-today',
         themeChartLiveSeconds: Math.round(primaryRefreshMs / 1000),
         themeCandleCollectionSeconds: Math.round(themeFlow.refreshMs / 1000),
         themeCount: 5,
