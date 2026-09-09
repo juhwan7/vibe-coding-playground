@@ -8,6 +8,7 @@ import { UsThemeFlowService } from './usThemeFlowService.mjs'
 import { QuizUniverseService } from './quizUniverseService.mjs'
 import { QuizDescriptionService } from './quizDescriptionService.mjs'
 import { FeatureNewsService } from './featureNewsService.mjs'
+import { DailyIssueService } from './dailyIssueService.mjs'
 import { TossClient } from './tossClient.mjs'
 
 const port = Number(process.env.PORT || 8787)
@@ -35,6 +36,9 @@ const quizDescriptions = new QuizDescriptionService({ cachePath: process.env.QUI
 const featureNews = new FeatureNewsService({
   refreshMs: Number(process.env.FEATURE_NEWS_REFRESH_MS || 180000),
   getSnapshot: () => collector.snapshot,
+})
+const dailyIssues = new DailyIssueService(client, {
+  cachePath: process.env.DAILY_ISSUE_CACHE_PATH || '/app/data/daily-issues.json',
 })
 let historyTimer = null
 let preparedTimer = null
@@ -112,6 +116,7 @@ const server = http.createServer(async (request, response) => {
   if (request.method === 'OPTIONS') return send(response, 204, null)
 
   if (url.pathname === '/api/health') {
+    const dailyIssueState = dailyIssues.currentPayload()
     return send(response, 200, {
       ok: true,
       configured: client.configured,
@@ -133,12 +138,16 @@ const server = http.createServer(async (request, response) => {
       quizUniverseCached: true,
       quizDescriptionsCached: true,
       featureNewsEnabled: true,
+      dailyIssuesEnabled: true,
+      dailyIssuesStatus: dailyIssueState.status ?? null,
+      dailyIssuesDate: dailyIssueState.date ?? null,
       refreshPolicy: {
         primaryMarketSeconds: Math.round(primaryRefreshMs / 1000),
         slowMarketSeconds: Math.round(collector.slowMs / 1000),
         featureNewsSeconds: Math.round(Number(process.env.FEATURE_NEWS_REFRESH_MS || 180000) / 1000),
         themeChartLiveSeconds: Math.round(primaryRefreshMs / 1000),
         themeCandleCollectionSeconds: Math.round(themeFlow.refreshMs / 1000),
+        dailyIssueFinalizeKst: '15:20',
         preparedPublishSeconds: 2,
         offSessionSeconds: 300,
       },
@@ -185,6 +194,11 @@ const server = http.createServer(async (request, response) => {
     const payload = await featureNews.get()
     if (payload?.ok) await prepared.write('feature-news.json', payload).catch(() => {})
     return send(response, payload.ok ? 200 : 503, payload)
+  }
+
+  if (url.pathname === '/api/market/daily-issues') {
+    const payload = await dailyIssues.get()
+    return send(response, 200, payload)
   }
 
   if (url.pathname === '/api/quiz/universe') {
@@ -247,6 +261,7 @@ server.listen(port, '0.0.0.0', () => {
       await history.maybeAppend(collector.snapshot).catch(() => {})
       await publishPreparedFast().catch(() => {})
       await publishPreparedHistory().catch(() => {})
+      void dailyIssues.start().catch((error) => console.error('[market-backend] daily issues initialization failed', error))
     })
     .then(() => {
       krThemeStartTimer = setTimeout(() => {
@@ -288,6 +303,7 @@ const shutdown = () => {
   collector.stop()
   themeFlow.stop()
   usThemeFlow.stop()
+  dailyIssues.stop()
   if (historyTimer) clearInterval(historyTimer)
   if (preparedTimer) clearInterval(preparedTimer)
   if (preparedHistoryTimer) clearInterval(preparedHistoryTimer)
