@@ -10,6 +10,7 @@ import './liveMarket.css'
 import './theme.css'
 import './usMarketWorkspace.css'
 import './refreshControl.css'
+import './readability.css'
 export { moneyFlowScore } from './marketData'
 export { answerIsCorrect, buildQuizRound } from './StockQuiz'
 
@@ -36,9 +37,7 @@ export default function App() {
     try { localStorage.setItem('k-market-theme-v3', theme) } catch { /* storage can be unavailable */ }
   }, [theme])
 
-  useEffect(() => {
-    void warmQuizUniverse()
-  }, [])
+  useEffect(() => { void warmQuizUniverse() }, [])
 
   const toggleTheme = () => setTheme((current) => current === 'light' ? 'dark' : 'light')
 
@@ -47,10 +46,7 @@ export default function App() {
     setRefreshing(true)
     setRefreshFailed(false)
     try {
-      const response = await fetch('/api/market/refresh', {
-        method: 'POST',
-        headers: { Accept: 'application/json' },
-      })
+      const response = await fetch('/api/market/refresh', { method: 'POST', headers: { Accept: 'application/json' } })
       if (!response.ok) throw new Error('refresh failed')
       setDataRevision((value) => value + 1)
     } catch {
