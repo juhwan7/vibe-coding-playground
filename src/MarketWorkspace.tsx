@@ -81,6 +81,10 @@ type StockChartPayload = {
   error?: string | null
 }
 
+type DescriptionPayload = {
+  items?: Array<{ code?: string | null; description?: string | null }>
+}
+
 const ACCENTS = ['#ff4d6d', '#39a0ff', '#37d67a', '#9d6cff', '#ff9d3d']
 const SESSION_START = 8 * 60
 const SESSION_MINUTES = 12 * 60
@@ -139,9 +143,14 @@ function isIndividualStock(item: RankingItem) {
   return !NON_STOCK_NAME.test(String(item.name ?? ''))
 }
 
-function compactCompanySummary(description: string | null | undefined, fallbackTheme?: string | null) {
+function compactCompanySummary(description: string | null | undefined, fallbackTheme?: string | null, fallbackMarket?: string | null) {
+  const fallback = fallbackTheme
+    ? `${fallbackTheme} 관련 핵심 종목`
+    : fallbackMarket
+      ? `${fallbackMarket} 거래대금 상위 종목`
+      : '거래대금 상위 주요 종목'
   const text = String(description ?? '').replace(/\s+/g, ' ').trim()
-  if (!text) return fallbackTheme ? `${fallbackTheme} 관련 핵심 종목` : '기업개요 캐시 준비 중'
+  if (!text) return fallback
 
   const sentences = text.split(/(?<=[.!?])\s+/).map((sentence) => sentence.trim()).filter(Boolean)
   const selected = (sentences.length ? sentences : [text])
@@ -166,7 +175,7 @@ function compactCompanySummary(description: string | null | undefined, fallbackT
     const boundary = Math.max(...boundaries)
     concise = boundary >= 18 ? concise.slice(0, boundary).trim() : `${concise.slice(0, 32).trim()}…`
   }
-  return concise || (fallbackTheme ? `${fallbackTheme} 관련 핵심 종목` : '기업개요 캐시 준비 중')
+  return concise || fallback
 }
 
 function themeIcon(name: string) {
@@ -305,6 +314,7 @@ export default function MarketWorkspace() {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null)
   const [themeFlow, setThemeFlow] = useState<ThemeFlowResponse>({ ok: false, themes: [], topRankings: [] })
   const [companyDescriptions, setCompanyDescriptions] = useState<Record<string, string>>({})
+  const requestedDescriptions = useRef(new Set<string>())
 
   useEffect(() => {
     const controller = new AbortController()
@@ -336,7 +346,7 @@ export default function MarketWorkspace() {
       for (const item of [...(payload.kospi200 ?? []), ...(payload.kosdaq150 ?? [])]) {
         if (/^\d{6}$/.test(item.code) && item.description) next[item.code] = item.description
       }
-      setCompanyDescriptions(next)
+      setCompanyDescriptions((current) => ({ ...current, ...next }))
     })
     return () => { active = false }
   }, [])
@@ -372,6 +382,43 @@ export default function MarketWorkspace() {
       } as RankingItem
     }).filter((item): item is RankingItem & { symbol: string } => Boolean(item.symbol) && isIndividualStock(item)).slice(0, 100)
   }, [themeFlow.topRankings, themeFlow.themes, snapshot?.topRankings, snapshot?.stocks])
+
+  useEffect(() => {
+    let active = true
+    const missing = rankings
+      .map((item) => item.symbol)
+      .filter((code) => /^\d{6}$/.test(code) && !companyDescriptions[code] && !requestedDescriptions.current.has(code))
+
+    if (!missing.length) return () => { active = false }
+    for (const code of missing) requestedDescriptions.current.add(code)
+
+    const fillTop100Descriptions = async () => {
+      for (let offset = 0; offset < missing.length && active; offset += 10) {
+        const batch = missing.slice(offset, offset + 10)
+        const params = new URLSearchParams({ codes: batch.join(',') })
+        const response = await fetch(`/api/quiz/descriptions?${params.toString()}`, {
+          headers: { Accept: 'application/json' },
+        }).catch(() => null)
+        const payload = response?.ok
+          ? await response.json().catch(() => null) as DescriptionPayload | null
+          : null
+        if (active && payload?.items?.length) {
+          const next: Record<string, string> = {}
+          for (const item of payload.items) {
+            const code = String(item.code ?? '')
+            if (/^\d{6}$/.test(code) && item.description) next[code] = item.description
+          }
+          if (Object.keys(next).length) setCompanyDescriptions((current) => ({ ...current, ...next }))
+        }
+        if (offset + 10 < missing.length && active) {
+          await new Promise((resolve) => window.setTimeout(resolve, 250))
+        }
+      }
+    }
+
+    void fillTop100Descriptions()
+    return () => { active = false }
+  }, [rankings, companyDescriptions])
 
   const themes = (themeFlow.themes ?? []).slice(0, 5)
   const themeMembershipBySymbol = new Map<string, { name: string; accent: string; rank: number }>()
@@ -431,7 +478,7 @@ export default function MarketWorkspace() {
           const themeMembership = themeMembershipBySymbol.get(item.symbol)
           const catalogTheme = themeMembership?.name ?? item.catalogThemes?.[0] ?? null
           const fullDescription = companyDescriptions[item.symbol] ?? null
-          const companySummary = compactCompanySummary(fullDescription, catalogTheme)
+          const companySummary = compactCompanySummary(fullDescription, catalogTheme, item.market)
           const share = totalAmount > 0 ? amount / totalAmount * 100 : null
           const tooltip = [
             themeMembership ? `현재 ${themeMembership.rank}위 테마 · ${themeMembership.name}` : (item.catalogThemes?.length ? `검증 테마 · ${item.catalogThemes.join(', ')}` : null),
