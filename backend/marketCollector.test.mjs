@@ -23,6 +23,11 @@ test('TOP100 랭킹의 displayName을 실제 종목명으로 사용한다', () =
   assert.equal(item.name, '삼성전자')
 })
 
+test('TOP100 랭킹의 shortName과 koreanName도 실제 종목명으로 사용한다', () => {
+  assert.equal(rankingItem({ symbol: '005380', shortName: '현대차' }).name, '현대차')
+  assert.equal(rankingItem({ symbol: '000270', koreanName: '기아' }).name, '기아')
+})
+
 test('TOP100 랭킹의 중첩 stock 이름 필드와 이전 정상 이름을 보존한다', () => {
   assert.equal(rankingItem({ stock: { symbol: '000660', koreanName: 'SK하이닉스' } }).name, 'SK하이닉스')
   assert.equal(rankingItem({ symbol: '000660', name: '000660' }, 'SK하이닉스').name, 'SK하이닉스')
