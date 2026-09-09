@@ -32,6 +32,14 @@ jobs:
           end = text.index(end_marker, start)
           lines = text[start:end].splitlines()
           script = '\n'.join(line[10:] if line.startswith('          ') else line for line in lines) + '\n'
+          old_anchor = '''"""  async sampleLivePrices() {
+            if (this.liveSampling || this.refreshing || !this.client.configured || !usRegularSessionActive() || !this.activeGroups.length) return this.payload
+          """,'''
+          new_anchor = '''"""  async sampleLivePrices() {
+          """,'''
+          if old_anchor not in script:
+              raise SystemExit('stored patch session anchor normalization target not found')
+          script = script.replace(old_anchor, new_anchor, 1)
           Path('/tmp/apply-us-session-split.py').write_text(script)
           PY
           python3 /tmp/apply-us-session-split.py
