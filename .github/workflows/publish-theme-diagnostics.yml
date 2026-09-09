@@ -1,0 +1,139 @@
+name: Publish Theme Diagnostics
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_run:
+    workflows: ["Deploy to Raspberry Pi"]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-theme-diagnostics
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    if: >-
+      ${{ github.event_name != 'workflow_run' ||
+          (github.event.workflow_run.conclusion == 'success' &&
+           github.event.workflow_run.head_branch == 'main' &&
+           github.event.workflow_run.head_repository.full_name == github.repository) }}
+    runs-on: [self-hosted, linux, ARM64, k-market-pi]
+    timeout-minutes: 4
+    steps:
+      - name: Publish theme flow data-quality diagnostics
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP="$HOME/vibe-coding-playground"
+          STATUS_BRANCH=tunnel-status
+          STATUS_PATH=THEME_DIAGNOSTICS.md
+          API="https://api.github.com/repos/$REPOSITORY"
+          checked_at="$(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+          app_commit="$(git -C "$APP" rev-parse HEAD 2>/dev/null || echo unknown)"
+          cd "$APP"
+
+          # 배포 직후 백필이 진행 중일 수 있어 잠깐 기다린 뒤 실제 localhost API를 읽는다.
+          sleep 20
+          if curl --fail --silent --show-error --connect-timeout 2 --max-time 12 \
+            http://127.0.0.1:8080/api/market/theme-flow >/tmp/theme-flow-diagnostics.json; then
+            api_status=online
+            theme_summary="$(cat /tmp/theme-flow-diagnostics.json | docker compose exec -T backend node -e '
+              let raw = "";
+              process.stdin.setEncoding("utf8");
+              process.stdin.on("data", (chunk) => { raw += chunk; });
+              process.stdin.on("end", () => {
+                try {
+                  const payload = JSON.parse(raw);
+                  const fmt = new Intl.DateTimeFormat("en-GB", {
+                    timeZone: "Asia/Seoul", hour: "2-digit", minute: "2-digit", hour12: false,
+                  });
+                  const minuteOfDay = (timestamp) => {
+                    const parts = new Intl.DateTimeFormat("en-GB", {
+                      timeZone: "Asia/Seoul", hour: "2-digit", minute: "2-digit", hour12: false,
+                    }).formatToParts(new Date(timestamp));
+                    const h = Number(parts.find((part) => part.type === "hour")?.value ?? 0);
+                    const m = Number(parts.find((part) => part.type === "minute")?.value ?? 0);
+                    return h * 60 + m;
+                  };
+                  const lines = [];
+                  lines.push(`- API ok: \`${Boolean(payload?.ok)}\``);
+                  lines.push(`- API updatedAt: \`${payload?.updatedAt ?? "unknown"}\``);
+                  lines.push(`- cache pendingGapSymbols: \`${payload?.cache?.pendingGapSymbols ?? "unknown"}\``);
+                  lines.push("");
+                  lines.push("## 현재 5개 테마 장중 커버리지");
+                  lines.push("");
+                  for (const theme of payload?.themes ?? []) {
+                    const endDay = theme?.endDay ?? null;
+                    const points = (theme?.points ?? [])
+                      .filter((point) => !endDay || point?.day === endDay)
+                      .filter((point) => point?.timestamp && Number.isFinite(Date.parse(point.timestamp)))
+                      .sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp));
+                    const first = points[0]?.timestamp ?? null;
+                    const last = points.at(-1)?.timestamp ?? null;
+                    let maxGap = 0;
+                    for (let index = 1; index < points.length; index += 1) {
+                      maxGap = Math.max(maxGap, (Date.parse(points[index].timestamp) - Date.parse(points[index - 1].timestamp)) / 60000);
+                    }
+                    const openingDelay = first ? Math.max(0, minuteOfDay(first) - 9 * 60) : null;
+                    const members = (theme?.members ?? []).map((member) => `${member?.name ?? member?.symbol ?? "?"}(${member?.symbol ?? "?"})`).join(", ");
+                    lines.push(`- **${theme?.name ?? "unknown"}**: day=\`${endDay ?? "unknown"}\`, points=\`${points.length}\`, first=\`${first ? fmt.format(new Date(first)) : "none"}\`, last=\`${last ? fmt.format(new Date(last)) : "none"}\`, openingDelay=\`${openingDelay ?? "n/a"}m\`, maxGap=\`${Math.round(maxGap * 10) / 10}m\``);
+                    lines.push(`  - members: ${members || "none"}`);
+                  }
+                  console.log(lines.join("\n"));
+                } catch (error) {
+                  console.log(`- parse error: \`${error instanceof Error ? error.message : String(error)}\``);
+                }
+              });
+            ')"
+          else
+            api_status=offline
+            theme_summary='- theme-flow API를 읽지 못했습니다.'
+          fi
+
+          cat >/tmp/theme-diagnostics.md <<EOF
+          # MARKET FLOW Theme Diagnostics
+
+          - Last check: \`$checked_at\`
+          - App deployed commit: \`$app_commit\`
+          - Local theme-flow API: \`$api_status\`
+
+          $theme_summary
+
+          이 파일은 Raspberry Pi의 실제 \`/api/market/theme-flow\` 응답을 기준으로 테마 차트의 장중 시작 시각과 최대 데이터 공백을 기록합니다.
+          EOF
+          sed -i 's/^          //' /tmp/theme-diagnostics.md
+          encoded="$(base64 -w 0 /tmp/theme-diagnostics.md)"
+
+          meta=/tmp/theme-diagnostics-meta.json
+          code="$(curl --silent --show-error -o "$meta" -w '%{http_code}' \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'Accept: application/vnd.github+json' \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "$API/contents/$STATUS_PATH?ref=$STATUS_BRANCH")"
+          sha=''
+          if [ "$code" = 200 ]; then
+            sha="$(tr -d '\n' <"$meta" | sed -n 's/.*"sha":[[:space:]]*"\([^"]*\)".*/\1/p')"
+          elif [ "$code" != 404 ]; then
+            cat "$meta" || true
+            exit 1
+          fi
+
+          if [ -n "$sha" ]; then
+            printf '{"message":"chore: update theme diagnostics","content":"%s","branch":"%s","sha":"%s"}' "$encoded" "$STATUS_BRANCH" "$sha" >/tmp/theme-diagnostics-update.json
+          else
+            printf '{"message":"chore: publish theme diagnostics","content":"%s","branch":"%s"}' "$encoded" "$STATUS_BRANCH" >/tmp/theme-diagnostics-update.json
+          fi
+
+          curl --fail --silent --show-error -X PUT \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'Accept: application/vnd.github+json' \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "$API/contents/$STATUS_PATH" --data-binary @/tmp/theme-diagnostics-update.json >/dev/null
