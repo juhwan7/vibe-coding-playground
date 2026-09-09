@@ -58,11 +58,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # nginx resolves the configured `backend` upstream at startup. The smoke test
-          # only exercises static files, so provide a harmless hosts entry rather than
+          # nginx resolves configured API upstreams at startup. This smoke test only
+          # exercises static files, so provide harmless hosts entries rather than
           # starting the full application stack.
           docker run -d --rm --name market-flow-frontend-smoke \
-            --add-host backend:127.0.0.1 -p 18080:80 market-flow-frontend-ci >/dev/null
+            --add-host backend:127.0.0.1 \
+            --add-host theme-admin:127.0.0.1 \
+            -p 18080:80 market-flow-frontend-ci >/dev/null
           trap 'docker rm -f market-flow-frontend-smoke >/dev/null 2>&1 || true' EXIT
 
           READY=0

@@ -1,5 +1,6 @@
 services:
   backend:
+    image: vibe-coding-playground-backend:latest
     build:
       context: .
       dockerfile: backend/Dockerfile
@@ -30,9 +31,22 @@ services:
       QUIZ_UNIVERSE_CACHE_PATH: /app/data/quiz-universe.json
       DAILY_ISSUE_CACHE_PATH: /app/data/daily-issues.json
       CLOSE_ARCHIVE_CACHE_PATH: /app/data/close-archive.json
+      MANUAL_THEME_PATH: /app/data/manual-themes.json
     volumes:
       - market-history:/app/data
       - dashboard-cache:/app/public-data
+    restart: unless-stopped
+
+  theme-admin:
+    image: vibe-coding-playground-backend:latest
+    command: ["node", "themeAdminServer.mjs"]
+    environment:
+      PORT: 8787
+      MARKET_ALLOWED_ORIGIN: ${MARKET_ALLOWED_ORIGIN:-}
+      THEME_ADMIN_WRITE_TOKEN: ${THEME_ADMIN_WRITE_TOKEN:-}
+      MANUAL_THEME_PATH: /app/data/manual-themes.json
+    volumes:
+      - market-history:/app/data
     restart: unless-stopped
 
   frontend:
@@ -44,6 +58,8 @@ services:
       - "8080:80"
     depends_on:
       backend:
+        condition: service_started
+      theme-admin:
         condition: service_started
     volumes:
       - dashboard-cache:/usr/share/nginx/html/data:ro

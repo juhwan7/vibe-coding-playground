@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { cachedDescriptionForStock } from './stockClassification.mjs'
+import { manualThemesForStock } from './manualThemeStore.mjs'
 
 const catalogPath = process.env.THEME_CATALOG_PATH || new URL('./data/themes.kr.json', import.meta.url)
 const rawCatalog = JSON.parse(readFileSync(catalogPath, 'utf8'))
@@ -52,6 +53,15 @@ export function themeMembershipsForStock(symbol, name = '', description = null) 
   const result = new Map()
   const code = String(symbol ?? '').trim()
 
+  const manualThemes = manualThemesForStock(code)
+  if (manualThemes?.length) {
+    return manualThemes.map((theme) => ({
+      name: theme,
+      source: 'manual-user',
+      confidence: 'user',
+    }))
+  }
+
   for (const [theme, symbols] of Object.entries(CATALOG)) {
     if (symbols.has(code)) result.set(theme, { name: theme, source: 'catalog-symbol', confidence: 'verified' })
   }
@@ -63,8 +73,6 @@ export function themeMembershipsForStock(symbol, name = '', description = null) 
     }
   }
 
-  // 명시 카탈로그/이름 키워드가 하나라도 있으면 그것을 신뢰한다.
-  // 아무 정보가 없을 때만 기업개요에서 강한 사업 근거 하나를 찾아 단일 테마로 보조 분류한다.
   if (!result.size) {
     const inferred = inferThemeFromOverview(code, name, description)
     if (inferred) result.set(inferred, { name: inferred, source: 'company-overview', confidence: 'high' })
