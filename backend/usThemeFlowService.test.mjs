@@ -1,7 +1,15 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { buildUsThemeGroups, selectUsThemeGroups } from './usThemeCatalog.mjs'
-import { aggregateUsThemeSeries, isUsIndividualStock, loadUsRanking } from './usThemeFlowService.mjs'
+import {
+  aggregateUsLiveThemeSeries,
+  aggregateUsThemeSeries,
+  isUsIndividualStock,
+  loadUsLivePrices,
+  loadUsRanking,
+  mergeUsLivePriceSamples,
+  mergeUsThemePoints,
+} from './usThemeFlowService.mjs'
 
 test('buildUsThemeGroups requires three US top50 members and sorts by turnover', () => {
   const rankings = [
@@ -47,7 +55,7 @@ test('US individual-stock filter excludes ETF and ETN metadata before TOP50 is b
   assert.equal(isUsIndividualStock({ symbol: 'TEST', name: 'Example ETN' }), false)
 })
 
-test('aggregateUsThemeSeries normalizes members and uses 3-minute turnover-weighted returns', () => {
+test('aggregateUsThemeSeries keeps real one-minute points and uses actual minute turnover weights', () => {
   const memberSeries = [
     {
       symbol: 'NVDA',
@@ -67,12 +75,90 @@ test('aggregateUsThemeSeries normalizes members and uses 3-minute turnover-weigh
     },
   ]
   const points = aggregateUsThemeSeries(memberSeries)
-  assert.equal(points.length, 2)
+  assert.equal(points.length, 3)
   assert.equal(points[0].memberCount, 2)
-  assert.equal(points[0].tradingAmount, 4000)
-  assert.ok(Math.abs(points[0].value - 0.005) < 1e-9)
-  assert.ok(Math.abs(points[1].value - 2) < 1e-9)
-  assert.equal(points[1].tradingAmount, 2040)
+  assert.equal(points[0].tradingAmount, 2000)
+  assert.ok(Math.abs(points[0].value) < 1e-9)
+  assert.ok(Math.abs(points[1].value - 0.01) < 1e-9)
+  assert.ok(Math.abs(points[2].value - 2) < 1e-9)
+  assert.equal(points[2].source, '1m-backfill')
+})
+
+test('30-second live samples remain separate real observations and use stable member turnover weights', () => {
+  const points = aggregateUsLiveThemeSeries([
+    {
+      symbol: 'NVDA',
+      weight: 300,
+      candles: [{ timestamp: '2026-09-09T13:30:00.000Z', closePrice: 100 }],
+      samples: [
+        { timestamp: '2026-09-09T13:30:00.000Z', lastPrice: 101 },
+        { timestamp: '2026-09-09T13:30:30.000Z', lastPrice: 102 },
+      ],
+    },
+    {
+      symbol: 'AMD',
+      weight: 100,
+      candles: [{ timestamp: '2026-09-09T13:30:00.000Z', closePrice: 200 }],
+      samples: [
+        { timestamp: '2026-09-09T13:30:00.000Z', lastPrice: 198 },
+        { timestamp: '2026-09-09T13:30:30.000Z', lastPrice: 202 },
+      ],
+    },
+  ])
+  assert.equal(points.length, 2)
+  assert.equal(points[0].timestamp, '2026-09-09T13:30:00.000Z')
+  assert.equal(points[1].timestamp, '2026-09-09T13:30:30.000Z')
+  assert.ok(Math.abs(points[0].value - 0.5) < 1e-9)
+  assert.ok(Math.abs(points[1].value - 1.75) < 1e-9)
+  assert.equal(points[0].tradingAmount, null)
+  assert.equal(points[0].source, '30s-live')
+})
+
+test('live price cache buckets real observations at 30 seconds without inventing midpoint prices', () => {
+  const samples = mergeUsLivePriceSamples([], [
+    { timestamp: '2026-09-09T13:30:12.000Z', lastPrice: 100 },
+    { timestamp: '2026-09-09T13:30:43.000Z', lastPrice: 101 },
+  ])
+  assert.deepEqual(samples.map((sample) => sample.timestamp), [
+    '2026-09-09T13:30:00.000Z',
+    '2026-09-09T13:30:30.000Z',
+  ])
+  assert.deepEqual(samples.map((sample) => sample.lastPrice), [100, 101])
+})
+
+test('live points replace the same historical timestamp while untouched history remains', () => {
+  const merged = mergeUsThemePoints(
+    [
+      { timestamp: '2026-09-09T13:30:00.000Z', value: 1, source: '1m-backfill' },
+      { timestamp: '2026-09-09T13:31:00.000Z', value: 2, source: '1m-backfill' },
+    ],
+    [
+      { timestamp: '2026-09-09T13:30:00.000Z', value: 1.2, source: '30s-live' },
+      { timestamp: '2026-09-09T13:30:30.000Z', value: 1.5, source: '30s-live' },
+    ],
+  )
+  assert.equal(merged.length, 3)
+  assert.equal(merged[0].value, 1.2)
+  assert.equal(merged[1].timestamp, '2026-09-09T13:30:30.000Z')
+  assert.equal(merged[2].value, 2)
+})
+
+test('loadUsLivePrices batches symbols into the real current-price endpoint', async () => {
+  const calls = []
+  const client = {
+    async request(path) {
+      calls.push(path)
+      return { result: [
+        { symbol: 'NVDA', lastPrice: 180, timestamp: '2026-09-09T13:30:12.000Z' },
+        { symbol: 'AMD', lastPrice: 150, timestamp: '2026-09-09T13:30:13.000Z' },
+      ] }
+    },
+  }
+  const prices = await loadUsLivePrices(client, ['NVDA', 'AMD'])
+  assert.equal(calls.length, 1)
+  assert.ok(calls[0].startsWith('/api/v1/prices?symbols='))
+  assert.equal(prices.length, 2)
+  assert.equal(prices[0].lastPrice, 180)
 })
 
 test('loadUsRanking falls back from empty 1d market ranking to realtime market ranking', async () => {
