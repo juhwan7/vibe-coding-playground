@@ -94,8 +94,7 @@ function mergeCandles(existing, incoming, maxItems = 3600) {
       tradingAmount: number(candle.tradingAmount) ?? (closePrice * (number(candle.volume) ?? 0)),
     })
   }
-  const merged = [...map.values()]
-    .sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp))
+  const merged = [...map.values()].sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp))
   const days = [...new Set(merged.map((candle) => dateKey(candle.timestamp)))].sort()
   const keepDays = new Set(days.slice(-5))
   return merged.filter((candle) => keepDays.has(dateKey(candle.timestamp))).slice(-maxItems)
@@ -142,25 +141,65 @@ function nearestDelta(points, minutes) {
   return last.value - nearest.value
 }
 
+function average(values) {
+  const clean = values.filter((value) => Number.isFinite(value))
+  return clean.length ? clean.reduce((sum, value) => sum + value, 0) / clean.length : null
+}
+
 export function aggregateThemeSeries(memberSeries) {
   const buckets = new Map()
+
   for (const { symbol, candles } of memberSeries) {
-    if (!candles?.length) continue
-    const baseline = candles.find((candle) => candle.closePrice != null)?.closePrice
+    const ordered = [...(candles ?? [])].sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp))
+    if (!ordered.length) continue
+    const baseline = ordered.find((candle) => candle.closePrice != null)?.closePrice
     if (!baseline) continue
     const perBucket = new Map()
-    for (const candle of candles) {
+
+    for (const candle of ordered) {
       const key = bucket3m(candle.timestamp)
-      if (key == null || candle.closePrice == null) continue
-      const current = perBucket.get(key) ?? { timestamp: new Date(key).toISOString(), value: null, volume: 0, tradingAmount: 0 }
-      current.value = (candle.closePrice / baseline - 1) * 100
-      current.volume += candle.volume ?? 0
-      current.tradingAmount += candle.tradingAmount ?? (candle.closePrice * (candle.volume ?? 0))
+      const closePrice = number(candle.closePrice)
+      if (key == null || closePrice == null) continue
+      const openPrice = number(candle.openPrice) ?? closePrice
+      const highPrice = number(candle.highPrice) ?? Math.max(openPrice, closePrice)
+      const lowPrice = number(candle.lowPrice) ?? Math.min(openPrice, closePrice)
+      const openValue = (openPrice / baseline - 1) * 100
+      const highValue = (highPrice / baseline - 1) * 100
+      const lowValue = (lowPrice / baseline - 1) * 100
+      const closeValue = (closePrice / baseline - 1) * 100
+      const current = perBucket.get(key) ?? {
+        timestamp: new Date(key).toISOString(),
+        openValue: null,
+        highValue: -Infinity,
+        lowValue: Infinity,
+        closeValue: null,
+        volume: 0,
+        tradingAmount: 0,
+      }
+      if (current.openValue == null) current.openValue = openValue
+      current.highValue = Math.max(current.highValue, highValue)
+      current.lowValue = Math.min(current.lowValue, lowValue)
+      current.closeValue = closeValue
+      current.volume += number(candle.volume) ?? 0
+      current.tradingAmount += number(candle.tradingAmount) ?? closePrice * (number(candle.volume) ?? 0)
       perBucket.set(key, current)
     }
+
     for (const [key, point] of perBucket) {
-      const aggregate = buckets.get(key) ?? { timestamp: point.timestamp, values: [], volume: 0, tradingAmount: 0, symbols: new Set() }
-      aggregate.values.push(point.value)
+      const aggregate = buckets.get(key) ?? {
+        timestamp: point.timestamp,
+        opens: [],
+        highs: [],
+        lows: [],
+        closes: [],
+        volume: 0,
+        tradingAmount: 0,
+        symbols: new Set(),
+      }
+      if (point.openValue != null) aggregate.opens.push(point.openValue)
+      if (Number.isFinite(point.highValue)) aggregate.highs.push(point.highValue)
+      if (Number.isFinite(point.lowValue)) aggregate.lows.push(point.lowValue)
+      if (point.closeValue != null) aggregate.closes.push(point.closeValue)
       aggregate.volume += point.volume
       aggregate.tradingAmount += point.tradingAmount
       aggregate.symbols.add(symbol)
@@ -170,14 +209,24 @@ export function aggregateThemeSeries(memberSeries) {
 
   return [...buckets.values()]
     .sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp))
-    .map((bucket) => ({
-      timestamp: bucket.timestamp,
-      value: bucket.values.reduce((sum, value) => sum + value, 0) / Math.max(1, bucket.values.length),
-      volume: bucket.volume,
-      tradingAmount: bucket.tradingAmount,
-      memberCount: bucket.symbols.size,
-      day: dateKey(bucket.timestamp),
-    }))
+    .map((bucket) => {
+      const openValue = average(bucket.opens)
+      const highValue = average(bucket.highs)
+      const lowValue = average(bucket.lows)
+      const closeValue = average(bucket.closes)
+      return {
+        timestamp: bucket.timestamp,
+        value: closeValue,
+        openValue,
+        highValue,
+        lowValue,
+        closeValue,
+        volume: bucket.volume,
+        tradingAmount: bucket.tradingAmount,
+        memberCount: bucket.symbols.size,
+        day: dateKey(bucket.timestamp),
+      }
+    }).filter((point) => point.value != null)
 }
 
 export function aggregateStockCandles(candles = []) {
@@ -317,7 +366,7 @@ export class ThemeFlowService {
   async persistCache() {
     await mkdir(dirname(this.cachePath), { recursive: true })
     const payload = {
-      version: 3,
+      version: 4,
       savedAt: new Date().toISOString(),
       candles: Object.fromEntries([...this.candleCache.entries()].map(([symbol, candles]) => [symbol, candles])),
     }
@@ -453,6 +502,7 @@ export class ThemeFlowService {
           candleInterval: '1m',
           aggregateInterval: '3m',
           weighting: 'equal-return',
+          chart: 'averaged-OHLC-candles',
           tradingAmount: 'market-ranking-1d',
           historyTradingDays: 2,
           persisted: true,
