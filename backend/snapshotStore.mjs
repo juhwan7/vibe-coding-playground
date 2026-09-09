@@ -1,5 +1,9 @@
-import { mkdir, readFile, writeFile, appendFile, stat, rename } from 'node:fs/promises'
+import { mkdir, readFile, writeFile, appendFile, stat, rename, open } from 'node:fs/promises'
 import { dirname } from 'node:path'
+
+const DEFAULT_MAX_READ_BYTES = 32 * 1024 * 1024
+const DEFAULT_PRUNE_THRESHOLD_BYTES = 256 * 1024 * 1024
+const DEFAULT_PRUNE_KEEP_BYTES = 96 * 1024 * 1024
 
 function minuteKey(iso) {
   return String(iso || '').slice(0, 16)
@@ -53,7 +57,7 @@ function compactRanking(item) {
   }
 }
 
-function compactSnapshot(snapshot) {
+function compactHistorySnapshot(snapshot) {
   return {
     updatedAt: snapshot.updatedAt,
     marketSession: snapshot.marketSession,
@@ -64,7 +68,41 @@ function compactSnapshot(snapshot) {
     programSummary: snapshot.programSummary ?? null,
     futures: snapshot.futures ?? null,
     topRankings: (snapshot.topRankings ?? []).slice(0, 100).map(compactRanking),
+  }
+}
+
+function compactLatestSnapshot(snapshot) {
+  return {
+    ...compactHistorySnapshot(snapshot),
     stocks: Object.fromEntries(Object.entries(snapshot.stocks ?? {}).map(([symbol, stock]) => [symbol, compactStock(stock)])),
+  }
+}
+
+async function readTailText(filePath, maxBytes) {
+  const handle = await open(filePath, 'r')
+  try {
+    const info = await handle.stat()
+    const safeMax = Math.max(1024 * 1024, Number(maxBytes) || DEFAULT_MAX_READ_BYTES)
+    const start = Math.max(0, info.size - safeMax)
+    const length = Math.max(0, info.size - start)
+    if (!length) return { text: '', sourceBytes: info.size, bytesRead: 0, truncated: false }
+
+    const buffer = Buffer.allocUnsafe(length)
+    let offset = 0
+    while (offset < length) {
+      const { bytesRead } = await handle.read(buffer, offset, length - offset, start + offset)
+      if (!bytesRead) break
+      offset += bytesRead
+    }
+
+    let text = buffer.subarray(0, offset).toString('utf8')
+    if (start > 0) {
+      const newline = text.indexOf('\n')
+      text = newline >= 0 ? text.slice(newline + 1) : ''
+    }
+    return { text, sourceBytes: info.size, bytesRead: offset, truncated: start > 0 }
+  } finally {
+    await handle.close().catch(() => {})
   }
 }
 
@@ -73,13 +111,20 @@ export class SnapshotStore {
     filePath = process.env.MARKET_HISTORY_PATH || '/app/data/market-history.jsonl',
     latestPath = process.env.MARKET_LATEST_PATH || '/app/data/latest-market-snapshot.json',
     retainDays = 35,
+    maxReadBytes = Number(process.env.MARKET_HISTORY_READ_MAX_BYTES || DEFAULT_MAX_READ_BYTES),
+    pruneThresholdBytes = Number(process.env.MARKET_HISTORY_PRUNE_THRESHOLD_BYTES || DEFAULT_PRUNE_THRESHOLD_BYTES),
+    pruneKeepBytes = Number(process.env.MARKET_HISTORY_PRUNE_KEEP_BYTES || DEFAULT_PRUNE_KEEP_BYTES),
   } = {}) {
     this.filePath = filePath
     this.latestPath = latestPath
     this.retainDays = retainDays
+    this.maxReadBytes = Math.max(4 * 1024 * 1024, maxReadBytes)
+    this.pruneThresholdBytes = Math.max(this.maxReadBytes * 2, pruneThresholdBytes)
+    this.pruneKeepBytes = Math.max(this.maxReadBytes, Math.min(pruneKeepBytes, this.pruneThresholdBytes))
     this.lastMinute = null
     this.lastPruneDay = null
     this.readCache = new Map()
+    this.lastReadStats = { sourceBytes: 0, bytesRead: 0, truncated: false }
     this.ready = Promise.all([
       mkdir(dirname(filePath), { recursive: true }),
       mkdir(dirname(latestPath), { recursive: true }),
@@ -102,6 +147,16 @@ export class SnapshotStore {
       return item
     } catch {
       return null
+    }
+  }
+
+  diagnostics() {
+    return {
+      maxReadBytes: this.maxReadBytes,
+      pruneThresholdBytes: this.pruneThresholdBytes,
+      pruneKeepBytes: this.pruneKeepBytes,
+      ...this.lastReadStats,
+      cachedViews: this.readCache.size,
     }
   }
 
@@ -146,13 +201,21 @@ export class SnapshotStore {
     if (!key || key === this.lastMinute) return false
     this.lastMinute = key
     await this.ready
-    const compact = compactSnapshot(snapshot)
-    await appendFile(this.filePath, `${JSON.stringify(compact)}\n`, 'utf8')
-    this.updateReadCaches(compact)
-    await this.writeLatest(compact).catch(() => {})
 
+    // History rows are deliberately lighter than the startup snapshot. The TOP100
+    // already contains the per-stock fields needed by replay; duplicating snapshot.stocks
+    // made the JSONL file grow much faster on the Raspberry Pi.
+    const historyCompact = compactHistorySnapshot(snapshot)
+    await appendFile(this.filePath, `${JSON.stringify(historyCompact)}\n`, 'utf8')
+    this.updateReadCaches(historyCompact)
+    await this.writeLatest(compactLatestSnapshot(snapshot)).catch(() => {})
+
+    // Never prune on the first intraday append after a restart. Old code could read and
+    // rewrite a 250MB+ JSONL file while the HTTP server was serving requests, saturating
+    // one Pi CPU core and producing nginx 504s. Maintenance is only attempted near the
+    // end of the extended session and itself keeps only a bounded recent tail.
     const day = kstParts(snapshot.updatedAt).day
-    if (day && day !== this.lastPruneDay) {
+    if (day && day !== this.lastPruneDay && marketMinute >= 1195) {
       this.lastPruneDay = day
       await this.prune().catch(() => {})
     }
@@ -167,16 +230,26 @@ export class SnapshotStore {
     const cached = this.readCache.get(cacheKey)
     if (cached) return cached
 
-    let text = ''
-    try { text = await readFile(this.filePath, 'utf8') } catch {
-      const empty = { days: safeDays, resolutionMinutes: safeResolution, tradingDays: 0, samples: [] }
+    let tail
+    try {
+      tail = await readTailText(this.filePath, this.maxReadBytes)
+      this.lastReadStats = {
+        sourceBytes: tail.sourceBytes,
+        bytesRead: tail.bytesRead,
+        truncated: tail.truncated,
+      }
+    } catch {
+      const empty = { days: safeDays, resolutionMinutes: safeResolution, tradingDays: 0, samples: [], boundedRead: true }
       this.readCache.set(cacheKey, empty)
       return empty
     }
+
     const cutoff = Date.now() - safeDays * 24 * 60 * 60 * 1000
     const buckets = new Map()
     const tradingDays = new Set()
-    for (const line of text.split('\n')) {
+    const lines = tail.text.split('\n')
+    for (let index = 0; index < lines.length; index += 1) {
+      const line = lines[index]
       if (!line) continue
       try {
         const item = JSON.parse(line)
@@ -189,31 +262,54 @@ export class SnapshotStore {
       } catch {
         // 손상된 한 줄은 건너뛰고 나머지 히스토리는 유지한다.
       }
+      if (index > 0 && index % 250 === 0) await new Promise((resolve) => setImmediate(resolve))
     }
     const samples = [...buckets.values()].sort((a, b) => Date.parse(a.updatedAt) - Date.parse(b.updatedAt))
-    const result = { days: safeDays, resolutionMinutes: safeResolution, tradingDays: tradingDays.size, samples }
+    const result = {
+      days: safeDays,
+      resolutionMinutes: safeResolution,
+      tradingDays: tradingDays.size,
+      samples,
+      boundedRead: true,
+      sourceBytes: tail.sourceBytes,
+      bytesRead: tail.bytesRead,
+      truncated: tail.truncated,
+    }
     this.readCache.set(cacheKey, result)
     return result
   }
 
   async prune() {
     await this.ready
+    let info
     try {
-      const info = await stat(this.filePath)
-      if (info.size < 250 * 1024 * 1024) return
-    } catch { return }
+      info = await stat(this.filePath)
+      if (info.size < this.pruneThresholdBytes) return false
+    } catch {
+      return false
+    }
 
+    // Bounded compaction: read only the newest tail instead of loading the entire file.
+    // This intentionally prioritizes recent replay data and Pi availability over keeping
+    // an ever-growing JSONL file in the active path.
+    const tail = await readTailText(this.filePath, this.pruneKeepBytes)
     const cutoff = Date.now() - this.retainDays * 24 * 60 * 60 * 1000
-    const text = await readFile(this.filePath, 'utf8')
     const kept = []
-    for (const line of text.split('\n')) {
+    const lines = tail.text.split('\n')
+    for (let index = 0; index < lines.length; index += 1) {
+      const line = lines[index]
       if (!line) continue
       try {
         const item = JSON.parse(line)
         if (Date.parse(item.updatedAt) >= cutoff) kept.push(line)
       } catch {}
+      if (index > 0 && index % 250 === 0) await new Promise((resolve) => setImmediate(resolve))
     }
-    await writeFile(this.filePath, kept.length ? `${kept.join('\n')}\n` : '', 'utf8')
+    const temp = `${this.filePath}.prune.tmp`
+    await writeFile(temp, kept.length ? `${kept.join('\n')}\n` : '', 'utf8')
+    await rename(temp, this.filePath)
     this.readCache.clear()
+    this.lastReadStats = { sourceBytes: info.size, bytesRead: tail.bytesRead, truncated: tail.truncated }
+    return true
   }
 }
