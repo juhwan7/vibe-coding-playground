@@ -75,6 +75,23 @@ async function fetchIndexMembers(code, date, expected) {
   return rows
 }
 
+function normalizeCachedPayload(cached, stale = false, error = null) {
+  if (!cached?.kospi200?.length || !cached?.kosdaq150?.length) return null
+  const kospi200 = capIndexMembers(filterStockRows(cached.kospi200), INDEXES.kospi200.expected)
+  const kosdaq150 = capIndexMembers(filterStockRows(cached.kosdaq150), INDEXES.kosdaq150.expected)
+  if (kospi200.length < 4 || kosdaq150.length < 4) return null
+  return {
+    ...cached,
+    ok: true,
+    stale,
+    etfExcluded: true,
+    kospi200,
+    kosdaq150,
+    counts: { kospi200: kospi200.length, kosdaq150: kosdaq150.length },
+    ...(error ? { error } : {}),
+  }
+}
+
 export class QuizUniverseService {
   constructor({ cachePath = '/app/data/quiz-universe.json', refreshMs = 6 * 60 * 60 * 1000 } = {}) {
     this.cachePath = cachePath
@@ -83,18 +100,48 @@ export class QuizUniverseService {
     this.loading = null
   }
 
-  async get() {
-    if (this.payload && Date.now() - Date.parse(this.payload.updatedAt ?? 0) < this.refreshMs) return this.payload
+  isFresh(payload) {
+    const updatedAt = Date.parse(payload?.updatedAt ?? 0)
+    return Number.isFinite(updatedAt) && Date.now() - updatedAt < this.refreshMs
+  }
+
+  async readCached() {
+    try {
+      const cached = JSON.parse(await fs.readFile(this.cachePath, 'utf8'))
+      return normalizeCachedPayload(cached, !this.isFresh(cached))
+    } catch {
+      return null
+    }
+  }
+
+  refreshInBackground(cached = this.payload) {
     if (this.loading) return this.loading
-    this.loading = this.refresh().finally(() => { this.loading = null })
+    this.loading = this.refresh(cached)
+      .catch(() => this.payload)
+      .finally(() => { this.loading = null })
     return this.loading
   }
 
-  async refresh() {
-    let cached = null
-    try {
-      cached = JSON.parse(await fs.readFile(this.cachePath, 'utf8'))
-    } catch { /* first run */ }
+  async get() {
+    if (this.payload) {
+      if (!this.isFresh(this.payload)) this.refreshInBackground(this.payload)
+      return this.payload
+    }
+
+    const cached = await this.readCached()
+    if (cached) {
+      this.payload = cached
+      if (!this.isFresh(cached)) this.refreshInBackground(cached)
+      return cached
+    }
+
+    if (this.loading) return this.loading
+    this.loading = this.refresh(null).finally(() => { this.loading = null })
+    return this.loading
+  }
+
+  async refresh(cachedOverride = null) {
+    const cached = cachedOverride ?? await this.readCached()
 
     try {
       const date = await latestBusinessDay()
@@ -107,6 +154,7 @@ export class QuizUniverseService {
         source: 'KRX Data Marketplace · 지수구성종목',
         sourceDate: date,
         updatedAt: new Date().toISOString(),
+        stale: false,
         etfExcluded: true,
         expectedCounts: { kospi200: INDEXES.kospi200.expected, kosdaq150: INDEXES.kosdaq150.expected },
         kospi200,
@@ -118,31 +166,23 @@ export class QuizUniverseService {
       await fs.writeFile(this.cachePath, JSON.stringify(payload), 'utf8')
       return payload
     } catch (error) {
-      if (cached?.kospi200?.length && cached?.kosdaq150?.length) {
-        const kospi200 = capIndexMembers(filterStockRows(cached.kospi200), INDEXES.kospi200.expected)
-        const kosdaq150 = capIndexMembers(filterStockRows(cached.kosdaq150), INDEXES.kosdaq150.expected)
-        this.payload = {
-          ...cached,
-          ok: true,
-          stale: true,
-          etfExcluded: true,
-          kospi200,
-          kosdaq150,
-          counts: { kospi200: kospi200.length, kosdaq150: kosdaq150.length },
-          error: error instanceof Error ? error.message : String(error),
-        }
-        return this.payload
+      const message = error instanceof Error ? error.message : String(error)
+      const fallback = normalizeCachedPayload(cached, true, message)
+      if (fallback) {
+        this.payload = fallback
+        return fallback
       }
       this.payload = {
         ok: false,
         source: 'KRX Data Marketplace · 지수구성종목',
         updatedAt: new Date().toISOString(),
+        stale: false,
         etfExcluded: true,
         expectedCounts: { kospi200: INDEXES.kospi200.expected, kosdaq150: INDEXES.kosdaq150.expected },
         kospi200: [],
         kosdaq150: [],
         counts: { kospi200: 0, kosdaq150: 0 },
-        error: error instanceof Error ? error.message : String(error),
+        error: message,
       }
       return this.payload
     }
