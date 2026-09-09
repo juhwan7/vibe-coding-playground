@@ -197,6 +197,7 @@ export class ThemeFlowServiceFive extends ThemeFlowService {
       maxLoadBytes: this.maxCacheLoadBytes,
       persistMinMs: this.persistMinMs,
       pendingGapSymbols,
+      gapRepairs: Object.fromEntries([...this.gapRepairDiagnostics.entries()]),
       ...this.cacheGuard,
     }
   }
@@ -383,15 +384,41 @@ export class ThemeFlowServiceFive extends ThemeFlowService {
   }
 
   async refreshSymbol(symbol) {
-    await super.refreshSymbol(symbol)
+    let baseError = null
+    try {
+      await super.refreshSymbol(symbol)
+    } catch (error) {
+      // 최신 20개 갱신이나 구형 공백 복구가 실패해도 전체 nextBefore 백필은 반드시 실행한다.
+      baseError = error instanceof Error ? error.message : String(error)
+    }
+
     const existing = this.candleCache.get(symbol) ?? []
-    const result = await repairMissingIntradayHistory({
-      client: this.client,
-      symbol,
-      existing,
-      maxItems: this.maxCandlesPerSymbol,
-      maxPages: 8,
-    })
+    let result = null
+    try {
+      result = await repairMissingIntradayHistory({
+        client: this.client,
+        symbol,
+        existing,
+        maxItems: this.maxCandlesPerSymbol,
+        maxPages: 12,
+      })
+    } catch (error) {
+      const repairError = error instanceof Error ? error.message : String(error)
+      result = {
+        candles: existing,
+        repaired: false,
+        beforeGapCount: null,
+        afterGapCount: null,
+        pages: 0,
+        requests: 0,
+        exhausted: false,
+        error: repairError,
+        oldestTimestamp: existing[0]?.timestamp ?? null,
+        newestTimestamp: existing.at(-1)?.timestamp ?? null,
+        remainingGaps: [],
+      }
+    }
+
     this.candleCache.set(symbol, result.candles)
     this.gapRepairDiagnostics.set(symbol, {
       checkedAt: new Date().toISOString(),
@@ -400,6 +427,12 @@ export class ThemeFlowServiceFive extends ThemeFlowService {
       pages: result.pages,
       requests: result.requests,
       repaired: result.repaired,
+      exhausted: result.exhausted ?? false,
+      oldestTimestamp: result.oldestTimestamp ?? result.candles[0]?.timestamp ?? null,
+      newestTimestamp: result.newestTimestamp ?? result.candles.at(-1)?.timestamp ?? null,
+      error: result.error ?? baseError,
+      baseError,
+      remainingGaps: (result.remainingGaps ?? []).slice(0, 4),
     })
     return result.candles
   }
@@ -516,7 +549,7 @@ export class ThemeFlowServiceFive extends ThemeFlowService {
           chart: 'weighted-close-line',
           tradingAmount: 'market-ranking-1d/realtime + observed cumulative delta',
           historyTradingDays: 2,
-          gapRepair: 'remaining 15m+ regular-session gap -> direct before=<gap.to> 1m backfill',
+          gapRepair: '15m+ regular-session gap -> latest page + API nextBefore cursor chain full backfill',
           afterMarketSampling: '15:30-20:00 actual observed quote + cumulative turnover delta, no interpolation',
           persisted: true,
           cacheGuard: 'oversize-skip + active/recent-symbol-prune + 5m-persist-throttle',
