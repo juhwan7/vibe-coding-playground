@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 
-const rawCatalog = JSON.parse(readFileSync(new URL('./data/themes.kr.json', import.meta.url), 'utf8'))
+const catalogPath = process.env.THEME_CATALOG_PATH || new URL('./data/themes.kr.json', import.meta.url)
+const rawCatalog = JSON.parse(readFileSync(catalogPath, 'utf8'))
 const THEMES = rawCatalog?.themes ?? {}
 const CATALOG = Object.fromEntries(Object.entries(THEMES).map(([theme, config]) => [theme, new Set(config?.symbols ?? [])]))
 const KEYWORDS = Object.entries(THEMES).map(([theme, config]) => [theme, config?.keywords ?? []])
