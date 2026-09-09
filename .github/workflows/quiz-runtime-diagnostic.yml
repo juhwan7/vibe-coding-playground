@@ -34,14 +34,13 @@ jobs:
           UNIVERSE=''
           for attempt in $(seq 1 6); do
             UNIVERSE="$(curl --fail --silent --show-error --max-time 30 http://127.0.0.1:8080/api/quiz/universe || true)"
-            printf '%s\n' "$UNIVERSE"
-            if printf '%s' "$UNIVERSE" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{const j=JSON.parse(s);const k=j.counts?.kospi200??0;const q=j.counts?.kosdaq150??0;process.exit(j.ok&&k>=192&&q>=142?0:1)}catch{process.exit(1)}})"; then
+            if printf '%s' "$UNIVERSE" | docker compose exec -T backend node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{const j=JSON.parse(s);const k=j.counts?.kospi200??0;const q=j.counts?.kosdaq150??0;console.log(JSON.stringify({attempt:Number(process.argv[1]),ok:j.ok,source:j.source,mode:j.universeMode,counts:j.counts,error:j.error}));process.exit(j.ok&&k>=192&&q>=142?0:1)}catch(e){console.log('universe parse error',e.message);process.exit(1)}})" "$attempt"; then
               break
             fi
             if [ "$attempt" -lt 6 ]; then sleep 5; fi
           done
 
-          printf '%s' "$UNIVERSE" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);console.log('UNIVERSE_SUMMARY',JSON.stringify({ok:j.ok,source:j.source,mode:j.universeMode,counts:j.counts,warning:j.warning,error:j.error}));const k=j.counts?.kospi200??0;const q=j.counts?.kosdaq150??0;if(!j.ok||k<192||q<142)process.exit(1)})"
+          printf '%s' "$UNIVERSE" | docker compose exec -T backend node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);console.log('UNIVERSE_SUMMARY',JSON.stringify({ok:j.ok,source:j.source,mode:j.universeMode,counts:j.counts,warning:j.warning,error:j.error}));const k=j.counts?.kospi200??0;const q=j.counts?.kosdaq150??0;if(!j.ok||k<192||q<142)process.exit(1)})"
           echo
 
           echo '=== prepared quiz readiness ==='
@@ -49,14 +48,14 @@ jobs:
           READY=0
           for attempt in $(seq 1 18); do
             PREPARED="$(curl --fail --silent --show-error --max-time 10 http://127.0.0.1:8080/data/quiz-prepared.json || true)"
-            if printf '%s' "$PREPARED" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{const j=JSON.parse(s);const k=j.counts?.kospi200??0;const q=j.counts?.kosdaq150??0;console.log(JSON.stringify({attempt:Number(process.argv[1]),counts:j.counts,cacheStatus:j.cacheStatus,error:j.error}));process.exit(j.ok&&k>=4&&q>=4?0:1)}catch(e){console.log('prepared parse error',e.message);process.exit(1)}})" "$attempt"; then
+            if printf '%s' "$PREPARED" | docker compose exec -T backend node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{const j=JSON.parse(s);const k=j.counts?.kospi200??0;const q=j.counts?.kosdaq150??0;console.log(JSON.stringify({attempt:Number(process.argv[1]),counts:j.counts,cacheStatus:j.cacheStatus,error:j.error}));process.exit(j.ok&&k>=4&&q>=4?0:1)}catch(e){console.log('prepared parse error',e.message);process.exit(1)}})" "$attempt"; then
               READY=1
               break
             fi
             if [ "$attempt" -lt 18 ]; then sleep 5; fi
           done
 
-          printf '%s' "$PREPARED" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);console.log('PREPARED_SUMMARY',JSON.stringify({ok:j.ok,source:j.source,counts:j.counts,cacheStatus:j.cacheStatus,error:j.error}));})"
+          printf '%s' "$PREPARED" | docker compose exec -T backend node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);console.log('PREPARED_SUMMARY',JSON.stringify({ok:j.ok,source:j.source,counts:j.counts,cacheStatus:j.cacheStatus,error:j.error}));})"
           if [ "$READY" -ne 1 ]; then
             echo 'Prepared quiz did not reach >=4 stocks in both pools.'
             echo '=== backend quiz logs ==='
