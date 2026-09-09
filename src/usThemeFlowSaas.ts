@@ -73,3 +73,36 @@ export function splitUsThemeLineSegments<T extends { timestamp: string; day: str
   if (current.length) segments.push(current)
   return segments
 }
+
+export function smoothUsThemeTrend<T extends { timestamp: string; day: string; value: number }>(
+  source: T[],
+  timeConstantMs = 90_000,
+): Array<T & { trendValue: number }> {
+  const points = [...source].sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp))
+  let previousTime = NaN
+  let previousDay: string | null = null
+  let smoothed = 0
+  let initialized = false
+
+  return points.map((point) => {
+    const currentTime = Date.parse(point.timestamp)
+    const reset = !initialized
+      || previousDay !== point.day
+      || !Number.isFinite(currentTime)
+      || !Number.isFinite(previousTime)
+      || currentTime - previousTime > 15 * 60 * 1000
+
+    if (reset) {
+      smoothed = point.value
+      initialized = true
+    } else {
+      const elapsed = Math.max(1, currentTime - previousTime)
+      const alpha = 1 - Math.exp(-elapsed / Math.max(1, timeConstantMs))
+      smoothed = smoothed + alpha * (point.value - smoothed)
+    }
+
+    previousTime = currentTime
+    previousDay = point.day
+    return { ...point, trendValue: smoothed }
+  })
+}
