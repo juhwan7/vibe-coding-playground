@@ -3,6 +3,7 @@ import { MarketCollector } from './marketCollector.mjs'
 import { SnapshotStore } from './snapshotStore.mjs'
 import { PreparedSnapshotStore, compactHistoryForBrowser } from './preparedSnapshotStore.mjs'
 import { ThemeFlowService } from './themeFlowService.mjs'
+import { buildLiveThemePayload } from './themeLiveView.mjs'
 import { UsThemeFlowService } from './usThemeFlowService.mjs'
 import { QuizUniverseService } from './quizUniverseService.mjs'
 import { QuizDescriptionService } from './quizDescriptionService.mjs'
@@ -31,7 +32,10 @@ const usThemeFlow = new UsThemeFlowService(client, {
 })
 const quizUniverse = new QuizUniverseService({ cachePath: process.env.QUIZ_UNIVERSE_CACHE_PATH || '/app/data/quiz-universe.json' })
 const quizDescriptions = new QuizDescriptionService({ cachePath: process.env.QUIZ_DESCRIPTION_CACHE_PATH || '/app/data/quiz-descriptions.json' })
-const featureNews = new FeatureNewsService({ refreshMs: Number(process.env.FEATURE_NEWS_REFRESH_MS || 180000) })
+const featureNews = new FeatureNewsService({
+  refreshMs: Number(process.env.FEATURE_NEWS_REFRESH_MS || 180000),
+  getSnapshot: () => collector.snapshot,
+})
 let historyTimer = null
 let preparedTimer = null
 let preparedHistoryTimer = null
@@ -61,7 +65,7 @@ function fundingStatus() {
 }
 
 function liveKrThemePayload() {
-  return themeFlow.livePayload?.() ?? themeFlow.payload
+  return buildLiveThemePayload(themeFlow.payload, collector.snapshot)
 }
 
 async function publishPreparedFast() {
