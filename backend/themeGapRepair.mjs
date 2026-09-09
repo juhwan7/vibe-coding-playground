@@ -46,6 +46,7 @@ function mergeCandles(existing = [], incoming = [], maxItems = 1600) {
  * 처음부터 끝까지 따라가며 최근 2거래일 1분봉을 다시 수집한다.
  * 임의 ISO 시각을 before 커서로 추정하지 않는다. 정상 동작 중인 금일이슈 차트와
  * 같은 페이지네이션 규칙을 사용해 오전 전체 누락도 복구한다.
+ * 운영에서는 Pi의 theme-flow 진단으로 실제 시작 시각과 잔여 공백도 별도 확인한다.
  */
 export async function repairMissingIntradayHistory({
   client,
