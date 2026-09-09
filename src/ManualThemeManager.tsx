@@ -194,8 +194,7 @@ export default function ManualThemeManager() {
     if (!payload) return
     const savedName = payload.operation?.name ?? name
     setNewThemeName('')
-    if (!selectedThemes.includes(savedName)) setSelectedThemes((current) => [...current, savedName])
-    setMessage(payload.operation?.created === false ? `이미 있는 테마 '${savedName}'를 선택했습니다.` : `'${savedName}' 테마를 만들었습니다.`)
+    setMessage(payload.operation?.created === false ? `이미 있는 테마 '${savedName}'입니다.` : `'${savedName}' 테마를 만들었습니다.`)
   }
 
   const renameTheme = async (theme: ThemeOption) => {
