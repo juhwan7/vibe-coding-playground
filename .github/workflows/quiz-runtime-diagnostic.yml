@@ -42,21 +42,18 @@ jobs:
             printf '%s' "$body" | grep -Eo 'item/main\.naver\?code=[0-9]{6}[^>]*>[^<]+' | head -n 3 || true
           done
           echo
-          echo '=== Toss KODEX 200 composition pagination probes ==='
-          BASE='https://wts-info-api.tossinvest.com/api/v2/stock-infos/A069500/compositions'
-          for suffix in '' '?limit=300' '?size=300' '?page=1&size=300' '?limit=300&offset=0' '?count=300' '?page=1&perPage=300'; do
-            url="${BASE}${suffix}"
-            body="$(curl --silent --show-error --max-time 15 -H 'Origin: https://tossinvest.com' -H 'Referer: https://tossinvest.com/' -H 'User-Agent: Mozilla/5.0' "$url" 2>/dev/null || true)"
-            count="$(printf '%s' "$body" | grep -o '"stockCode"' | wc -l | tr -d ' ')"
-            echo "${suffix:-base} => stockCode count: $count"
+          echo '=== Toss KODEX composition response shape ==='
+          for ETF in A069500 A229200; do
+            body="$(curl --silent --show-error --max-time 15 -H 'Origin: https://tossinvest.com' -H 'Referer: https://tossinvest.com/' -H 'User-Agent: Mozilla/5.0' "https://wts-info-api.tossinvest.com/api/v2/stock-infos/${ETF}/compositions" 2>/dev/null || true)"
+            printf '%s' "$body" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{const j=JSON.parse(s);const r=j.result||{};const meta={top:Object.keys(j),result:Object.keys(r),items:Array.isArray(r.items)?r.items.length:null};for(const [k,v] of Object.entries(r)){if(/page|next|cursor|offset|total|count|more|has/i.test(k)) meta[k]=v}console.log(process.argv[1],meta); console.log('first',r.items?.[0]); console.log('last',r.items?.at?.(-1));}catch(e){console.log(process.argv[1],'parse error',e.message,s.slice(0,800))}})" "$ETF"
           done
           echo
           echo '=== prepared quiz now ==='
           curl --silent --show-error --max-time 10 http://127.0.0.1:8080/data/quiz-prepared.json || true
           echo
           echo
-          echo '=== prepared quiz summary ==='
-          docker compose exec -T backend node -e "const fs=require('fs'); for (const p of ['/app/data/quiz-universe.json','/app/data/quiz-descriptions.json','/app/public-data/quiz-prepared.json']) { try { const s=fs.statSync(p); const j=JSON.parse(fs.readFileSync(p,'utf8')); console.log(p, {bytes:s.size, source:j.source, sourceDate:j.sourceDate, ok:j.ok, stale:j.stale, counts:j.counts, expectedCounts:j.expectedCounts, cacheStatus:j.cacheStatus, itemCount:j.items ? Object.keys(j.items).length : undefined, error:j.error}); } catch(e) { console.log(p, 'ERROR', e.message); } }" || true
+          echo '=== persistent quiz summary ==='
+          docker compose exec -T backend node -e "const fs=require('fs'); for (const p of ['/app/data/quiz-universe.json','/app/data/quiz-descriptions.json','/app/public-data/quiz-prepared.json']) { try { const s=fs.statSync(p); const j=JSON.parse(fs.readFileSync(p,'utf8')); const values=Object.values(j.items||{}); const poolCounts=values.reduce((a,x)=>{const k=x&&x.pool||'none';a[k]=(a[k]||0)+1;return a},{}); console.log(p, {bytes:s.size, source:j.source, sourceDate:j.sourceDate, ok:j.ok, stale:j.stale, counts:j.counts, expectedCounts:j.expectedCounts, cacheStatus:j.cacheStatus, itemCount:values.length||undefined, poolCounts, sample:values.slice(0,4).map(x=>({code:x.code,name:x.name,pool:x.pool,hasDescription:Boolean(x.description)})), error:j.error}); } catch(e) { console.log(p, 'ERROR', e.message); } }" || true
           echo
           echo '=== persistent quiz files ==='
           docker compose exec -T backend sh -c 'ls -lh /app/data/quiz-universe.json /app/data/quiz-descriptions.json /app/public-data/quiz-prepared.json 2>/dev/null || true; echo; head -c 1600 /app/data/quiz-universe.json 2>/dev/null || true' || true
