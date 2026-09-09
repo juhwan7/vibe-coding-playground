@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import MarketDashboard from './MarketDashboard'
 import ThemeAverageCandleChart from './ThemeAverageCandleChart'
+import { warmQuizPrepared } from './StockQuiz'
 import './marketWorkspace.css'
 import './marketWorkspaceEnhancements.css'
 
@@ -83,6 +84,8 @@ const ACCENTS = ['#ff4d6d', '#39a0ff', '#37d67a', '#9d6cff', '#ff9d3d']
 const SESSION_START = 8 * 60
 const SESSION_MINUTES = 12 * 60
 const NON_STOCK_NAME = /(ETF|ETN|KODEX|TIGER|RISE|ACE|PLUS|SOL|HANARO|KOSEF|TIMEFOLIO|ARIRANG|FOCUS|KBSTAR|리츠|스팩|인프라)/i
+const BUSINESS_HINT = /(주력|주요|사업|영위|생산|제조|판매|개발|서비스|플랫폼|제품|매출|반도체|메모리|HBM|DRAM|NAND|배터리|이차전지|2차전지|자동차|바이오|의약|원전|조선|방산|전력|변압기|금융|은행|증권|보험|통신|게임|화학|철강|건설|로봇|콘텐츠|유통)/i
+const HISTORY_HINT = /(설립|상호|최대주주|사명|변경|편입|인수)/
 
 function fmtAmount(value: number | null | undefined) {
   if (value == null || !Number.isFinite(value)) return '-'
@@ -94,6 +97,11 @@ function fmtAmount(value: number | null | undefined) {
 function fmtRate(value: number | null | undefined) {
   if (value == null || !Number.isFinite(value)) return '-'
   return `${value > 0 ? '+' : ''}${value.toFixed(2)}%`
+}
+
+function fmtShare(value: number | null | undefined) {
+  if (value == null || !Number.isFinite(value)) return '-'
+  return `${value.toFixed(value < 1 ? 2 : 1)}%`
 }
 
 function fmtWon(value: number | null | undefined) {
@@ -128,6 +136,36 @@ function isIndividualStock(item: RankingItem) {
   const type = String(item.securityType ?? '').toUpperCase()
   if (type) return type === 'STOCK'
   return !NON_STOCK_NAME.test(String(item.name ?? ''))
+}
+
+function compactCompanySummary(description: string | null | undefined, fallbackTheme?: string | null) {
+  const text = String(description ?? '').replace(/\s+/g, ' ').trim()
+  if (!text) return fallbackTheme ? `${fallbackTheme} 관련 핵심 종목` : '기업개요 캐시 준비 중'
+
+  const sentences = text.split(/(?<=[.!?])\s+/).map((sentence) => sentence.trim()).filter(Boolean)
+  const selected = (sentences.length ? sentences : [text])
+    .map((sentence, index) => ({
+      sentence,
+      score: (BUSINESS_HINT.test(sentence) ? 5 : 0) + (/주력|주요 사업|주요사업/.test(sentence) ? 2 : 0) - (HISTORY_HINT.test(sentence) ? 3 : 0) - index * 0.01,
+    }))
+    .sort((a, b) => b.score - a.score)[0]?.sentence ?? text
+
+  let concise = selected
+    .replace(/^(동사|당사|회사는)\s*/, '')
+    .replace(/\s*(하고|하며)\s*있음\.?$/, '')
+    .replace(/\s*영위하고\s*있음\.?$/, ' 영위')
+    .replace(/\s*하는\s*기업임\.?$/, '')
+    .replace(/\s*기업임\.?$/, '')
+    .replace(/[.]$/, '')
+    .trim()
+
+  if (concise.length > 34) {
+    const preview = concise.slice(0, 34)
+    const boundaries = [preview.lastIndexOf(','), preview.lastIndexOf(' 및 '), preview.lastIndexOf('하며'), preview.lastIndexOf('하고')]
+    const boundary = Math.max(...boundaries)
+    concise = boundary >= 18 ? concise.slice(0, boundary).trim() : `${concise.slice(0, 32).trim()}…`
+  }
+  return concise || (fallbackTheme ? `${fallbackTheme} 관련 핵심 종목` : '기업개요 캐시 준비 중')
 }
 
 function themeIcon(name: string) {
@@ -265,6 +303,7 @@ function ThemeRow({ theme, rank }: { theme: ThemeGroup; rank: number }) {
 export default function MarketWorkspace() {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null)
   const [themeFlow, setThemeFlow] = useState<ThemeFlowResponse>({ ok: false, themes: [], topRankings: [] })
+  const [companyDescriptions, setCompanyDescriptions] = useState<Record<string, string>>({})
 
   useEffect(() => {
     const controller = new AbortController()
@@ -286,6 +325,19 @@ export default function MarketWorkspace() {
     }
     void load()
     return () => { controller.abort(); if (timer) window.clearTimeout(timer) }
+  }, [])
+
+  useEffect(() => {
+    let active = true
+    void warmQuizPrepared(true).then((payload) => {
+      if (!active || !payload) return
+      const next: Record<string, string> = {}
+      for (const item of [...(payload.kospi200 ?? []), ...(payload.kosdaq150 ?? [])]) {
+        if (/^\d{6}$/.test(item.code) && item.description) next[item.code] = item.description
+      }
+      setCompanyDescriptions(next)
+    })
+    return () => { active = false }
   }, [])
 
   const rankings = useMemo(() => {
@@ -333,7 +385,6 @@ export default function MarketWorkspace() {
     }
   })
 
-  const topAmount = Math.max(1, rankings[0]?.tradingAmount ?? 1)
   const totalAmount = rankings.reduce((sum, item) => sum + (item.tradingAmount ?? 0), 0)
   const investors = snapshot?.marketInvestors?.total
   const kospi = snapshot?.indices?.KOSPI
@@ -370,31 +421,40 @@ export default function MarketWorkspace() {
 
     <aside className="top100-rail panel" data-testid="top100-ranking">
       <div className="top100-head"><div><p>MARKET TURNOVER / STOCK ONLY</p><h2>거래대금 TOP100 · 개별주만</h2></div><span>{displayTime(snapshot?.updatedAt)}</span></div>
-      <div className="top100-list-head"><span>순위</span><span>종목명</span><span>등락률</span><span>거래대금</span></div>
+      <div className="top100-list-head"><span>순위</span><span>종목명 · 핵심사업</span><span>등락률</span><span>거래대금 / 비중</span></div>
       <div className="top100-list">
         {rankings.map((item, index) => {
           const amount = item.tradingAmount ?? 0
-          const width = amount / topAmount * 100
           const displayName = validStockName(item.name, item.symbol)
           const themeMembership = themeMembershipBySymbol.get(item.symbol)
+          const fullDescription = companyDescriptions[item.symbol] ?? null
+          const companySummary = compactCompanySummary(fullDescription, themeMembership?.name)
+          const share = totalAmount > 0 ? amount / totalAmount * 100 : null
+          const tooltip = [
+            themeMembership ? `현재 ${themeMembership.rank}위 테마 · ${themeMembership.name}` : null,
+            `${item.symbol} · 현재가 ${item.lastPrice?.toLocaleString() ?? '-'}`,
+            fullDescription ?? companySummary,
+          ].filter(Boolean).join('\n')
           return <div
             className={`top100-row${themeMembership ? ' top100-row-themed' : ''}`}
             data-theme-name={themeMembership?.name}
             key={`${item.symbol}-${index}`}
             style={themeMembership ? { ['--top100-theme-accent' as string]: themeMembership.accent } : undefined}
-            title={themeMembership ? `현재 ${themeMembership.rank}위 테마 · ${themeMembership.name}` : undefined}
+            title={tooltip}
           >
             <b>{index + 1}</b>
             <div className="top100-stock">
               <strong>{displayName ?? '종목명 확인 중'}</strong>
-              <small>
-                <span className="top100-stock-meta">{item.symbol} · <FlashValue value={item.lastPrice}>{item.lastPrice?.toLocaleString() ?? '-'}</FlashValue></span>
+              <div className="top100-company-summary">
                 {themeMembership && <span className="top100-theme-label">{themeMembership.name}</span>}
-              </small>
-              <div className="top100-mini-track"><i style={{ width: `${width}%` }} /></div>
+                <span>{companySummary}</span>
+              </div>
             </div>
             <strong className={`top100-rate ${(item.changeRate ?? 0) >= 0 ? 'up' : 'down'}`}><FlashValue value={item.changeRate}>{fmtRate(item.changeRate)}</FlashValue></strong>
-            <strong className="top100-amount"><FlashValue value={item.tradingAmount}>{fmtAmount(item.tradingAmount)}</FlashValue></strong>
+            <div className="top100-amount">
+              <strong><FlashValue value={item.tradingAmount}>{fmtAmount(item.tradingAmount)}</FlashValue></strong>
+              <small className="top100-share">TOP100 {fmtShare(share)}</small>
+            </div>
           </div>
         })}
       </div>
