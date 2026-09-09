@@ -3,6 +3,8 @@ import { dirname } from 'node:path'
 import { buildThemeGroups } from './themeCatalog.mjs'
 import { sleep } from './tossClient.mjs'
 
+const EXCHANGE_TRADED_NAME = /(ETF|ETN|KODEX|TIGER|RISE|ACE|PLUS|SOL|HANARO|KOSEF|TIMEFOLIO|ARIRANG|FOCUS|KBSTAR)/i
+
 function number(value) {
   const parsed = Number(value)
   return Number.isFinite(parsed) ? parsed : null
@@ -22,7 +24,17 @@ function stockMeta(item) {
     symbol: item?.symbol ?? item?.stock?.symbol ?? null,
     name: item?.name ?? item?.stockName ?? item?.displayName ?? item?.shortName ?? item?.stock?.name ?? null,
     market: item?.market ?? item?.marketName ?? item?.exchange ?? item?.stock?.market ?? null,
+    securityType: item?.securityType ?? item?.stock?.securityType ?? null,
+    isCommonShare: item?.isCommonShare ?? item?.stock?.isCommonShare ?? null,
+    status: item?.status ?? item?.stock?.status ?? null,
   }
+}
+
+export function isIndividualStock(item = {}) {
+  const securityType = String(item?.securityType ?? '').trim().toUpperCase()
+  if (securityType) return securityType === 'STOCK'
+  const name = String(item?.name ?? '')
+  return !EXCHANGE_TRADED_NAME.test(name)
 }
 
 function candleRecords(payload) {
@@ -38,6 +50,9 @@ function candleRecords(payload) {
     const averagePrice = prices.length ? prices.reduce((sum, value) => sum + value, 0) / prices.length : close
     return {
       timestamp: candle.timestamp ?? null,
+      openPrice: open ?? close,
+      highPrice: high ?? close,
+      lowPrice: low ?? close,
       closePrice: close,
       volume,
       tradingAmount: averagePrice != null ? averagePrice * volume : 0,
@@ -64,15 +79,22 @@ function mergeCandles(existing, incoming, maxItems = 3600) {
   const map = new Map()
   for (const candle of [...existing, ...incoming]) {
     if (!candle?.timestamp || candle.closePrice == null) continue
+    const closePrice = number(candle.closePrice)
+    if (closePrice == null) continue
+    const openPrice = number(candle.openPrice) ?? closePrice
+    const highPrice = number(candle.highPrice) ?? Math.max(openPrice, closePrice)
+    const lowPrice = number(candle.lowPrice) ?? Math.min(openPrice, closePrice)
     map.set(candle.timestamp, {
       timestamp: candle.timestamp,
-      closePrice: number(candle.closePrice),
+      openPrice,
+      highPrice,
+      lowPrice,
+      closePrice,
       volume: number(candle.volume) ?? 0,
-      tradingAmount: number(candle.tradingAmount) ?? ((number(candle.closePrice) ?? 0) * (number(candle.volume) ?? 0)),
+      tradingAmount: number(candle.tradingAmount) ?? (closePrice * (number(candle.volume) ?? 0)),
     })
   }
   const merged = [...map.values()]
-    .filter((candle) => candle.closePrice != null)
     .sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp))
   const days = [...new Set(merged.map((candle) => dateKey(candle.timestamp)))].sort()
   const keepDays = new Set(days.slice(-5))
@@ -158,6 +180,71 @@ export function aggregateThemeSeries(memberSeries) {
     }))
 }
 
+export function aggregateStockCandles(candles = []) {
+  const ordered = [...candles]
+    .filter((candle) => candle?.timestamp && candle?.closePrice != null)
+    .sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp))
+  if (!ordered.length) return []
+  const latestDay = dateKey(ordered.at(-1).timestamp)
+  const buckets = new Map()
+
+  for (const candle of ordered) {
+    if (dateKey(candle.timestamp) !== latestDay) continue
+    const key = bucket3m(candle.timestamp)
+    if (key == null) continue
+    const closePrice = number(candle.closePrice)
+    if (closePrice == null) continue
+    const openPrice = number(candle.openPrice) ?? closePrice
+    const highPrice = number(candle.highPrice) ?? Math.max(openPrice, closePrice)
+    const lowPrice = number(candle.lowPrice) ?? Math.min(openPrice, closePrice)
+    const current = buckets.get(key) ?? {
+      timestamp: new Date(key).toISOString(),
+      day: latestDay,
+      openPrice,
+      highPrice,
+      lowPrice,
+      closePrice,
+      volume: 0,
+      tradingAmount: 0,
+    }
+    current.highPrice = Math.max(current.highPrice, highPrice)
+    current.lowPrice = Math.min(current.lowPrice, lowPrice)
+    current.closePrice = closePrice
+    current.volume += number(candle.volume) ?? 0
+    current.tradingAmount += number(candle.tradingAmount) ?? closePrice * (number(candle.volume) ?? 0)
+    buckets.set(key, current)
+  }
+
+  return [...buckets.values()].sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp))
+}
+
+export function selectThemeGroups(rankings, { targetCount = 4 } = {}) {
+  const selected = []
+  const seen = new Set()
+  const tiers = [
+    { limit: 50, minMembers: 3, basis: 'TOP50 3종+' },
+    { limit: 50, minMembers: 2, basis: 'TOP50 2종 보강' },
+    { limit: 100, minMembers: 2, basis: 'TOP100 2종 보강' },
+    { limit: 100, minMembers: 1, basis: 'TOP100 1종 보강' },
+  ]
+
+  for (const tier of tiers) {
+    const candidates = buildThemeGroups(rankings, {
+      limit: Math.min(tier.limit, rankings.length),
+      minMembers: tier.minMembers,
+      maxThemes: 32,
+    })
+    for (const group of candidates) {
+      if (seen.has(group.name)) continue
+      seen.add(group.name)
+      selected.push({ ...group, selectionBasis: tier.basis, rankingLimit: tier.limit })
+      if (selected.length >= targetCount) return selected
+    }
+  }
+
+  return selected
+}
+
 async function mapLimit(items, limit, worker) {
   const queue = [...items]
   const workers = Array.from({ length: Math.min(limit, queue.length) }, async () => {
@@ -230,7 +317,7 @@ export class ThemeFlowService {
   async persistCache() {
     await mkdir(dirname(this.cachePath), { recursive: true })
     const payload = {
-      version: 2,
+      version: 3,
       savedAt: new Date().toISOString(),
       candles: Object.fromEntries([...this.candleCache.entries()].map(([symbol, candles]) => [symbol, candles])),
     }
@@ -257,6 +344,9 @@ export class ThemeFlowService {
       ...item,
       name: meta?.name ?? item?.name ?? item?.symbol ?? null,
       market: meta?.market ?? item?.market ?? null,
+      securityType: meta?.securityType ?? item?.securityType ?? null,
+      isCommonShare: meta?.isCommonShare ?? item?.isCommonShare ?? null,
+      status: meta?.status ?? item?.status ?? null,
     }
   }
 
@@ -287,6 +377,27 @@ export class ThemeFlowService {
     this.candleCache.set(symbol, mergeCandles(existing, candleRecords(payload)))
   }
 
+  stockChart(symbol) {
+    const normalized = String(symbol ?? '').trim()
+    if (!/^\d{6}$/.test(normalized)) return { ok: false, error: '올바른 국내 종목코드가 아닙니다.', points: [] }
+    const meta = this.stockMeta.get(normalized)
+    if (meta && !isIndividualStock(meta)) return { ok: false, error: '개별주식만 조회합니다.', points: [] }
+    const points = aggregateStockCandles(this.candleCache.get(normalized) ?? [])
+    if (!points.length) return { ok: false, symbol: normalized, name: meta?.name ?? normalized, interval: '3m', points: [], error: '저장된 3분봉이 아직 없습니다.' }
+    return {
+      ok: true,
+      symbol: normalized,
+      name: meta?.name ?? normalized,
+      market: meta?.market ?? null,
+      securityType: meta?.securityType ?? null,
+      interval: '3m',
+      day: points.at(-1)?.day ?? null,
+      updatedAt: points.at(-1)?.timestamp ?? null,
+      points,
+      source: 'Raspberry Pi 저장 1분봉 → 3분 OHLC 집계',
+    }
+  }
+
   async refresh() {
     if (this.refreshing || !this.client.configured) return this.payload
     const snapshot = this.getSnapshot?.()
@@ -295,8 +406,9 @@ export class ThemeFlowService {
     try {
       const symbols = snapshot.topRankings.slice(0, 100).map((item) => item.symbol).filter(Boolean)
       await this.ensureMeta(symbols).catch(() => {})
-      const topRankings = snapshot.topRankings.map((item) => this.enrichRanking(item))
-      const groups = buildThemeGroups(topRankings, { limit: 50, minMembers: 3, maxThemes: 7 })
+      const enrichedRankings = snapshot.topRankings.map((item) => this.enrichRanking(item))
+      const topRankings = enrichedRankings.filter(isIndividualStock).slice(0, 100)
+      const groups = selectThemeGroups(topRankings, { targetCount: 4 })
       const chartSymbols = [...new Set(groups.flatMap((group) => group.members.map((member) => member.symbol).filter(Boolean)))]
 
       await mapLimit(chartSymbols, 3, async (symbol) => {
@@ -306,7 +418,7 @@ export class ThemeFlowService {
       await this.persistCache().catch(() => {})
 
       const themes = groups.map((group) => {
-        const members = group.members.map((member) => this.enrichRanking(member))
+        const members = group.members.map((member) => this.enrichRanking(member)).filter(isIndividualStock)
         const recentSeries = recentTradingDayFilter(members.map((member) => ({ symbol: member.symbol, candles: this.candleCache.get(member.symbol) ?? [] })), 2)
         const points = aggregateThemeSeries(recentSeries)
         return {
@@ -320,6 +432,8 @@ export class ThemeFlowService {
           change3h: nearestDelta(points, 180),
           startDay: points[0]?.day ?? null,
           endDay: points.at(-1)?.day ?? null,
+          selectionBasis: group.selectionBasis ?? null,
+          rankingLimit: group.rankingLimit ?? null,
         }
       })
 
@@ -329,9 +443,13 @@ export class ThemeFlowService {
         sourceUpdatedAt: snapshot.updatedAt ?? null,
         topRankings,
         themes,
+        filteredOutCount: Math.max(0, enrichedRankings.length - topRankings.length),
         criteria: {
           rankingLimit: 50,
-          minMembers: 3,
+          fallbackRankingLimit: 100,
+          primaryMinMembers: 3,
+          themeCount: 4,
+          instrumentFilter: 'securityType=STOCK',
           candleInterval: '1m',
           aggregateInterval: '3m',
           weighting: 'equal-return',
