@@ -14,6 +14,7 @@ type NewsItem = {
   duplicateCount?: number | null
   sourceCount?: number | null
   category?: string | null
+  importance?: number | null
   matches?: MatchedStock[] | null
 }
 type NewsPayload = { ok?: boolean; updatedAt?: string | null; items?: NewsItem[]; error?: string | null }
@@ -25,6 +26,8 @@ const THEME_WORDS: Array<[string, string[]]> = [
   ['조선', ['조선','한화오션','삼성중공업','HD현대중공업']],
   ['2차전지', ['2차전지','배터리','에코프로','LG에너지솔루션','삼성SDI']],
   ['바이오', ['바이오','제약','알테오젠','셀트리온','HLB']],
+  ['광통신', ['광통신','광섬유','광케이블','광모듈','광트랜시버','대한광통신','우리로','옵티코어','오이솔루션']],
+  ['로봇', ['로봇','로보틱스','휴머노이드']],
 ]
 const PROMO_WORDS = ['[광고]', '[홍보]', '리딩방', '무료 추천', '무료추천', '카톡방', '텔레그램방', '회원모집', '회원 모집', '추천주 무료']
 
@@ -43,10 +46,10 @@ function timestamp(value?: string | null) {
   return Number.isFinite(parsed) ? parsed : 0
 }
 
-function kstDayStart(now = Date.now()) {
+function kstSixStart(now = Date.now()) {
   const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date(now))
   const get = (type: string) => parts.find((part) => part.type === type)?.value ?? '00'
-  return Date.parse(`${get('year')}-${get('month')}-${get('day')}T00:00:00+09:00`)
+  return Date.parse(`${get('year')}-${get('month')}-${get('day')}T06:00:00+09:00`)
 }
 
 function conciseTitle(item: NewsItem) {
@@ -60,6 +63,12 @@ function matchTheme(title: string) {
 function looksPromotional(item: NewsItem) {
   const text = `${item.title} ${item.source ?? ''}`.toLowerCase()
   return PROMO_WORDS.some((word) => text.includes(word.toLowerCase()))
+}
+
+function validName(name?: string | null, symbol?: string | null) {
+  const value = String(name ?? '').trim()
+  if (!value || value === String(symbol ?? '').trim() || /^\d{6}$/.test(value)) return null
+  return value
 }
 
 function fmtRate(value?: number | null) {
@@ -109,18 +118,21 @@ export default function FeatureNews() {
     }
   }, [])
 
-  const topStocks = useMemo(() => (snapshot.topRankings ?? []).slice(0, 50).filter((item) => item.name), [snapshot.topRankings])
+  const topStocks = useMemo(() => (snapshot.topRankings ?? []).slice(0, 50).filter((item) => validName(item.name, item.symbol)), [snapshot.topRankings])
   const items = useMemo(() => {
     const exactSeen = new Set<string>()
-    const from = kstDayStart()
+    const from = kstSixStart()
     const until = Date.now() + 5 * 60 * 1000
     return (news.items ?? []).filter((item) => {
       const published = timestamp(item.publishedAt)
       return published >= from && published <= until && !looksPromotional(item)
     }).map((item) => {
       const summary = conciseTitle(item)
-      const fallbackMatches = topStocks.filter((stock) => stock.name && summary.includes(stock.name)).slice(0, 3)
-      const matches = item.matches?.length ? item.matches : fallbackMatches
+      const fallbackMatches = topStocks.filter((stock) => {
+        const name = validName(stock.name, stock.symbol)
+        return name && summary.includes(name)
+      }).slice(0, 3)
+      const matches = (item.matches?.length ? item.matches : fallbackMatches).filter((stock) => validName(stock.name, stock.symbol))
       return { ...item, summary, matches, theme: matchTheme(summary) }
     }).filter((item) => {
       const key = item.summary.toLowerCase().replace(/[^가-힣a-z0-9]/g, '')
@@ -181,7 +193,7 @@ export default function FeatureNews() {
 
   return <section className="feature-news-shell" data-testid="feature-news">
     <header className="feature-news-head">
-      <div><p>MARKET BRIEF / HIGH SIGNAL</p><h2>시황 요약</h2><small>오늘 00:00 이후의 중요 뉴스를 계속 보존합니다. 급등·거래대금 집중 종목 재료와 CPI·FOMC·전쟁·유가·환율처럼 시장에 영향이 큰 이슈만 시간당 최대 8건으로 압축하며 중복·광고성 기사는 제외합니다.</small></div>
+      <div><p>MARKET BRIEF / HIGH SIGNAL</p><h2>시황 요약</h2><small>오늘 06:00 이후 뉴스를 매번 다시 훑고 누적합니다. 테마를 움직일 수 있는 수주·투자·정책·승인·공급 이슈와 거래대금 집중 종목 재료, CPI·FOMC·전쟁·유가·환율 같은 시장 영향 뉴스만 중복 없이 압축합니다.</small></div>
       <div><b>{news.ok ? '● 시황 3분 최신화' : '● 시황 연결 중'}</b><span>{displayTime(news.updatedAt)}</span></div>
     </header>
     <div className={`feature-news-timeline${dragging ? ' dragging' : ''}`} ref={timelineRef} onWheel={handleWheel} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={finishPointerDrag} onPointerCancel={finishPointerDrag} onClickCapture={handleClickCapture} data-testid="feature-news-timeline">
@@ -190,14 +202,14 @@ export default function FeatureNews() {
         <h3>{item.summary}</h3>
         <div className="feature-news-tags">
           {item.category && <em>{item.category}</em>}
-          {item.matches.map((stock) => <span key={stock.symbol ?? stock.name ?? ''}>{stock.name}{fmtRate(stock.changeRate) ? ` ${fmtRate(stock.changeRate)}` : ''}</span>)}
+          {item.matches.map((stock) => <span key={stock.symbol ?? stock.name ?? ''}>{validName(stock.name, stock.symbol)}{fmtRate(stock.changeRate) ? ` ${fmtRate(stock.changeRate)}` : ''}</span>)}
           {item.theme && <em>{item.theme}</em>}
           {(item.duplicateCount ?? 1) > 1 && <b>{item.duplicateCount}건 종합</b>}
         </div>
         <div className="feature-news-source"><span>{(item.sourceCount ?? 1) > 1 ? `${item.sourceCount}개 매체 종합` : item.source || '뉴스'}</span>{item.matches.length > 0 && <b>거래대금 상위 연관</b>}</div>
       </a>)}
-      {!items.length && <div className="feature-news-empty"><strong>오늘 중요 시황 이슈를 선별 중입니다.</strong><span>자정 이후의 과거 뉴스도 삭제하지 않고 당일 타임라인에 유지합니다.</span>{news.error && <small>{news.error}</small>}</div>}
+      {!items.length && <div className="feature-news-empty"><strong>06:00 이후 중요 뉴스를 다시 훑어 선별 중입니다.</strong><span>이미 지나간 기사도 재검색하며 같은 이슈가 아니면 당일 타임라인에 추가합니다.</span>{news.error && <small>{news.error}</small>}</div>}
     </div>
-    <footer>당일 뉴스는 시간순으로 유지되며 같은 사건의 반복 기사는 하나로 묶습니다. 마우스 휠 또는 드래그로 좌우 이동할 수 있습니다.</footer>
+    <footer>06:00 이후 뉴스는 시간순으로 누적되며 같은 사건의 반복 기사는 하나로 묶습니다. 마우스 휠 또는 드래그로 좌우 이동할 수 있습니다.</footer>
   </section>
 }
