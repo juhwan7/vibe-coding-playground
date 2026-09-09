@@ -1,7 +1,14 @@
+import { mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises'
+import { dirname } from 'node:path'
 import { ThemeFlowService, aggregateStockCandles, isIndividualStock, selectThemeGroups } from './themeFlowService.mjs'
 import { aggregateTradingAmountWeightedThemeSeries } from './themeWeightedSeries.mjs'
 import { stockMeta, stockRecords, validStockName } from './stockMetadata.mjs'
 import { sleep } from './tossClient.mjs'
+
+const DEFAULT_MAX_CACHE_LOAD_BYTES = 32 * 1024 * 1024
+const DEFAULT_MAX_CACHE_SYMBOLS = 80
+const DEFAULT_MAX_CANDLES_PER_SYMBOL = 1600
+const DEFAULT_PERSIST_MIN_MS = 5 * 60 * 1000
 
 function dateKey(timestamp) {
   return new Intl.DateTimeFormat('en-CA', {
@@ -35,6 +42,26 @@ function nearestDelta(points, minutes) {
   return last.value - nearest.value
 }
 
+function latestTimestamp(candles = []) {
+  let latest = 0
+  for (const candle of candles) {
+    const value = Date.parse(candle?.timestamp ?? '')
+    if (Number.isFinite(value) && value > latest) latest = value
+  }
+  return latest
+}
+
+function trimCandles(candles = [], maxItems = DEFAULT_MAX_CANDLES_PER_SYMBOL) {
+  const map = new Map()
+  for (const candle of candles) {
+    if (!candle?.timestamp || candle?.closePrice == null) continue
+    map.set(candle.timestamp, candle)
+  }
+  return [...map.values()]
+    .sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp))
+    .slice(-maxItems)
+}
+
 async function mapLimit(items, limit, worker) {
   const queue = [...items]
   const workers = Array.from({ length: Math.min(limit, queue.length) }, async () => {
@@ -48,6 +75,108 @@ async function mapLimit(items, limit, worker) {
 }
 
 export class ThemeFlowServiceFive extends ThemeFlowService {
+  constructor(client, getSnapshot, options = {}) {
+    super(client, getSnapshot, options)
+    this.maxCacheLoadBytes = Math.max(1024, Number(process.env.THEME_CACHE_MAX_LOAD_BYTES || options.maxCacheLoadBytes || DEFAULT_MAX_CACHE_LOAD_BYTES))
+    this.maxCacheSymbols = Math.max(5, Number(process.env.THEME_CACHE_MAX_SYMBOLS || options.maxCacheSymbols || DEFAULT_MAX_CACHE_SYMBOLS))
+    this.maxCandlesPerSymbol = Math.max(400, Number(process.env.THEME_CACHE_MAX_CANDLES_PER_SYMBOL || options.maxCandlesPerSymbol || DEFAULT_MAX_CANDLES_PER_SYMBOL))
+    this.persistMinMs = Math.max(0, Number(process.env.THEME_CACHE_PERSIST_MIN_MS || options.persistMinMs || DEFAULT_PERSIST_MIN_MS))
+    this.lastCachePersistAt = 0
+    this.activeChartSymbols = []
+    this.recentChartSymbols = []
+    this.cacheGuard = {
+      loadSkippedOversize: false,
+      skippedBytes: 0,
+      loadedSymbols: 0,
+      prunedSymbols: 0,
+    }
+  }
+
+  cacheStats() {
+    let candles = 0
+    for (const items of this.candleCache.values()) candles += items?.length ?? 0
+    return {
+      symbols: this.candleCache.size,
+      candles,
+      maxSymbols: this.maxCacheSymbols,
+      maxCandlesPerSymbol: this.maxCandlesPerSymbol,
+      maxLoadBytes: this.maxCacheLoadBytes,
+      persistMinMs: this.persistMinMs,
+      ...this.cacheGuard,
+    }
+  }
+
+  async loadPersistedCache() {
+    if (this.cacheLoaded) return
+    this.cacheLoaded = true
+    try {
+      const info = await stat(this.cachePath)
+      if (info.size > this.maxCacheLoadBytes) {
+        this.cacheGuard.loadSkippedOversize = true
+        this.cacheGuard.skippedBytes = info.size
+        return
+      }
+
+      const text = await readFile(this.cachePath, 'utf8')
+      const saved = JSON.parse(text)
+      const entries = Object.entries(saved?.candles ?? {})
+        .filter(([, candles]) => Array.isArray(candles) && candles.length)
+        .sort((a, b) => latestTimestamp(b[1]) - latestTimestamp(a[1]))
+        .slice(0, this.maxCacheSymbols)
+
+      for (const [symbol, candles] of entries) {
+        this.candleCache.set(symbol, trimCandles(candles, this.maxCandlesPerSymbol))
+      }
+      this.cacheGuard.loadedSymbols = this.candleCache.size
+    } catch {
+      // 첫 실행, 이전 캐시 없음, 손상된 캐시는 API 백필로 복구한다.
+    }
+  }
+
+  pruneCandleCache(activeSymbols = []) {
+    const active = new Set(activeSymbols.map((symbol) => String(symbol ?? '').trim()).filter(Boolean))
+    const recent = this.recentChartSymbols.map((symbol) => String(symbol ?? '').trim()).filter(Boolean)
+    const keep = new Set([...active, ...recent])
+    const candidates = [...this.candleCache.entries()]
+      .sort((a, b) => latestTimestamp(b[1]) - latestTimestamp(a[1]))
+
+    for (const [symbol] of candidates) {
+      if (keep.size >= this.maxCacheSymbols) break
+      keep.add(symbol)
+    }
+
+    let pruned = 0
+    for (const [symbol, candles] of [...this.candleCache.entries()]) {
+      if (!keep.has(symbol)) {
+        this.candleCache.delete(symbol)
+        pruned += 1
+        continue
+      }
+      this.candleCache.set(symbol, trimCandles(candles, this.maxCandlesPerSymbol))
+    }
+    this.cacheGuard.prunedSymbols += pruned
+    return pruned
+  }
+
+  async persistCache({ force = false } = {}) {
+    const now = Date.now()
+    if (!force && this.lastCachePersistAt && now - this.lastCachePersistAt < this.persistMinMs) return
+
+    this.pruneCandleCache(this.activeChartSymbols)
+    await mkdir(dirname(this.cachePath), { recursive: true })
+    const payload = {
+      version: 5,
+      savedAt: new Date(now).toISOString(),
+      candles: Object.fromEntries([...this.candleCache.entries()]),
+    }
+    const tempPath = `${this.cachePath}.tmp`
+    await writeFile(tempPath, JSON.stringify(payload), 'utf8')
+    await rename(tempPath, this.cachePath)
+    this.lastCachePersistAt = now
+    this.cacheGuard.loadSkippedOversize = false
+    this.cacheGuard.skippedBytes = 0
+  }
+
   ingestMeta(payload) {
     for (const record of stockRecords(payload)) {
       const meta = stockMeta(record)
@@ -66,10 +195,6 @@ export class ThemeFlowServiceFive extends ThemeFlowService {
     if (!missing.length && Date.now() - this.metaUpdatedAt < 6 * 60 * 60 * 1000 && !this.unresolvedMeta(unique).length) return
     const targets = missing.length ? missing : unique
 
-    // Toss stocks metadata endpoint supports a large symbol batch. First resolve the
-    // full TOP100 in one request so every ranking row shares one consistent name map.
-    // If the upstream response is partial, retry only unresolved rows in progressively
-    // smaller batches instead of leaving the UI with numeric symbols as names.
     try {
       const payload = await this.client.request(`/api/v1/stocks?symbols=${encodeURIComponent(targets.join(','))}`)
       this.ingestMeta(payload)
@@ -99,10 +224,17 @@ export class ThemeFlowServiceFive extends ThemeFlowService {
     this.metaUpdatedAt = Date.now()
   }
 
+  rememberChartSymbol(symbol) {
+    const normalized = String(symbol ?? '').trim()
+    if (!normalized) return
+    this.recentChartSymbols = [normalized, ...this.recentChartSymbols.filter((item) => item !== normalized)].slice(0, 10)
+  }
+
   async stockChartReady(symbol, { fallbackName = null } = {}) {
     const normalized = String(symbol ?? '').trim()
     if (!/^\d{6}$/.test(normalized)) return { ok: false, error: '올바른 국내 종목코드가 아닙니다.', points: [] }
 
+    this.rememberChartSymbol(normalized)
     await this.ensureMeta([normalized]).catch(() => {})
     const meta = this.stockMeta.get(normalized)
     if (meta && !isIndividualStock(meta)) return { ok: false, error: '개별주식만 조회합니다.', points: [] }
@@ -110,8 +242,9 @@ export class ThemeFlowServiceFive extends ThemeFlowService {
     let points = aggregateStockCandles(this.candleCache.get(normalized) ?? [])
     if (!points.length) {
       await this.refreshSymbol(normalized).catch(() => {})
+      this.pruneCandleCache([...this.activeChartSymbols, normalized])
       points = aggregateStockCandles(this.candleCache.get(normalized) ?? [])
-      if (points.length) await this.persistCache().catch(() => {})
+      if (points.length) await this.persistCache({ force: true }).catch(() => {})
     }
 
     const name = meta?.name ?? fallbackName ?? normalized
@@ -153,11 +286,13 @@ export class ThemeFlowServiceFive extends ThemeFlowService {
       const topRankings = enrichedRankings.filter(isIndividualStock).slice(0, 100)
       const groups = selectThemeGroups(topRankings, { targetCount: 5 })
       const chartSymbols = [...new Set(groups.flatMap((group) => group.members.map((member) => member.symbol).filter(Boolean)))]
+      this.activeChartSymbols = chartSymbols
 
       await mapLimit(chartSymbols, 3, async (symbol) => {
         await this.refreshSymbol(symbol).catch(() => {})
         await sleep(120)
       })
+      this.pruneCandleCache(chartSymbols)
       await this.persistCache().catch(() => {})
 
       const themes = groups.map((group) => {
@@ -193,6 +328,7 @@ export class ThemeFlowServiceFive extends ThemeFlowService {
         themes,
         filteredOutCount: Math.max(0, enrichedRankings.length - topRankings.length),
         unresolvedNameCount: topRankings.filter((item) => !validStockName(item.name, item.symbol)).length,
+        cache: this.cacheStats(),
         criteria: {
           rankingLimit: 50,
           fallbackRankingLimit: 100,
@@ -206,12 +342,13 @@ export class ThemeFlowServiceFive extends ThemeFlowService {
           tradingAmount: 'market-ranking-1d + intraday-3m-weight',
           historyTradingDays: 2,
           persisted: true,
+          cacheGuard: 'oversize-skip + active/recent-symbol-prune + 5m-persist-throttle',
         },
         error: null,
       }
       return this.payload
     } catch (error) {
-      this.payload = { ...this.payload, ok: this.payload.ok, error: error instanceof Error ? error.message : String(error) }
+      this.payload = { ...this.payload, ok: this.payload.ok, cache: this.cacheStats(), error: error instanceof Error ? error.message : String(error) }
       return this.payload
     } finally {
       this.refreshing = false
