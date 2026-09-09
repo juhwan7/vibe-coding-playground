@@ -4,6 +4,7 @@ import App from './App'
 import ManualThemeManager from './ManualThemeManager'
 import './styles.css'
 import './themeFlowSaas.css'
+import './mobileResponsive.css'
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
