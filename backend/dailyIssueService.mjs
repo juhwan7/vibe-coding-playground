@@ -1,13 +1,17 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { themesForStock } from './themeCatalog.mjs'
+import { cachedDescriptionForStock, classifyStockSector } from './stockClassification.mjs'
 import { collapseNewsIssues, parseNewsRss } from './featureNewsService.mjs'
 import { sleep } from './tossClient.mjs'
 
 const NEWS_URL = 'https://news.google.com/rss/search'
 const FINALIZE_MINUTE = 15 * 60 + 20
-const CHART_BUCKET_MS = 5 * 60 * 1000
+const SESSION_START_MINUTE = 9 * 60
 const EXCHANGE_TRADED_NAME = /(ETF|ETN|KODEX|TIGER|RISE|ACE|PLUS|SOL|HANARO|KOSEF|TIMEFOLIO|ARIRANG|FOCUS|KBSTAR|리츠|스팩|인프라)/i
+const POSITIVE_NEWS_CUE = /(상승|강세|급등|상한가|오름세|랠리|수혜|호재|기대감|부각|신고가)/i
+const BUSINESS_HINT = /(주력|주요|사업|영위|생산|제조|판매|개발|서비스|플랫폼|제품|매출|반도체|메모리|HBM|DRAM|NAND|배터리|이차전지|2차전지|자동차|바이오|의약|원전|조선|방산|전력|변압기|금융|은행|증권|보험|통신|게임|화학|철강|건설|로봇|콘텐츠|유통)/i
+const HISTORY_HINT = /(설립|상호|최대주주|사명|변경|편입|인수)/
 
 function number(value) {
   const parsed = Number(value)
@@ -78,35 +82,112 @@ function candleRecords(payload) {
   })).filter((candle) => candle.timestamp && candle.closePrice != null)
 }
 
-export function buildIntradayLine(candles = []) {
-  const ordered = [...candles].sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp))
-  if (!ordered.length) return []
-  const latestDay = kstParts(ordered.at(-1).timestamp).day
-  const buckets = new Map()
-  for (const candle of ordered) {
-    const parsed = Date.parse(candle.timestamp)
-    if (!Number.isFinite(parsed) || kstParts(candle.timestamp).day !== latestDay) continue
-    const { hour, minute } = kstParts(candle.timestamp)
-    const marketMinute = hour * 60 + minute
-    if (marketMinute < 9 * 60 || marketMinute > FINALIZE_MINUTE + 10) continue
-    const key = Math.floor(parsed / CHART_BUCKET_MS) * CHART_BUCKET_MS
-    buckets.set(key, { timestamp: new Date(key).toISOString(), value: number(candle.closePrice) })
+function mergeCandles(existing = [], incoming = []) {
+  const byTimestamp = new Map()
+  for (const candle of [...existing, ...incoming]) {
+    if (!candle?.timestamp || candle.closePrice == null) continue
+    byTimestamp.set(candle.timestamp, candle)
   }
-  return [...buckets.values()].filter((point) => point.value != null).sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp))
+  return [...byTimestamp.values()].sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp))
+}
+
+function marketMinute(timestamp) {
+  const { hour, minute } = kstParts(timestamp)
+  return hour * 60 + minute
+}
+
+export function buildTwoDayMinuteLine(candles = []) {
+  const ordered = [...candles]
+    .filter((candle) => candle?.timestamp && candle?.closePrice != null && Number.isFinite(Date.parse(candle.timestamp)))
+    .sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp))
+  if (!ordered.length) return []
+
+  const sessionCandles = ordered.filter((candle) => {
+    const minute = marketMinute(candle.timestamp)
+    return minute >= SESSION_START_MINUTE && minute <= FINALIZE_MINUTE
+  })
+  const days = [...new Set(sessionCandles.map((candle) => kstParts(candle.timestamp).day))].sort().slice(-2)
+  const selected = new Set(days)
+  return sessionCandles
+    .filter((candle) => selected.has(kstParts(candle.timestamp).day))
+    .map((candle) => ({ timestamp: candle.timestamp, value: number(candle.closePrice) }))
+    .filter((point) => point.value != null)
+}
+
+// 기존 호출부/테스트 호환 이름. 의미는 이제 5분 압축이 아니라 전일+오늘 실제 1분선이다.
+export function buildIntradayLine(candles = []) {
+  return buildTwoDayMinuteLine(candles)
+}
+
+function hasFullPreviousTradingDay(candles = []) {
+  const points = buildTwoDayMinuteLine(candles)
+  const days = [...new Set(points.map((point) => kstParts(point.timestamp).day))]
+  if (days.length < 2) return false
+  const previous = points.filter((point) => kstParts(point.timestamp).day === days[0])
+  if (!previous.length) return false
+  const firstMinute = marketMinute(previous[0].timestamp)
+  return firstMinute <= SESSION_START_MINUTE + 2
+}
+
+async function fetchTwoDayMinuteLine(client, symbol) {
+  let before = null
+  let merged = []
+  for (let page = 0; page < 4; page += 1) {
+    const query = new URLSearchParams({ symbol, interval: '1m', count: '400', adjusted: 'true' })
+    if (before) query.set('before', before)
+    const payload = await client.request(`/api/v1/candles?${query.toString()}`, { priority: 'background', dedupe: false }).catch(() => null)
+    const candles = candleRecords(payload)
+    if (!candles.length) break
+    merged = mergeCandles(merged, candles)
+    if (hasFullPreviousTradingDay(merged)) break
+    const nextBefore = payload?.result?.nextBefore ?? null
+    if (!nextBefore || nextBefore === before) break
+    before = nextBefore
+  }
+  return buildTwoDayMinuteLine(merged)
 }
 
 function normalizeIssueText(text = '') {
   return String(text).replace(/^\s*(?:\[[^\]]{1,30}\]\s*)+/g, '').replace(/\s+/g, ' ').trim()
 }
 
+function normalizeKrCode(symbol) {
+  const match = String(symbol ?? '').trim().match(/(\d{6})$/)
+  return match?.[1] ?? null
+}
+
+export function compactCompanySummary(description) {
+  const text = String(description ?? '').replace(/\s+/g, ' ').trim()
+  if (!text) return null
+  const sentences = text.split(/(?<=[.!?])\s+/).map((sentence) => sentence.trim()).filter(Boolean)
+  const selected = (sentences.length ? sentences : [text])
+    .map((sentence, index) => ({
+      sentence,
+      score: (BUSINESS_HINT.test(sentence) ? 5 : 0) + (/주력|주요 사업|주요사업/.test(sentence) ? 2 : 0) - (HISTORY_HINT.test(sentence) ? 3 : 0) - index * 0.01,
+    }))
+    .sort((a, b) => b.score - a.score)[0]?.sentence ?? text
+
+  let concise = selected
+    .replace(/^기업개요\s*/, '')
+    .replace(/^(동사|당사|회사는)\s*/, '')
+    .replace(/\s*(하고|하며)\s*있음\.?$/, '')
+    .replace(/\s*영위하고\s*있음\.?$/, ' 영위')
+    .replace(/\s*하는\s*기업임\.?$/, '')
+    .replace(/\s*기업임\.?$/, '')
+    .replace(/[.]$/, '')
+    .trim()
+  if (concise.length > 86) concise = `${concise.slice(0, 84).trim()}…`
+  return concise || null
+}
+
 export function summarizeStockIssues(stock, articles = []) {
   const name = String(stock?.name ?? '').trim()
-  if (!name) return { summary: '직접적인 당일 뉴스 재료 확인 안 됨', articleCount: 0, sources: [], links: [] }
+  if (!name) return { summary: '상승 이유 확인 안 됨', reasonType: 'unconfirmed', reasonTheme: null, articleCount: 0, sources: [], links: [] }
   const matched = articles.filter((article) => normalizeIssueText(article.title).toLowerCase().includes(name.toLowerCase()))
   const collapsed = collapseNewsIssues(matched)
     .sort((a, b) => ((b.sourceCount ?? 1) + (b.duplicateCount ?? 1)) - ((a.sourceCount ?? 1) + (a.duplicateCount ?? 1)) || Date.parse(b.publishedAt ?? 0) - Date.parse(a.publishedAt ?? 0))
     .slice(0, 3)
-  if (!collapsed.length) return { summary: '직접적인 당일 뉴스 재료 확인 안 됨', articleCount: 0, sources: [], links: [] }
+  if (!collapsed.length) return { summary: (number(stock?.changeRate) ?? 0) > 0 ? '상승 이유 확인 안 됨' : '직접적인 당일 뉴스 재료 확인 안 됨', reasonType: 'unconfirmed', reasonTheme: null, articleCount: 0, sources: [], links: [] }
 
   const summaries = []
   for (const issue of collapsed) {
@@ -117,10 +198,55 @@ export function summarizeStockIssues(stock, articles = []) {
     summaries.push({ key, text: clean })
   }
   return {
-    summary: summaries.map((item) => item.text).join(' · ').slice(0, 260) || '직접적인 당일 뉴스 재료 확인 안 됨',
+    summary: summaries.map((item) => item.text).join(' · ').slice(0, 300) || '상승 이유 확인 안 됨',
+    reasonType: 'direct-news',
+    reasonTheme: null,
     articleCount: collapsed.reduce((sum, item) => sum + (item.duplicateCount ?? 1), 0),
     sources: [...new Set(collapsed.map((item) => item.source).filter(Boolean))].slice(0, 5),
     links: collapsed.map((item) => ({ title: item.title, link: item.link, source: item.source ?? '뉴스' })).slice(0, 3),
+  }
+}
+
+export function buildThemeNewsEvidence(stocks = [], articles = []) {
+  const evidence = new Map()
+  for (const article of articles) {
+    const title = normalizeIssueText(article?.title)
+    if (!title || !POSITIVE_NEWS_CUE.test(title)) continue
+    const lowerTitle = title.toLowerCase()
+    for (const stock of stocks) {
+      const name = String(stock?.name ?? '').trim()
+      if (!name || (number(stock?.changeRate) ?? 0) <= 0 || !lowerTitle.includes(name.toLowerCase())) continue
+      for (const theme of stock.themeLabels ?? []) {
+        if (!theme || theme === '기타·개별주') continue
+        const list = evidence.get(theme) ?? []
+        list.push(article)
+        evidence.set(theme, list)
+      }
+    }
+  }
+  return evidence
+}
+
+export function summarizeThemeFallback(stock, themeLabels = [], themeEvidence = new Map()) {
+  if ((number(stock?.changeRate) ?? 0) <= 0) return null
+  const candidates = themeLabels.flatMap((theme) => {
+    const collapsed = collapseNewsIssues(themeEvidence.get(theme) ?? [])
+      .sort((a, b) => ((b.sourceCount ?? 1) + (b.duplicateCount ?? 1)) - ((a.sourceCount ?? 1) + (a.duplicateCount ?? 1)) || Date.parse(b.publishedAt ?? 0) - Date.parse(a.publishedAt ?? 0))
+      .slice(0, 3)
+    if (!collapsed.length) return []
+    return [{ theme, collapsed, score: collapsed.reduce((sum, item) => sum + (item.duplicateCount ?? 1), 0) }]
+  }).sort((a, b) => b.score - a.score)
+
+  const best = candidates[0]
+  if (!best) return null
+  const lead = normalizeIssueText(best.collapsed[0]?.summary || best.collapsed[0]?.title)
+  return {
+    summary: `${best.theme} 테마 동반 강세 영향으로 추정${lead ? ` · ${lead.slice(0, 170)}` : ''}`,
+    reasonType: 'theme-news',
+    reasonTheme: best.theme,
+    articleCount: best.score,
+    sources: [...new Set(best.collapsed.map((item) => item.source).filter(Boolean))].slice(0, 5),
+    links: best.collapsed.map((item) => ({ title: item.title, link: item.link, source: item.source ?? '뉴스' })).slice(0, 3),
   }
 }
 
@@ -218,11 +344,11 @@ export class DailyIssueService {
   currentPayload() {
     const now = kstParts()
     const currentDay = now.day
-    const marketMinute = now.hour * 60 + now.minute
+    const currentMarketMinute = now.hour * 60 + now.minute
     if (this.payload?.ok && this.payload.date === currentDay) return this.payload
     return {
       ok: false,
-      status: marketMinute < FINALIZE_MINUTE ? 'waiting' : this.generating ? 'generating' : 'pending',
+      status: currentMarketMinute < FINALIZE_MINUTE ? 'waiting' : this.generating ? 'generating' : 'pending',
       date: currentDay,
       capturedAt: null,
       targetTime: '15:20',
@@ -233,8 +359,8 @@ export class DailyIssueService {
 
   async check() {
     const now = kstParts()
-    const marketMinute = now.hour * 60 + now.minute
-    if (marketMinute < FINALIZE_MINUTE) return this.currentPayload()
+    const currentMarketMinute = now.hour * 60 + now.minute
+    if (currentMarketMinute < FINALIZE_MINUTE) return this.currentPayload()
     if (this.payload?.ok && this.payload.date === now.day) return this.payload
     if (!this.client.configured) return this.currentPayload()
     if (this.generating) return this.generating
@@ -260,30 +386,47 @@ export class DailyIssueService {
         })
         .filter((item) => item.symbol && item.name && isIndividualStock(item))
         .slice(0, 100)
+        .map((stock) => {
+          const code = normalizeKrCode(stock.symbol)
+          const description = code ? cachedDescriptionForStock(code) : null
+          const catalogThemes = themesForStock(stock.symbol, stock.name)
+          const sector = classifyStockSector({ symbol: code, name: stock.name, description }).label
+          const themeLabels = [...new Set([...catalogThemes, sector].filter((label) => label && label !== '기타·개별주'))]
+          return {
+            ...stock,
+            companySummary: compactCompanySummary(description),
+            displayTheme: catalogThemes.length ? catalogThemes.join(' · ') : sector,
+            themeLabels,
+          }
+        })
 
       const newsBatches = await Promise.all(articleQueries(stocks).map((query) => fetchNewsQuery(query).catch(() => [])))
       const articles = newsBatches.flat()
+      const themeEvidence = buildThemeNewsEvidence(stocks, articles)
       const chartMap = new Map()
 
       await mapLimit(stocks, 4, async (stock) => {
-        const query = new URLSearchParams({ symbol: stock.symbol, interval: '1m', count: '400', adjusted: 'true' })
-        const payload = await this.client.request(`/api/v1/candles?${query.toString()}`, { priority: 'background', dedupe: false }).catch(() => null)
-        chartMap.set(stock.symbol, buildIntradayLine(candleRecords(payload)))
+        chartMap.set(stock.symbol, await fetchTwoDayMinuteLine(this.client, stock.symbol))
         await sleep(40)
       })
 
       const rows = sortDailyIssueRows(stocks.map((stock) => {
-        const issue = summarizeStockIssues(stock, articles)
-        const themes = themesForStock(stock.symbol, stock.name)
+        const directIssue = summarizeStockIssues(stock, articles)
+        const issue = directIssue.reasonType === 'direct-news'
+          ? directIssue
+          : (summarizeThemeFallback(stock, stock.themeLabels, themeEvidence) ?? directIssue)
         return {
           symbol: stock.symbol,
           name: stock.name,
           market: stock.market,
-          theme: themes.length ? themes.join(' · ') : '기타',
+          theme: stock.displayTheme || '기타·개별주',
+          companySummary: stock.companySummary,
           price: stock.price,
           changeRate: stock.changeRate,
           tradingAmount: stock.tradingAmount,
           issueSummary: issue.summary,
+          reasonType: issue.reasonType,
+          reasonTheme: issue.reasonTheme,
           articleCount: issue.articleCount,
           sources: issue.sources,
           links: issue.links,
@@ -297,7 +440,7 @@ export class DailyIssueService {
         date: day,
         targetTime: '15:20',
         capturedAt: new Date().toISOString(),
-        source: '토스증권 Open API 거래대금 랭킹/1분봉 + Google News RSS',
+        source: '토스증권 Open API 거래대금 랭킹/전일+당일 실제 1분봉 + Google News RSS + Npay/FnGuide 기업개요 캐시',
         sort: 'changeRate-desc',
         rows,
         error: null,
