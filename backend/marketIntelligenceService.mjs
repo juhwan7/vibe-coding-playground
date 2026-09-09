@@ -154,14 +154,98 @@ function lifecycle(theme, state, now) {
 }
 
 export class MarketIntelligenceService {
-  constructor({ replacementMargin = 0.08, replacementConfirmations = 3, themeCount = 4 } = {}) {
+  constructor({
+    replacementMargin = 0.08,
+    replacementConfirmations = 3,
+    themeCount = 4,
+    rankPromotionMargin = 0.02,
+    rankImmediateMargin = null,
+    rankConfirmations = null,
+  } = {}) {
     this.replacementMargin = replacementMargin
     this.replacementConfirmations = replacementConfirmations
     this.themeCount = themeCount
+    this.rankPromotionMargin = rankPromotionMargin
+    this.rankImmediateMargin = rankImmediateMargin ?? replacementMargin
+    this.rankConfirmations = rankConfirmations ?? replacementConfirmations
+    this.rankChallenges = new Map()
     this.themeState = new Map()
     this.selectedNames = []
     this.previousMarketAmount = null
     this.previousMarketDay = null
+  }
+
+  stabilizeThemeOrder(candidates = []) {
+    const sorted = [...candidates].sort((a, b) => (number(b.strengthScore) ?? -Infinity) - (number(a.strengthScore) ?? -Infinity))
+    if (!this.selectedNames.length) {
+      this.rankChallenges.clear()
+      return sorted
+    }
+
+    const byName = new Map(sorted.map((theme) => [theme.name, theme]))
+    const ordered = []
+    const used = new Set()
+    for (const name of this.selectedNames) {
+      const theme = byName.get(name)
+      if (!theme) continue
+      ordered.push(theme)
+      used.add(name)
+    }
+    for (const theme of sorted) {
+      if (used.has(theme.name)) continue
+      ordered.push(theme)
+      used.add(theme.name)
+    }
+
+    const observedChallenges = new Set()
+    for (let pass = 0; pass < ordered.length; pass += 1) {
+      let moved = false
+      for (let index = 1; index < ordered.length; index += 1) {
+        const incumbent = ordered[index - 1]
+        const challenger = ordered[index]
+        const incumbentScore = number(incumbent.strengthScore) ?? -Infinity
+        const challengerScore = number(challenger.strengthScore) ?? -Infinity
+        const key = `${challenger.name}>${incumbent.name}`
+
+        if (!(challengerScore > incumbentScore)) {
+          this.rankChallenges.delete(key)
+          continue
+        }
+
+        const lead = (challengerScore - incumbentScore) / Math.max(1, Math.abs(incumbentScore))
+        if (lead >= this.rankImmediateMargin) {
+          ordered[index - 1] = challenger
+          ordered[index] = incumbent
+          this.rankChallenges.delete(key)
+          moved = true
+          continue
+        }
+
+        if (lead < this.rankPromotionMargin) {
+          this.rankChallenges.delete(key)
+          continue
+        }
+
+        let confirmations = this.rankChallenges.get(key) ?? 0
+        if (!observedChallenges.has(key)) {
+          confirmations += 1
+          this.rankChallenges.set(key, confirmations)
+          observedChallenges.add(key)
+        }
+        if (confirmations >= this.rankConfirmations) {
+          ordered[index - 1] = challenger
+          ordered[index] = incumbent
+          this.rankChallenges.delete(key)
+          moved = true
+        }
+      }
+      if (!moved) break
+    }
+
+    for (const key of [...this.rankChallenges.keys()]) {
+      if (!observedChallenges.has(key)) this.rankChallenges.delete(key)
+    }
+    return ordered
   }
 
   enrichThemes(payload = {}, now = Date.now()) {
@@ -253,8 +337,7 @@ export class MarketIntelligenceService {
       if (selected.length >= this.themeCount) break
     }
 
-    selected.sort((a, b) => b.strengthScore - a.strengthScore)
-    const finalThemes = selected.slice(0, this.themeCount)
+    const finalThemes = this.stabilizeThemeOrder(selected).slice(0, this.themeCount)
     this.selectedNames = finalThemes.map((theme) => theme.name)
     return finalThemes
   }
@@ -314,6 +397,10 @@ export class MarketIntelligenceService {
         themeCount: this.themeCount,
         replacementMarginPercent: this.replacementMargin * 100,
         replacementConfirmations: this.replacementConfirmations,
+        rankPromotionMarginPercent: this.rankPromotionMargin * 100,
+        rankImmediateMarginPercent: this.rankImmediateMargin * 100,
+        rankPromotionConfirmations: this.rankConfirmations,
+        rankHysteresis: '2% 이상 우위 3회 연속 확인 또는 8% 이상 우위 시 즉시 승격',
         overlapAdjustment: '1/N allocation by verified theme memberships',
         lifecycle: ['출현', '확산', '주도', '과열', '둔화', '이탈', '유지'],
       },
