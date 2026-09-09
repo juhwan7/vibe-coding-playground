@@ -1,0 +1,49 @@
+name: Quiz Runtime Diagnostic
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/quiz-runtime-diagnostic.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    if: github.ref == 'refs/heads/main'
+    runs-on: [self-hosted, linux, ARM64, k-market-pi]
+    timeout-minutes: 3
+    steps:
+      - name: Inspect live quiz runtime
+        shell: bash
+        run: |
+          set -u
+          APP="$HOME/vibe-coding-playground"
+          cd "$APP"
+          echo '=== deployed checkout ==='
+          git rev-parse HEAD || true
+          echo
+          echo '=== running backend contains quiz fallback ==='
+          docker compose exec -T backend sh -c "grep -n 'benchmark-etf-composition-fallback\|KODEX 200' /app/quizUniverseService.mjs | head -n 20" || true
+          echo
+          echo '=== quiz universe API ==='
+          curl --silent --show-error --max-time 20 http://127.0.0.1:8080/api/quiz/universe || true
+          echo
+          echo
+          echo '=== prepared quiz now ==='
+          curl --silent --show-error --max-time 10 http://127.0.0.1:8080/data/quiz-prepared.json || true
+          echo
+          echo
+          echo '=== persistent quiz files ==='
+          docker compose exec -T backend sh -c 'ls -lh /app/data/quiz-universe.json /app/data/quiz-descriptions.json /app/public-data/quiz-prepared.json 2>/dev/null || true; echo; head -c 1600 /app/data/quiz-universe.json 2>/dev/null || true' || true
+          echo
+          echo
+          echo '=== wait for prewarm progress ==='
+          sleep 20
+          curl --silent --show-error --max-time 10 http://127.0.0.1:8080/data/quiz-prepared.json || true
+          echo
+          echo
+          echo '=== backend quiz logs ==='
+          docker compose logs --since=10m backend 2>&1 | grep -Ei 'quiz|KRX|KODEX|description|prewarm|fallback' | tail -n 120 || true
