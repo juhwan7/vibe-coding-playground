@@ -279,14 +279,14 @@ export default function ThemeFlowSaasEnhancer() {
     let loading = false
 
     const apply = () => {
-      if (!document.querySelector('.theme-flow-workspace')) return
+      if (!document.querySelector('.theme-flow-workspace:not(.us-theme-workspace)')) return
       updateSummaryBar(themeFlow, intel)
       updateThemeRows(themeFlow, timelineByTheme)
       updateTop100Heat()
     }
 
     const load = async () => {
-      if (loading || controller.signal.aborted || !document.querySelector('.theme-flow-workspace')) return
+      if (loading || controller.signal.aborted || !document.querySelector('.theme-flow-workspace:not(.us-theme-workspace)')) return
       loading = true
       try {
         const [nextThemeFlow, nextIntel] = await Promise.all([
@@ -304,7 +304,7 @@ export default function ThemeFlowSaasEnhancer() {
     }
 
     const tick = () => {
-      if (!document.querySelector('.theme-flow-workspace')) return
+      if (!document.querySelector('.theme-flow-workspace:not(.us-theme-workspace)')) return
       apply()
       if (Date.now() - lastFetch >= 9_500) void load()
     }
@@ -314,8 +314,6 @@ export default function ThemeFlowSaasEnhancer() {
     return () => {
       controller.abort()
       window.clearInterval(timer)
-      document.querySelector('.theme-saas-summary-bar')?.remove()
-      document.querySelectorAll('.theme-event-layer').forEach((node) => node.remove())
     }
   }, [])
 
