@@ -78,6 +78,7 @@ export default function FeatureNews() {
   const [dragging, setDragging] = useState(false)
   const timelineRef = useRef<HTMLDivElement>(null)
   const positionedRef = useRef(false)
+  const draggingRef = useRef(false)
   const dragRef = useRef({ pointerId: -1, startX: 0, startScrollLeft: 0, moved: false })
   const suppressClickUntil = useRef(0)
 
@@ -149,13 +150,13 @@ export default function FeatureNews() {
 
   useEffect(() => {
     const node = timelineRef.current
-    if (!node || !items.length || dragging) return
+    if (!node || !items.length || draggingRef.current) return
     const frame = window.requestAnimationFrame(() => {
       node.scrollTo({ left: node.scrollWidth, behavior: positionedRef.current ? 'smooth' : 'auto' })
       positionedRef.current = true
     })
     return () => window.cancelAnimationFrame(frame)
-  }, [items.length, news.updatedAt, dragging])
+  }, [items.length, news.updatedAt])
 
   const handleWheel = (event: WheelEvent<HTMLDivElement>) => {
     if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return
@@ -179,6 +180,7 @@ export default function FeatureNews() {
     const delta = event.clientX - dragRef.current.startX
     if (!dragRef.current.moved && Math.abs(delta) > 4) {
       dragRef.current.moved = true
+      draggingRef.current = true
       setDragging(true)
     }
     if (!dragRef.current.moved) return
@@ -192,6 +194,7 @@ export default function FeatureNews() {
     event.currentTarget.releasePointerCapture?.(event.pointerId)
     dragRef.current.pointerId = -1
     dragRef.current.moved = false
+    draggingRef.current = false
     setDragging(false)
   }
 
