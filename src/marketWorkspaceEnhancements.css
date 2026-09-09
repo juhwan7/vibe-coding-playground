@@ -132,6 +132,54 @@
 /* 실시간 값은 10초 갱신 시 배경을 번쩍이지 않고 조용히 교체한다. */
 .value-flash { display: inline; }
 
+/* 우측 TOP100에서 현재 왼쪽 5개 테마 소속을 같은 색상으로 즉시 연결한다. */
+.top100-row-themed {
+  position: relative;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--top100-theme-accent) 12%, transparent), transparent 44%);
+  box-shadow:
+    inset 4px 0 0 var(--top100-theme-accent),
+    inset 0 0 0 1px color-mix(in srgb, var(--top100-theme-accent) 72%, transparent);
+  transition: background .16s ease, box-shadow .16s ease;
+}
+.top100-row-themed:hover {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--top100-theme-accent) 18%, transparent), transparent 52%);
+  box-shadow:
+    inset 5px 0 0 var(--top100-theme-accent),
+    inset 0 0 0 2px color-mix(in srgb, var(--top100-theme-accent) 82%, transparent);
+}
+.top100-row-themed > b { color: var(--top100-theme-accent); }
+.top100-row-themed .top100-mini-track i {
+  background: var(--top100-theme-accent);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--top100-theme-accent) 38%, transparent);
+}
+.top100-stock > small {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.top100-stock-meta {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.top100-theme-label {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  min-height: 17px;
+  padding: 1px 5px;
+  border: 1px solid color-mix(in srgb, var(--top100-theme-accent) 60%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--top100-theme-accent) 14%, transparent);
+  color: color-mix(in srgb, var(--top100-theme-accent) 82%, #f3f8fb 18%);
+  font-size: 9px;
+  font-weight: 900;
+  line-height: 1;
+  white-space: nowrap;
+}
+
 .deep-market-static-head {
   display: flex;
   align-items: center;
@@ -173,7 +221,29 @@
 :root[data-theme='light'] .theme-current-label text,
 :root:not([data-theme='dark']) .theme-current-label text { fill: #172033; }
 
+:root[data-theme='light'] .top100-row-themed,
+:root:not([data-theme='dark']) .top100-row-themed {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--top100-theme-accent) 9%, #ffffff), #ffffff 46%);
+}
+:root[data-theme='light'] .top100-row-themed:hover,
+:root:not([data-theme='dark']) .top100-row-themed:hover {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--top100-theme-accent) 14%, #ffffff), #ffffff 55%);
+}
+:root[data-theme='light'] .top100-theme-label,
+:root:not([data-theme='dark']) .top100-theme-label {
+  background: color-mix(in srgb, var(--top100-theme-accent) 10%, #ffffff);
+  color: color-mix(in srgb, var(--top100-theme-accent) 74%, #203246 26%);
+}
+
 :root[data-theme='light'] .deep-market-static-head,
 :root:not([data-theme='dark']) .deep-market-static-head { border-color: #dce4ec; }
 :root[data-theme='light'] .deep-market-static-head small,
 :root:not([data-theme='dark']) .deep-market-static-head small { color: #66778c; }
+
+@media (min-width: 2200px) {
+  .top100-theme-label {
+    min-height: 20px;
+    padding: 2px 7px;
+    font-size: 11px;
+  }
+}
