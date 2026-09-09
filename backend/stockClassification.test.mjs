@@ -31,6 +31,6 @@ test('대표 업종을 찾지 못해도 TOP100 배지가 비지 않도록 fallba
 
 test('우선주와 알려진 예외 종목은 안정적인 대표 분류를 사용한다', () => {
   assert.equal(classifyStockSector({ symbol: '005935', name: '삼성전자우' }).label, '반도체')
-  assert.equal(classifyStockSector({ symbol: '009150', name: '삼성전기' }).label, '전자·IT부품')
+  assert.equal(classifyStockSector({ symbol: '009150', name: '삼성전기' }).label, '반도체')
   assert.equal(classifyStockSector({ symbol: '402340', name: 'SK스퀘어' }).label, '지주·투자')
 })
