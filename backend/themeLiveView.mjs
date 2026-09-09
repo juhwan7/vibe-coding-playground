@@ -1,3 +1,5 @@
+import { themesForStock } from './themeCatalog.mjs'
+
 function number(value) {
   const parsed = Number(value)
   return Number.isFinite(parsed) ? parsed : null
@@ -26,6 +28,14 @@ function mergeRanking(base, live) {
   }
 }
 
+function withCatalogThemes(item) {
+  if (!item) return item
+  return {
+    ...item,
+    catalogThemes: themesForStock(item.symbol, item.name),
+  }
+}
+
 function weightedLiveDelta(entries) {
   if (!entries.length) return 0
   const positiveWeights = entries.filter((entry) => entry.weight > 0)
@@ -38,7 +48,7 @@ export function buildLiveThemePayload(payload, snapshot) {
   if (!payload?.ok || !snapshot?.topRankings?.length) return payload
   const bySymbol = liveMap(snapshot)
 
-  const topRankings = (payload.topRankings ?? []).map((item) => mergeRanking(item, bySymbol.get(item.symbol)))
+  const topRankings = (payload.topRankings ?? []).map((item) => withCatalogThemes(mergeRanking(item, bySymbol.get(item.symbol))))
   const themes = (payload.themes ?? []).map((theme) => {
     const deltaEntries = []
     const members = (theme.members ?? []).map((member) => {
@@ -51,7 +61,7 @@ export function buildLiveThemePayload(payload, snapshot) {
           weight: Math.max(0, number(live?.tradingAmount) ?? number(member.tradingAmount) ?? 0),
         })
       }
-      return mergeRanking(member, live)
+      return withCatalogThemes(mergeRanking(member, live))
     })
 
     const liveDelta = weightedLiveDelta(deltaEntries)
