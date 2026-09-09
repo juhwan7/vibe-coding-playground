@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { buildThemeGroups } from './themeCatalog.mjs'
-import { aggregateStockCandles, aggregateThemeSeries, isIndividualStock, selectThemeGroups } from './themeFlowService.mjs'
+import { ThemeFlowService, aggregateStockCandles, aggregateThemeSeries, findIntradayCandleGaps, isIndividualStock, selectThemeGroups } from './themeFlowService.mjs'
 
 test('buildThemeGroups requires at least three top50 members and sorts by turnover', () => {
   const rankings = [
@@ -95,4 +95,88 @@ test('aggregateStockCandles makes latest-day 3-minute OHLC candles', () => {
   assert.equal(series[1].openPrice, 104)
   assert.equal(series[1].closePrice, 105)
   assert.equal(series[0].day, '2026-09-09')
+})
+
+function minuteCandles(day, startMinute, endMinute, basePrice = 100) {
+  const result = []
+  for (let minute = startMinute; minute <= endMinute; minute += 1) {
+    const hour = Math.floor(minute / 60)
+    const min = minute % 60
+    const timestamp = `${day}T${String(hour).padStart(2, '0')}:${String(min).padStart(2, '0')}:00+09:00`
+    const closePrice = basePrice + (minute - startMinute) * 0.01
+    result.push({ timestamp, openPrice: closePrice, highPrice: closePrice, lowPrice: closePrice, closePrice, volume: 10 })
+  }
+  return result
+}
+
+test('findIntradayCandleGaps detects only long gaps inside the regular session', () => {
+  const candles = [
+    ...minuteCandles('2026-09-08', 9 * 60, 9 * 60 + 1),
+    { timestamp: '2026-09-09T08:00:00+09:00', closePrice: 100 },
+    { timestamp: '2026-09-09T09:00:00+09:00', closePrice: 100 },
+    { timestamp: '2026-09-09T09:03:00+09:00', closePrice: 101 },
+    { timestamp: '2026-09-09T10:00:00+09:00', closePrice: 102 },
+    { timestamp: '2026-09-09T15:20:00+09:00', closePrice: 103 },
+    { timestamp: '2026-09-09T18:00:00+09:00', closePrice: 104 },
+  ]
+
+  const gaps = findIntradayCandleGaps(candles)
+  assert.equal(gaps.length, 2)
+  assert.equal(gaps[0].from, '2026-09-09T09:03:00+09:00')
+  assert.equal(gaps[0].to, '2026-09-09T10:00:00+09:00')
+  assert.equal(gaps[1].from, '2026-09-09T10:00:00+09:00')
+  assert.equal(gaps[1].to, '2026-09-09T15:20:00+09:00')
+})
+
+test('refreshSymbol backfills a missing intraday range instead of leaving the theme chart broken', async () => {
+  const calls = []
+  const client = {
+    configured: true,
+    async request(path) {
+      calls.push(path)
+      const url = new URL(`https://example.test${path}`)
+      const before = url.searchParams.get('before')
+      if (!before) {
+        return {
+          result: {
+            candles: minuteCandles('2026-09-09', 15 * 60 + 20, 15 * 60 + 25, 120),
+            nextBefore: 'cursor-1',
+          },
+        }
+      }
+      if (before === 'cursor-1') {
+        return {
+          result: {
+            candles: minuteCandles('2026-09-09', 11 * 60 + 1, 15 * 60 + 19, 110),
+            nextBefore: 'cursor-2',
+          },
+        }
+      }
+      if (before === 'cursor-2') {
+        return {
+          result: {
+            candles: minuteCandles('2026-09-09', 9 * 60 + 1, 11 * 60, 100),
+            nextBefore: null,
+          },
+        }
+      }
+      throw new Error(`unexpected candle cursor: ${before}`)
+    },
+  }
+
+  const service = new ThemeFlowService(client, () => null)
+  service.candleCache.set('005930', [
+    { timestamp: '2026-09-08T09:00:00+09:00', closePrice: 95, volume: 10 },
+    { timestamp: '2026-09-09T09:00:00+09:00', closePrice: 100, volume: 10 },
+    { timestamp: '2026-09-09T11:00:00+09:00', closePrice: 110, volume: 10 },
+  ])
+
+  assert.equal(findIntradayCandleGaps(service.candleCache.get('005930')).length, 1)
+  await service.refreshSymbol('005930')
+
+  const repaired = service.candleCache.get('005930')
+  assert.equal(findIntradayCandleGaps(repaired).length, 0)
+  assert.ok(calls.some((path) => path.includes('before=cursor-1')))
+  assert.ok(calls.some((path) => path.includes('before=cursor-2')))
+  assert.ok(repaired.some((candle) => candle.timestamp === '2026-09-09T13:30:00+09:00'))
 })
