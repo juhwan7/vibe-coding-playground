@@ -244,7 +244,7 @@ export class DailyIssueService {
 
   async generate(day) {
     try {
-      const rankingPayload = await this.client.request('/api/v1/rankings?type=MARKET_TRADING_AMOUNT&marketCountry=KR&duration=1d&count=150', { priority: 'critical', dedupe: false })
+      const rankingPayload = await this.client.request('/api/v1/rankings?type=MARKET_TRADING_AMOUNT&marketCountry=KR&duration=1d&count=100', { priority: 'critical', dedupe: false })
       const rawRankings = rankingRecords(rankingPayload)
       const symbols = rawRankings.map((item) => item?.symbol ?? item?.stock?.symbol).filter(Boolean)
       const metaPayload = symbols.length ? await this.client.request(`/api/v1/stocks?symbols=${encodeURIComponent(symbols.join(','))}`, { priority: 'background' }).catch(() => null) : null
