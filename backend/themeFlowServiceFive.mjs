@@ -1,6 +1,6 @@
 import { ThemeFlowService, aggregateStockCandles, isIndividualStock, selectThemeGroups } from './themeFlowService.mjs'
 import { aggregateTradingAmountWeightedThemeSeries } from './themeWeightedSeries.mjs'
-import { stockMeta, stockRecords } from './stockMetadata.mjs'
+import { stockMeta, stockRecords, validStockName } from './stockMetadata.mjs'
 import { sleep } from './tossClient.mjs'
 
 function dateKey(timestamp) {
@@ -48,24 +48,54 @@ async function mapLimit(items, limit, worker) {
 }
 
 export class ThemeFlowServiceFive extends ThemeFlowService {
+  ingestMeta(payload) {
+    for (const record of stockRecords(payload)) {
+      const meta = stockMeta(record)
+      if (meta.symbol) this.stockMeta.set(meta.symbol, meta)
+    }
+  }
+
+  unresolvedMeta(symbols = []) {
+    return symbols.filter((symbol) => !validStockName(this.stockMeta.get(symbol)?.name, symbol))
+  }
+
   async ensureMeta(symbols = []) {
     const unique = [...new Set(symbols.map((symbol) => String(symbol ?? '').trim()).filter(Boolean))]
+    if (!unique.length) return
     const missing = unique.filter((symbol) => !this.stockMeta.has(symbol))
-    if (!missing.length && Date.now() - this.metaUpdatedAt < 6 * 60 * 60 * 1000) return
+    if (!missing.length && Date.now() - this.metaUpdatedAt < 6 * 60 * 60 * 1000 && !this.unresolvedMeta(unique).length) return
     const targets = missing.length ? missing : unique
 
-    // TOP100 전체를 한 번에 요청하면 메타 API의 길이/개수 제한에 걸려 이름이 전부 빠질 수 있다.
-    // 25종목씩 나눠 받아 종목코드가 종목명처럼 표시되는 상황을 막는다.
-    for (let index = 0; index < targets.length; index += 25) {
-      const chunk = targets.slice(index, index + 25)
-      const encoded = encodeURIComponent(chunk.join(','))
-      const payload = await this.client.request(`/api/v1/stocks?symbols=${encoded}`)
-      for (const record of stockRecords(payload)) {
-        const meta = stockMeta(record)
-        if (meta.symbol) this.stockMeta.set(meta.symbol, meta)
-      }
-      if (index + 25 < targets.length) await sleep(80)
+    // Toss stocks metadata endpoint supports a large symbol batch. First resolve the
+    // full TOP100 in one request so every ranking row shares one consistent name map.
+    // If the upstream response is partial, retry only unresolved rows in progressively
+    // smaller batches instead of leaving the UI with numeric symbols as names.
+    try {
+      const payload = await this.client.request(`/api/v1/stocks?symbols=${encodeURIComponent(targets.join(','))}`)
+      this.ingestMeta(payload)
+    } catch {
+      // Smaller retries below preserve service availability if the large request fails.
     }
+
+    let unresolved = this.unresolvedMeta(targets)
+    for (let index = 0; index < unresolved.length; index += 10) {
+      const chunk = unresolved.slice(index, index + 10)
+      try {
+        const payload = await this.client.request(`/api/v1/stocks?symbols=${encodeURIComponent(chunk.join(','))}`)
+        this.ingestMeta(payload)
+      } catch {}
+      if (index + 10 < unresolved.length) await sleep(80)
+    }
+
+    unresolved = this.unresolvedMeta(targets)
+    await mapLimit(unresolved, 2, async (symbol) => {
+      try {
+        const payload = await this.client.request(`/api/v1/stocks?symbols=${encodeURIComponent(symbol)}`)
+        this.ingestMeta(payload)
+      } catch {}
+      await sleep(100)
+    })
+
     this.metaUpdatedAt = Date.now()
   }
 
@@ -162,6 +192,7 @@ export class ThemeFlowServiceFive extends ThemeFlowService {
         topRankings,
         themes,
         filteredOutCount: Math.max(0, enrichedRankings.length - topRankings.length),
+        unresolvedNameCount: topRankings.filter((item) => !validStockName(item.name, item.symbol)).length,
         criteria: {
           rankingLimit: 50,
           fallbackRankingLimit: 100,
