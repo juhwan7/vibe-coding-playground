@@ -24,7 +24,10 @@ test('theme board can maintain five strongest qualified themes', () => {
 
   const groups = selectThemeGroups(rankings, { targetCount: 5 })
   assert.equal(groups.length, 5)
-  assert.deepEqual(groups.map((group) => group.name), ['반도체', '원전', '방산', '조선', '바이오'])
+  assert.deepEqual(new Set(groups.map((group) => group.name)), new Set(['반도체', '원전', '방산', '조선', '바이오']))
+  for (let index = 1; index < groups.length; index += 1) {
+    assert.ok(groups[index - 1].tradingAmount >= groups[index].tradingAmount)
+  }
 })
 
 test('market brief keeps important news from midnight KST, including pre-06:00 items', () => {
