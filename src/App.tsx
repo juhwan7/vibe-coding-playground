@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import LiquidityDashboard from './LiquidityDashboard'
 import MarketWorkspace from './MarketWorkspace'
-import MarketIntelligencePanel from './MarketIntelligencePanel'
+import IntradayBrief from './IntradayBrief'
+import MarketReplay from './MarketReplay'
 import UsMarketWorkspace from './UsMarketWorkspace'
 import UsDataNotice from './UsDataNotice'
 import StockQuiz, { warmQuizUniverse } from './StockQuiz'
@@ -16,7 +17,7 @@ export { moneyFlowScore } from './marketData'
 export { answerIsCorrect, buildQuizRound } from './StockQuiz'
 
 type Theme = 'light' | 'dark'
-type Page = 'liquidity' | 'flow' | 'us-flow' | 'daily-issues' | 'quiz'
+type Page = 'liquidity' | 'flow' | 'us-flow' | 'daily-issues' | 'replay' | 'quiz'
 
 export default function App() {
   const [page, setPage] = useState<Page>('liquidity')
@@ -58,9 +59,10 @@ export default function App() {
   }
 
   let content = <LiquidityDashboard key={`liquidity-${dataRevision}`} />
-  if (page === 'flow') content = <div className="flow-page-with-news" key={`flow-${dataRevision}`}><MarketIntelligencePanel /><FeatureNews /><MarketWorkspace /></div>
+  if (page === 'flow') content = <div className="flow-page-with-news" key={`flow-${dataRevision}`}><IntradayBrief /><FeatureNews /><MarketWorkspace /></div>
   if (page === 'us-flow') content = <div key={`us-flow-${dataRevision}`}><UsDataNotice /><UsMarketWorkspace /></div>
   if (page === 'daily-issues') content = <DailyIssues key={`daily-issues-${dataRevision}`} />
+  if (page === 'replay') content = <MarketReplay key={`replay-${dataRevision}`} />
   if (page === 'quiz') content = <StockQuiz key={`quiz-${dataRevision}`} />
 
   return <div className="app-root">
@@ -71,6 +73,7 @@ export default function App() {
         <button className={page === 'flow' ? 'active' : ''} onClick={() => setPage('flow')}>국내 테마 흐름</button>
         <button className={page === 'us-flow' ? 'active' : ''} onClick={() => setPage('us-flow')}>미국 테마 흐름</button>
         <button className={page === 'daily-issues' ? 'active' : ''} onClick={() => setPage('daily-issues')}>금일 이슈 정리</button>
+        <button className={page === 'replay' ? 'active' : ''} onClick={() => setPage('replay')}>시장 복기</button>
         <button className={page === 'quiz' ? 'active' : ''} onClick={() => setPage('quiz')}>종목 퀴즈</button>
       </div>
       <aside className="nav-actions">
