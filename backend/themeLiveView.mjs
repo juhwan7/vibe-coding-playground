@@ -37,7 +37,20 @@ export function buildLiveThemePayload(payload, snapshot) {
     const points = [...(theme.points ?? [])]
     if (points.length && Number.isFinite(liveDelta) && Math.abs(liveDelta) > 0.000001) {
       const last = points.at(-1)
-      points[points.length - 1] = { ...last, value: (number(last.value) ?? 0) + liveDelta, live: true }
+      const previousClose = number(last.closeValue) ?? number(last.value) ?? 0
+      const nextClose = previousClose + liveDelta
+      const openValue = number(last.openValue) ?? previousClose
+      const highValue = Math.max(number(last.highValue) ?? Math.max(openValue, previousClose), nextClose)
+      const lowValue = Math.min(number(last.lowValue) ?? Math.min(openValue, previousClose), nextClose)
+      points[points.length - 1] = {
+        ...last,
+        value: nextClose,
+        openValue,
+        highValue,
+        lowValue,
+        closeValue: nextClose,
+        live: true,
+      }
     }
 
     const currentValue = points.length ? number(points.at(-1)?.value) : number(theme.currentValue)
