@@ -1,5 +1,6 @@
 import { WATCHLIST, WATCH_SYMBOLS } from './watchlist.mjs'
 import { TossApiError, sleep } from './tossClient.mjs'
+import { directNameFromRanking } from './stockMetadata.mjs'
 
 function number(value) {
   const parsed = Number(value)
@@ -93,12 +94,12 @@ function programValue(record, side) {
   return pickNumber(record, directKeys)
 }
 
-function rankingItem(item) {
+export function rankingItem(item, fallbackName = null) {
   const rate = item?.price?.changeRate != null ? number(item.price.changeRate) : number(item?.changeRate)
   return {
     symbol: item?.symbol ?? item?.stock?.symbol ?? null,
-    name: item?.name ?? item?.stockName ?? item?.stock?.name ?? null,
-    market: item?.market ?? item?.stock?.market ?? null,
+    name: directNameFromRanking(item) ?? fallbackName,
+    market: item?.market ?? item?.marketName ?? item?.exchange ?? item?.stock?.market ?? item?.stock?.marketName ?? null,
     lastPrice: number(item?.price?.lastPrice ?? item?.lastPrice),
     changeRate: rate != null ? rate * (Math.abs(rate) <= 1 ? 100 : 1) : null,
     tradingAmount: number(item?.tradingAmount),
@@ -116,6 +117,7 @@ export class MarketCollector {
     this.indexDaily = new Map()
     this.marketInvestors = { KOSPI: null, KOSDAQ: null, total: null }
     this.program = new Map()
+    this.rankingNames = new Map()
     this.snapshot = null
     this.lastError = null
     this.lastSlowAt = 0
@@ -173,6 +175,12 @@ export class MarketCollector {
       const prices = new Map((pricesPayload?.result ?? []).map((item) => [item.symbol, item]))
       const rankings = rankingPayload?.result?.rankings ?? []
       const rankingMap = new Map(rankings.map((item) => [item.symbol, item]))
+      const normalizedRankings = rankings.map((item) => {
+        const symbol = item?.symbol ?? item?.stock?.symbol ?? null
+        const parsed = rankingItem(item, symbol ? this.rankingNames.get(symbol) ?? null : null)
+        if (parsed.symbol && parsed.name) this.rankingNames.set(parsed.symbol, parsed.name)
+        return parsed
+      }).filter((item) => item.symbol)
       const indices = new Map((indicesPayload?.result ?? []).map((item) => [item.symbol, item]))
       const stocks = {}
 
@@ -236,7 +244,7 @@ export class MarketCollector {
         error: null,
         indices: indexResult,
         stocks,
-        topRankings: rankings.map(rankingItem).filter((item) => item.symbol),
+        topRankings: normalizedRankings,
         marketTradingAmount: rankings.reduce((sum, item) => sum + (number(item.tradingAmount) ?? 0), 0),
         marketTradingAmountCoverage: 'top100-1d',
         marketInvestors: this.marketInvestors,
