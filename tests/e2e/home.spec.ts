@@ -1,32 +1,34 @@
 import { expect, test } from '@playwright/test'
 
-test('domestic liquidity dashboard is the first page and light theme is default', async ({ page }, testInfo) => {
+test('domestic theme flow is the first page and light theme is default', async ({ page }, testInfo) => {
   await page.goto('/')
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
+  await expect(page.getByTestId('theme-strength-board')).toBeVisible()
+  await expect(page.getByRole('button', { name: '국내 테마 흐름' })).toHaveClass(/active/)
+  await expect(page.getByTestId('liquidity-dashboard')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '시장 데이터 수동 새로고침' })).toBeVisible()
+  await page.screenshot({ path: testInfo.outputPath('theme-flow-home.png'), fullPage: true })
+
+  await page.getByRole('button', { name: '증시 자금' }).click()
   await expect(page.getByTestId('liquidity-dashboard')).toBeVisible()
   await expect(page.getByRole('heading', { name: '국내 증시 자금 상태' })).toBeVisible()
-  await expect(page.getByRole('button', { name: '시장 데이터 수동 새로고침' })).toBeVisible()
-  await page.screenshot({ path: testInfo.outputPath('liquidity-dashboard.png'), fullPage: true })
 })
 
-test('domestic theme flow uses a data-driven brief, five themes, and TOP100 market detail', async ({ page }, testInfo) => {
+test('domestic theme flow keeps the brief hidden in a side drawer and shows five themes with TOP100 market detail', async ({ page }, testInfo) => {
   await page.goto('/')
-  await page.getByRole('button', { name: '국내 테마 흐름' }).click()
 
   await expect(page.getByTestId('market-intelligence')).toHaveCount(0)
+  await expect(page.getByTestId('intraday-brief')).toHaveCount(0)
+  const briefTrigger = page.getByRole('button', { name: '장중 시황 브리핑', exact: true })
+  await expect(briefTrigger).toBeVisible()
+  await expect(briefTrigger).toHaveAttribute('aria-expanded', 'false')
+  await briefTrigger.click()
   await expect(page.getByTestId('intraday-brief')).toBeVisible()
   await expect(page.getByRole('heading', { name: '장중 시황 브리핑' })).toBeVisible()
   await expect(page.getByText(/실제 TOP100·지수·테마 데이터/)).toBeVisible()
-
-  await expect(page.getByTestId('feature-news')).toBeVisible()
-  await expect(page.getByRole('heading', { name: '시황 요약' })).toBeVisible()
-  await expect(page.getByText(/오늘 06:00 이후/)).toBeVisible()
-  const timelineLayout = await page.getByTestId('feature-news-timeline').evaluate((node) => ({
-    display: getComputedStyle(node).display,
-    flow: getComputedStyle(node).gridAutoFlow,
-  }))
-  expect(timelineLayout.display).toBe('grid')
-  expect(timelineLayout.flow).toBe('column')
+  await expect(briefTrigger).toHaveAttribute('aria-expanded', 'true')
+  await page.getByRole('button', { name: '장중 시황 브리핑 닫기' }).click()
+  await expect(page.getByTestId('intraday-brief')).toHaveCount(0)
 
   await expect(page.getByTestId('theme-strength-board')).toBeVisible()
   await expect(page.getByRole('heading', { name: /테마 강도 비교/ })).toBeVisible()
@@ -41,6 +43,16 @@ test('domestic theme flow uses a data-driven brief, five themes, and TOP100 mark
   await expect(page.getByText(/고정 WATCHLIST가 아니라 거래대금 TOP100 개별주 기준/)).toBeVisible()
   await expect(page.getByText(/한국 전체 상장종목 수를 뜻하지 않습니다/)).toBeVisible()
   await expect(page.locator('.deep-market-details summary')).toHaveCount(0)
+
+  await expect(page.getByTestId('feature-news')).toBeVisible()
+  await expect(page.getByRole('heading', { name: '시황 요약' })).toBeVisible()
+  await expect(page.getByText(/오늘 06:00 이후/)).toBeVisible()
+  const timelineLayout = await page.getByTestId('feature-news-timeline').evaluate((node) => ({
+    display: getComputedStyle(node).display,
+    flow: getComputedStyle(node).gridAutoFlow,
+  }))
+  expect(timelineLayout.display).toBe('grid')
+  expect(timelineLayout.flow).toBe('column')
 
   await page.screenshot({ path: testInfo.outputPath('theme-flow-dashboard.png'), fullPage: true })
 })
@@ -72,6 +84,7 @@ test('market replay page sits between daily issues and stock quiz and exposes re
   await expect(replay).toBeVisible()
   await expect(quiz).toBeVisible()
   const labels = await page.locator('.global-nav > div button').allTextContents()
+  expect(labels.indexOf('국내 테마 흐름')).toBe(0)
   expect(labels.indexOf('금일 이슈 정리')).toBeLessThan(labels.indexOf('시장 복기'))
   expect(labels.indexOf('시장 복기')).toBeLessThan(labels.indexOf('종목 퀴즈'))
 
@@ -134,7 +147,7 @@ test('stock quiz uses one prepared Pi cache and never fetches descriptions per q
 
 test('pages have no horizontal overflow', async ({ page }) => {
   await page.goto('/')
-  for (const label of ['국내 테마 흐름', '미국 테마 흐름', '금일 이슈 정리', '시장 복기', '종목 퀴즈']) {
+  for (const label of ['국내 테마 흐름', '증시 자금', '미국 테마 흐름', '금일 이슈 정리', '시장 복기', '종목 퀴즈']) {
     const sizes = await page.evaluate(() => ({ scrollWidth: document.documentElement.scrollWidth, clientWidth: document.documentElement.clientWidth }))
     expect(sizes.scrollWidth).toBeLessThanOrEqual(sizes.clientWidth + 1)
     await page.getByRole('button', { name: label }).click()
