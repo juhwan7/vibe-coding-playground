@@ -177,6 +177,28 @@ jobs:
             fi
           fi
 
+          echo
+          echo "=== Raspberry Pi storage report ==="
+          echo "Root filesystem:"
+          df -h / || true
+          echo
+          echo "Root filesystem inodes:"
+          df -i / || true
+          echo
+          echo "App checkout:"
+          du -sh "$APP" 2>/dev/null || true
+          echo
+          echo "Docker disk usage:"
+          docker system df || true
+          echo
+          echo "MARKET FLOW persistent caches:"
+          docker compose exec -T backend sh -c '
+            du -sh /app/data /app/public-data 2>/dev/null || true
+            ls -lh /app/data/quiz-descriptions.json /app/data/market-history.jsonl /app/data/theme-candles.json /app/data/us-theme-candles.json 2>/dev/null || true
+          ' || true
+          echo "=== End storage report ==="
+          echo
+
           echo "Instant snapshot path is ready"
           cat /tmp/k-market-health.json
           echo
