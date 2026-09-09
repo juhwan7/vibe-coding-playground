@@ -22,6 +22,7 @@ const SESSION_MINUTES = 12 * 60
 const TEN_SECOND_MS = 10 * 1000
 const THIRTY_SECOND_MS = 30 * 1000
 const DISPLAY_MAX_LINE_GAP_MS = 90 * 1000
+const MAX_SAFE_FORWARD_FILL_MS = 3 * 60 * 1000
 const MAX_LIVE_POINTS = 4500
 const LIVE_STORAGE_PREFIX = 'k-market-theme-10s-v1:'
 
@@ -141,14 +142,20 @@ export function mergeThemeSeries(historical: ThemePoint[], live: ThemePoint[]) {
     .filter((point) => point?.timestamp && Number.isFinite(Date.parse(point.timestamp)) && Number.isFinite(point.value))
     .sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp))
 
+  if (!historyPoints.length) return livePoints.map((point) => ({ ...point, live: true, intervalSeconds: 10 }))
   if (!livePoints.length) return historyPoints
 
-  const firstLiveAt = Date.parse(livePoints[0].timestamp)
+  // 서버가 과거 1분봉을 뒤늦게 백필하면 복구된 이력을 정답으로 취급한다.
+  // 브라우저 localStorage에 남은 과거의 평평한 실시간 값이 복구 이력을 덮지 못하게 하고,
+  // 서버 이력의 마지막 시각 이후에만 10초 실시간 값을 이어 붙인다.
+  const lastHistoricalAt = Date.parse(historyPoints.at(-1)!.timestamp)
   const merged = new Map<string, ThemePoint>()
-  for (const point of historyPoints) {
-    if (Date.parse(point.timestamp) < firstLiveAt) merged.set(point.timestamp, { ...point, live: false })
+  for (const point of historyPoints) merged.set(point.timestamp, { ...point, live: false })
+  for (const point of livePoints) {
+    if (Date.parse(point.timestamp) > lastHistoricalAt) {
+      merged.set(point.timestamp, { ...point, live: true, intervalSeconds: 10 })
+    }
   }
-  for (const point of livePoints) merged.set(point.timestamp, { ...point, live: true, intervalSeconds: 10 })
 
   return [...merged.values()].sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp))
 }
@@ -179,36 +186,39 @@ export function resampleThemeSeries30s(source: ThemePoint[]) {
     }
 
     const bucketTimes = [...latestByBucket.keys()].sort((a, b) => a - b)
-    const firstBucket = bucketTimes[0]
-    const lastBucket = bucketTimes.at(-1)
-    if (firstBucket == null || lastBucket == null) continue
+    let previousBucket: number | null = null
+    let previousPoint: ThemePoint | null = null
 
-    let previous: ThemePoint | null = null
-    for (let bucketTime = firstBucket; bucketTime <= lastBucket; bucketTime += THIRTY_SECOND_MS) {
+    for (const bucketTime of bucketTimes) {
       const actual = latestByBucket.get(bucketTime)?.point
-      if (actual) {
-        previous = {
-          ...actual,
-          timestamp: new Date(bucketTime).toISOString(),
-          day,
-          closeValue: actual.value,
-          intervalSeconds: 30,
-          filled: false,
+      if (!actual) continue
+
+      // 정상 3분 이력 사이의 30초 표시값만 직전값으로 보간한다.
+      // 3분을 넘는 공백은 데이터 누락일 가능성이 있으므로 평평한 선을 만들지 않는다.
+      if (previousBucket != null && previousPoint && bucketTime - previousBucket <= MAX_SAFE_FORWARD_FILL_MS) {
+        for (let fillTime = previousBucket + THIRTY_SECOND_MS; fillTime < bucketTime; fillTime += THIRTY_SECOND_MS) {
+          result.push({
+            ...previousPoint,
+            timestamp: new Date(fillTime).toISOString(),
+            day,
+            closeValue: previousPoint.value,
+            intervalSeconds: 30,
+            filled: true,
+          })
         }
-        result.push(previous)
-        continue
       }
 
-      if (previous) {
-        result.push({
-          ...previous,
-          timestamp: new Date(bucketTime).toISOString(),
-          day,
-          closeValue: previous.value,
-          intervalSeconds: 30,
-          filled: true,
-        })
+      const normalized = {
+        ...actual,
+        timestamp: new Date(bucketTime).toISOString(),
+        day,
+        closeValue: actual.value,
+        intervalSeconds: 30,
+        filled: false,
       }
+      result.push(normalized)
+      previousBucket = bucketTime
+      previousPoint = normalized
     }
   }
 
@@ -311,8 +321,8 @@ export default function ThemeAverageCandleChart({ theme, accent }: { theme: Them
   const currentLabelY = Math.max(chartTop + 4, Math.min(chartBottom - currentLabelHeight - 4, latestY - currentLabelHeight / 2))
   const chartModeLabel = '테마 거래대금 가중 30초 선차트'
   const chartModeDetail = hasLiveSource
-    ? '10초 원천값 → 30초 표시 · 빈 구간은 직전값 유지'
-    : '기존 기록 → 30초 표시 · 빈 구간은 직전값 유지'
+    ? '10초 원천값 → 30초 표시 · 서버 복구 이력 우선 · 장시간 누락은 연결 안 함'
+    : '기존 기록 → 30초 표시 · 장시간 누락은 연결 안 함'
 
   return <div className="theme-chart-wrap theme-chart-emphasis" style={{ ['--theme-accent' as string]: accent }}>
     <div className="theme-chart-title">
