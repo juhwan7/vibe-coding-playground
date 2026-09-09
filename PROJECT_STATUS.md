@@ -2,35 +2,37 @@
 
 마지막 갱신: 2026-09-09 (KST)
 
-이 문서는 새 Chat/Codex 세션이 `juhwan7/vibe-coding-playground`의 현재 상태를 복원하기 위한 진입점입니다. 새 세션에서는 이 파일을 먼저 읽고, `CHANGELOG.md`, `MEMORY.md`, 열린 PR, 최근 main 커밋, GitHub Actions, `tunnel-status` 브랜치의 상태 파일을 이어서 확인합니다.
+이 문서는 새 Chat/Codex 세션이 `juhwan7/vibe-coding-playground`의 현재 상태를 빠르게 복원하기 위한 **최우선 진입 문서**입니다. 새 세션에서는 이 파일 → `CHANGELOG.md` → `MEMORY.md` → 최근 `main`/열린 PR → GitHub Actions → `tunnel-status` 상태 파일 순서로 확인합니다.
 
 ## 1. 프로젝트 목표
 
-한국 주식시장의 장중 자금 흐름을 한 화면에서 읽는 개인용 Market Intelligence 대시보드입니다. 단순 시세가 아니라 거래대금, 테마 회전, 외국인·기관·프로그램 수급, 데이터 신뢰도, 뉴스 근거와 시간 흐름을 함께 보고 시장 상태를 빠르게 이해하는 것이 목적입니다.
+한국 주식시장의 장중 자금 흐름을 한 화면에서 읽는 개인용 Market Intelligence 대시보드입니다. 단순 시세가 아니라 거래대금, 테마 회전, 외국인·기관·프로그램 수급, 뉴스 촉매, 데이터 신뢰도와 시간 흐름을 함께 보고 시장 상태를 빠르게 이해하는 것이 목적입니다.
 
-원칙은 다음과 같습니다.
+고정 원칙:
 
-- 확인되지 않은 원인을 사실처럼 만들지 않습니다.
-- 실제 공급원 데이터가 없으면 `-`, `MISSING`, `실데이터 미연결`처럼 명시합니다.
-- 뉴스와 주가의 시간적 선후는 보여주되 인과관계로 단정하지 않습니다.
-- 페이지 조회가 무거운 데이터 수집을 트리거하지 않도록 Pi가 prepared snapshot을 미리 만듭니다.
+- 확인되지 않은 원인을 사실처럼 만들지 않음
+- 실제 공급원 값이 없으면 `-`, `MISSING`, `실데이터 미연결` 표시
+- 차트 시각화는 확대할 수 있지만 실제 % 값을 변형하지 않음
+- 뉴스와 가격의 시간적 선후를 보여줘도 인과관계로 단정하지 않음
+- 페이지 조회가 무거운 데이터 수집을 직접 트리거하지 않도록 Pi가 prepared snapshot을 미리 생성
+- ETF/ETN 등 비개별주는 국내 테마/거래대금 개별주 화면에서 제외
 
 ## 2. 현재 릴리스
 
-- 릴리스: `0.6.0 Market Intelligence`
-- 기준 브랜치: `main`
-- 실제 Pi 배포 커밋은 `tunnel-status/RUNTIME_STATUS.md`의 `App deployed commit`을 기준으로 확인합니다.
-- 공개 주소 레지스트리는 `tunnel-status/CURRENT_TUNNEL.md`입니다.
-- 앱 로컬 헬스와 외부 터널 헬스는 `tunnel-status/RUNTIME_STATUS.md`에서 분리 확인합니다.
-- Quick Tunnel URL은 영구 주소가 아니므로 이 문서에 고정하지 않습니다.
+- 릴리스 기준: `0.6.1`
+- 목표 브랜치: `main`
+- 실제 Pi 배포 커밋: `tunnel-status/RUNTIME_STATUS.md`의 `App deployed commit` 확인
+- 현재 공개 주소: `tunnel-status/CURRENT_TUNNEL.md` 확인
+- README에는 마지막 확인 시점의 실제 Quick Tunnel URL도 표시하지만 Quick Tunnel은 회전 가능
 
 ## 3. 현재 아키텍처
 
 ```text
-Toss/Open data/News/Optional Futures Provider
+Toss / News / Open data / Optional Futures Provider
   → Raspberry Pi Node backend
-  → live market snapshot / history
-  → theme candidate engine
+  → live market snapshot / 1m history / candle cache
+  → 5-theme candidate engine
+  → 3m trading-amount-weighted theme series
   → Market Intelligence engine
   → prepared JSON
   → Nginx direct serving
@@ -38,7 +40,7 @@ Toss/Open data/News/Optional Futures Provider
   → Cloudflare Quick Tunnel
 ```
 
-백엔드는 마지막 정상 스냅샷과 장중 히스토리를 영속 저장합니다. Nginx는 다음 prepared JSON을 직접 제공합니다.
+prepared JSON:
 
 - `market-snapshot.json`
 - `market-history.json`
@@ -47,50 +49,63 @@ Toss/Open data/News/Optional Futures Provider
 - `us-theme-flow.json`
 - `feature-news.json`
 
-준비 파일이 없을 때만 Node API로 fallback합니다.
+prepared 파일이 없을 때만 Node API로 fallback합니다. 새로운 수집이 실패해도 last-known-good 화면을 우선 유지합니다.
 
 ## 4. 국내 테마 엔진
 
-원시 테마 서비스는 내부 challenger 확보를 위해 최대 5개 후보를 계산합니다. 사용자 화면의 최종 테마는 Market Intelligence가 최대 4개로 안정화합니다.
+### 사용자 화면 테마 수
 
-### 교체 규칙
+**항상 최대 5개**가 최종 목표입니다. 0.6.0에서 원시 후보 5개/최종 화면 4개로 나뉘었던 구조를 0.6.1에서 Market Intelligence까지 5개로 통일했습니다.
 
-- 화면 테마: 4개
-- 신규 후보가 기존 약한 테마보다 기본 8% 이상 강하거나
-- 3회 연속 우위를 확인해야 교체
-- 작은 순위 차이로 카드가 계속 깜빡이는 현상을 방지
+선정 우선순위:
 
-환경변수:
+1. TOP50 안에서 같은 테마 개별주 3종 이상
+2. 부족하면 TOP50 2종 이상
+3. 그래도 부족하면 TOP100 2종 이상
+4. 마지막 보강은 TOP100 1종 후보
 
-- `THEME_REPLACEMENT_MARGIN=0.08`
-- `THEME_REPLACEMENT_CONFIRMATIONS=3`
+테마는 거래대금과 강도점수를 기준으로 정렬하며, 작은 순위 변화로 카드가 계속 바뀌지 않도록 히스테리시스를 둡니다.
 
-### 테마 강도 해석 지표
+기본 교체 정책:
 
-각 테마에 다음 값을 계산합니다.
+- 신규 후보가 기존 약한 테마보다 약 8% 이상 강하거나
+- 3회 연속 우위를 확인한 경우 교체
+- 환경변수: `THEME_REPLACEMENT_MARGIN`, `THEME_REPLACEMENT_CONFIRMATIONS`
 
-- 누적 거래대금
-- 중복조정 거래대금: 여러 테마에 속한 종목은 1/N 배분
-- 상승 확산도
-- 구성종목 중앙값 수익률
-- 대장주 거래대금 집중도
-- 10분 환산 자금 유입 속도
-- 최근 1시간/3시간 변화
-- 종합 강도점수
+## 5. 거래대금 가중 3분 테마선
 
-### 생애주기
+테마 평균선은 더 이상 동일가중 단순평균이 아닙니다.
 
-원시값 기반으로 다음 상태를 표시합니다.
+각 구성종목의 가격을 기준시점 대비 수익률로 변환하고, **각 3분 구간의 거래대금**을 가중치로 사용합니다.
 
-`출현 → 확산 → 주도 → 과열 → 둔화 → 이탈`
+예시:
 
-조건이 어느 단계에도 강하게 해당하지 않으면 `유지`로 표시합니다.
+```text
+A 종목 +5% / 거래대금 100억
+B 종목 -5% / 거래대금 900억
+→ 테마 가중수익률 약 -4%
+```
 
-## 5. 테마 카탈로그
+따라서 테마 안에서 거래대금이 압도적으로 큰 종목이 빠지면 테마선도 강하게 하락하고, 큰 거래대금이 실린 상승 종목은 테마선을 강하게 끌어올립니다. 모든 거래대금 가중치가 0/누락인 구간에만 단순평균으로 fallback합니다.
 
-국내 테마 매핑은 코드에 직접 박아두지 않고 `backend/data/themes.kr.json`에서 관리합니다.
+10초 live overlay도 현재 구성종목의 누적 거래대금 비중으로 가중합니다.
 
-현재 포함 카테고리:
+### 차트 시각화
+
+- 실제 % 값 유지
+- 강한 자동 Y축 확대
+- 기존보다 큰 차트 높이
+- 더 굵은 선과 현재점
+- 0% 기준선 유지
+- 실제 구간 고점/저점 표시
+
+시각적으로 크게 보이더라도 수익률 데이터 자체를 인위적으로 배수 처리하지 않습니다.
+
+## 6. 국내 테마 카탈로그
+
+검증 카탈로그는 `backend/data/themes.kr.json`에서 관리합니다.
+
+현재 카테고리:
 
 - 반도체
 - 원전
@@ -103,12 +118,89 @@ Toss/Open data/News/Optional Futures Provider
 - 자동차
 - 금융
 - 로봇
+- **광통신**
 
-AI 자동 추정 후보를 곧바로 실제 집계에 넣지 않고 검토된 코드·키워드 목록만 사용하는 것이 기본 정책입니다.
+광통신은 거래대금 상위권의 대한광통신·우리로·옵티코어 등 관련 종목이 함께 강해질 때 별도 테마 후보로 잡을 수 있도록 0.6.1에서 추가했습니다.
 
-## 6. 데이터 신뢰도와 품질 감시
+AI가 임의 추정한 종목을 즉시 실제 집계에 넣지 않고 검토된 코드/키워드를 카탈로그에 반영하는 정책은 유지합니다.
 
-Market Intelligence는 시장/테마/뉴스/선물에 대해 다음 신선도 상태를 제공합니다.
+## 7. 거래대금 TOP100 종목명
+
+랭킹 원본에서 `name`이 비어 있거나 코드만 올 수 있으므로 별도 메타데이터를 결합합니다.
+
+0.6.1 기준:
+
+- TOP100 메타데이터를 25개씩 나눠 `/api/v1/stocks` 조회
+- `name`, `stockName`, `displayName`, `shortName`, `koreanName` 후보 확인
+- 중첩 `stock.*` 필드도 확인
+- 정확히 6자리 숫자인 값은 종목명으로 인정하지 않음
+- 실시간 `name=null` 또는 코드값이 기존 정상 종목명을 덮어쓰지 않음
+- 아직 이름이 준비되지 않은 경우 UI에는 `종목명 확인 중` 표시
+
+이름 문제 회귀는 `backend/stockMetadata.test.mjs`에서 검증합니다.
+
+## 8. 시황 요약 정책
+
+시황 요약의 하루 시작점은 **06:00 KST**입니다.
+
+매 3분 뉴스 갱신 시 “새 기사만” 보는 것이 아니라 당일 06:00부터 현재까지 Google News RSS를 다시 검색합니다. 따라서 오전에 한 번 놓친 기사도 이후 검색에서 발견되면 추가할 수 있습니다.
+
+동작:
+
+```text
+매 refresh
+  → 06:00~현재 범위 재검색
+  → 기존 오늘 후보와 합치기
+  → 광고/리딩방/저가치 제거
+  → 같은 링크/같은 사건 묶기
+  → 시장영향 + 종목재료 + 테마촉매 평가
+  → 시간순 타임라인 유지
+```
+
+검색 대상에는 다음이 포함됩니다.
+
+- 현재 거래대금 상위 종목
+- 현재 주도테마 5개
+- 반도체/HBM/AI/데이터센터/광통신
+- 원전/SMR/전력기기/방산/조선/바이오/로봇/2차전지
+- 수주/공급/계약/투자/증설/정책/승인/허가/실적/M&A
+- CPI/PCE/FOMC/연준/고용/관세/환율/유가
+- 전쟁/호르무즈 등 지정학 이슈
+
+이미 수집된 당일 비중복 후보는 유지합니다. 같은 링크나 같은 사건의 반복 기사는 중복 제거/통합합니다.
+
+## 9. 뉴스 근거 등급
+
+- `A`: DART/KRX/금융감독원/공시 등 1차자료 확인
+- `B`: 복수 출처에서 같은 이슈 확인
+- `C`: 단일 기사 또는 아직 1차자료 미확인
+
+`/api/market/event-timeline`은 종목 3분 가격 흐름과 매칭된 뉴스 시간을 함께 제공합니다. 시간적 인접성을 인과관계로 표현하지 않습니다.
+
+## 10. Market Intelligence
+
+Market Intelligence는 다음 원시 데이터를 조합합니다.
+
+- 상승 종목 비율
+- 상승 종목 거래대금 비중
+- TOP10 거래대금 집중도
+- 외국인/기관 현물 순매수
+- 차익/비차익 프로그램
+- 테마 확산도
+- 구성종목 중앙값 수익률
+- 대장주 거래대금 집중도
+- 10분 환산 자금 유입 속도
+- 1시간/3시간 테마 변화
+
+테마 생애주기:
+
+`출현 / 확산 / 주도 / 과열 / 둔화 / 이탈 / 유지`
+
+시장 상태는 `위험선호 우위`, `방어적 장세`, `상승 거래대금 우위`, `하락 거래대금 우위`, `중립 장세` 등으로 표시하며 근거값을 함께 보여줍니다.
+
+## 11. 데이터 신선도와 품질 감시
+
+신선도:
 
 - `LIVE`
 - `DELAYED`
@@ -116,156 +208,112 @@ Market Intelligence는 시장/테마/뉴스/선물에 대해 다음 신선도 �
 - `FALLBACK`
 - `MISSING`
 
-현재 자동 감지 항목:
+자동 품질 감지:
 
-- 시장 스냅샷 지연/정지
+- 시장 스냅샷 지연
 - 테마 원천 데이터 지연
-- TOP100 표본이 비정상적으로 적음
-- 상위 종목 등락률이 지나치게 동일함
-- 당일 누적 거래대금이 이전 값보다 비정상적으로 감소
+- TOP100 표본 부족
+- 상위 종목 등락률이 비정상적으로 동일함
+- 누적 거래대금 역행
 
-오류가 생겨도 last-known-good 화면은 유지하되 신뢰도 상태를 별도 표시합니다.
+## 12. 장중 복기 / Close Archive
 
-## 7. 시장 상태 엔진
-
-규칙 기반으로 다음 데이터를 조합해 현재 시장 상태를 설명합니다.
-
-- 상승 종목 비율
-- 상승 종목 거래대금 비중
-- TOP10 거래대금 집중도
-- 외국인 현물 순매수
-- 기관 현물 순매수
-- 차익/비차익 프로그램
-- 확산형 주도테마 수
-
-화면에서는 `위험선호 우위`, `방어적 장세`, `상승 거래대금 우위`, `하락 거래대금 우위`, `중립 장세` 등으로 표시하며, 판정 근거 원시값도 함께 보여줍니다.
-
-## 8. 수급 흐름
-
-Market Intelligence 패널에서 장중 히스토리를 이용해 다음 4개 흐름을 sparkline으로 표시합니다.
-
-- 외국인 현물
-- 기관 현물
-- 비차익 프로그램
-- 차익 프로그램
-
-현재값 하나보다 방향과 가속을 읽을 수 있게 하는 목적입니다.
-
-## 9. 뉴스 근거 등급과 이벤트 타임라인
-
-뉴스는 A/B/C로 근거 수준을 구분합니다.
-
-- `A`: DART/KRX/금융감독원/공시 등 1차자료로 확인된 경우
-- `B`: 복수 출처에서 같은 이슈가 확인된 경우
-- `C`: 단일 기사 또는 아직 1차자료 확인이 안 된 경우
-
-`/api/market/event-timeline`은 종목별 3분 가격 흐름과 매칭된 뉴스 시간을 합쳐 반환합니다. 현재 화면에서는 주도테마 대장주를 우선 표시합니다. 뉴스 직후 가격 반응을 볼 수 있지만 인과관계로 단정하지 않습니다.
-
-## 10. 장중 복기와 종가판
-
-`/api/market/replay`는 저장된 시장 히스토리에서 최근 장중 상태를 복원합니다. 기본 화면은 최근 2거래일, 5분 해상도 슬라이더를 제공합니다.
-
-매 거래일 다음 두 스냅샷을 별도로 영속 저장합니다.
-
+- `/api/market/replay`: 최근 장중 상태 복기
 - `15:20 PRE_CLOSE`
 - `15:35 FINAL`
+- 기본 35거래일 보관
 
-Close Archive는 기본 35거래일 보관합니다. 이를 통해 15:20 당시 강했던 테마/종목이 종가까지 유지됐는지 비교할 수 있습니다.
+목적은 종가 전 강했던 테마/종목/수급이 실제 종가까지 유지됐는지 사후 비교하는 것입니다.
 
-## 11. 선물 데이터
+## 13. 선물 데이터
 
-프론트와 백엔드는 KOSPI200 선물 데이터를 받을 구조를 갖췄습니다. 다만 현재 검증된 실제 선물 공급원 URL/권한이 없으면 값을 표시하지 않습니다.
-
-선택 환경변수:
+KOSPI200 선물은 검증된 공급원 URL이 연결된 경우에만 사용합니다.
 
 - `FUTURES_SNAPSHOT_URL`
 - `FUTURES_SNAPSHOT_TOKEN`
 - `FUTURES_REFRESH_MS`
 
-공급원이 없을 때는 `available=false`, `실데이터 미연결`로 표시합니다. 가짜 값이나 추정 계약수를 생성하지 않습니다.
+공급원이 없으면 `available=false`이며 가짜 계약수나 방향을 만들지 않습니다.
 
-## 12. API 운영 보호
+## 14. 주요 갱신 주기
 
-공개 `POST /api/market/refresh`에는 기본 20초 서버 쿨다운을 적용합니다.
+기본값:
 
-- `MANUAL_REFRESH_COOLDOWN_MS=20000`
-- 쿨다운 중에는 HTTP 429와 `retryAfterSeconds` 반환
-- 동시에 진행 중인 실제 refresh는 기존 Promise를 공유
+- 핵심 국내 시장 스냅샷: 장중 약 10초
+- 테마 1분봉 수집/가중 3분 집계: 약 60초
+- 시황 요약 재검색: 180초
+- 느린 투자자/프로그램 데이터: 180초
+- prepared JSON 게시: 최대 2초 단위
+- 장 외 시간: 약 300초
 
-CORS는 기본 wildcard를 사용하지 않습니다. 다른 Origin 허용이 정말 필요한 경우에만 `MARKET_ALLOWED_ORIGIN`을 설정합니다.
+## 15. 주요 API
 
-## 13. 주요 API
-
-기존 API와 함께 다음 엔드포인트가 추가되었습니다.
-
+- `/api/health`
+- `/api/market/snapshot`
+- `/api/market/theme-flow`
+- `/api/market/theme-stock-chart`
+- `/api/market/feature-news`
 - `/api/market/intelligence`
-- `/api/market/event-timeline?symbol=000000`
+- `/api/market/event-timeline`
 - `/api/market/replay`
 - `/api/market/close-archive`
 - `/api/market/futures`
 
-## 14. CI/CD
+## 16. CI/CD
 
-CI 검증 항목:
+CI 검증:
 
 - TypeScript type check
-- Vitest
+- Vitest unit tests
 - Node backend tests
 - backend HTTP smoke
 - production Vite build
-- runtime frontend MIME smoke
+- runtime JS MIME smoke
 - backend Docker build
-- Playwright browser tests
+- Playwright desktop/mobile tests
 
-`package-lock.json`을 저장소에 유지하고 CI 설치는 `npm ci`를 사용합니다.
-
-배포 흐름:
+배포:
 
 ```text
 작업 브랜치
-  → PR
-  → CI
-  → main 병합
-  → main CI 성공
-  → Deploy to Raspberry Pi
-  → 검증된 frontend-dist 사용
-  → exact verified SHA checkout
-  → Docker 갱신
-  → local health/snapshot/MIME 검증
-  → Quick Tunnel status + Runtime status 게시
+ → PR
+ → CI 성공
+ → main 병합
+ → main CI 성공
+ → Raspberry Pi self-hosted runner
+ → 검증된 frontend-dist 배포
+ → 필요한 backend/frontend image만 재빌드
+ → local health/snapshot/MIME 검증
+ → Quick Tunnel / Runtime status 게시
 ```
 
-## 15. 터널과 런타임 상태
+공개 저장소의 PR 코드를 Pi runner에서 직접 실행하지 않고 **성공한 main push의 검증된 SHA만** 배포합니다.
 
-두 파일의 역할을 구분합니다.
+## 17. 상태 파일
 
-### `CURRENT_TUNNEL.md`
-
+`tunnel-status/CURRENT_TUNNEL.md`
 - 현재 Quick Tunnel URL
-- URL/status가 바뀐 시각
-- tunnel service scope/system 상태
+- tunnel 상태
+- tunnel service scope
 
-### `RUNTIME_STATUS.md`
-
-- 최근 독립 헬스체크 시각
+`tunnel-status/RUNTIME_STATUS.md`
 - Pi 로컬 앱 상태
-- Pi 저장소의 실제 배포 커밋
+- 실제 배포 SHA
 - 외부 터널 도달 가능 여부
-- CURRENT_TUNNEL 레지스트리 갱신시각
-- 현재 터널 URL first-seen 시각과 age
+- 상태 갱신 시각
 
-즉 앱 자체가 정상인데 터널만 끊긴 경우를 명확히 분리할 수 있습니다.
+앱 자체 정상 여부와 외부 터널 장애를 분리해서 봅니다.
 
-## 16. 다음 세션 시작 순서
-
-새 Chat/Codex에서 다음 순서로 확인합니다.
+## 18. 다음 세션 시작 순서
 
 1. `PROJECT_STATUS.md`
 2. `CHANGELOG.md`
-3. 열린 PR과 최근 main 커밋
-4. 최근 GitHub Actions
-5. `tunnel-status/CURRENT_TUNNEL.md`
-6. `tunnel-status/RUNTIME_STATUS.md`
-7. 사용자 신규 요청
+3. `MEMORY.md`
+4. `REQUESTS.md`
+5. 최근 `main` 커밋과 열린 PR
+6. 최근 GitHub Actions
+7. `tunnel-status/CURRENT_TUNNEL.md`
+8. `tunnel-status/RUNTIME_STATUS.md`
+9. 사용자 신규 요청
 
-이미 완료된 기능을 처음부터 다시 만들지 않습니다. 새 변경은 기존 prepared-snapshot/Pi 자원 절약 구조와 데이터 비조작 원칙을 유지해야 합니다.
+이미 완료된 기능을 처음부터 다시 만들지 않습니다. 특히 **5개 테마, 거래대금 가중 테마선, 06:00 뉴스 재검색/누적, TOP100 종목명 메타데이터 결합**은 현재 기본 동작으로 취급합니다.
