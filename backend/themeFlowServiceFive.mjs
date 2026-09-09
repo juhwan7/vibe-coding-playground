@@ -2,6 +2,7 @@ import { mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { ThemeFlowService, aggregateStockCandles, isIndividualStock, selectThemeGroups } from './themeFlowService.mjs'
 import { aggregateTradingAmountWeightedThemeSeries } from './themeWeightedSeries.mjs'
+import { repairMissingIntradayHistory } from './themeGapRepair.mjs'
 import { stockMeta, stockRecords, validStockName } from './stockMetadata.mjs'
 import { sleep } from './tossClient.mjs'
 
@@ -84,6 +85,7 @@ export class ThemeFlowServiceFive extends ThemeFlowService {
     this.lastCachePersistAt = 0
     this.activeChartSymbols = []
     this.recentChartSymbols = []
+    this.gapRepairDiagnostics = new Map()
     this.cacheGuard = {
       loadSkippedOversize: false,
       skippedBytes: 0,
@@ -95,6 +97,7 @@ export class ThemeFlowServiceFive extends ThemeFlowService {
   cacheStats() {
     let candles = 0
     for (const items of this.candleCache.values()) candles += items?.length ?? 0
+    const pendingGapSymbols = [...this.gapRepairDiagnostics.values()].filter((item) => (item?.afterGapCount ?? 0) > 0).length
     return {
       symbols: this.candleCache.size,
       candles,
@@ -102,6 +105,7 @@ export class ThemeFlowServiceFive extends ThemeFlowService {
       maxCandlesPerSymbol: this.maxCandlesPerSymbol,
       maxLoadBytes: this.maxCacheLoadBytes,
       persistMinMs: this.persistMinMs,
+      pendingGapSymbols,
       ...this.cacheGuard,
     }
   }
@@ -149,6 +153,7 @@ export class ThemeFlowServiceFive extends ThemeFlowService {
     for (const [symbol, candles] of [...this.candleCache.entries()]) {
       if (!keep.has(symbol)) {
         this.candleCache.delete(symbol)
+        this.gapRepairDiagnostics.delete(symbol)
         pruned += 1
         continue
       }
@@ -228,6 +233,28 @@ export class ThemeFlowServiceFive extends ThemeFlowService {
     const normalized = String(symbol ?? '').trim()
     if (!normalized) return
     this.recentChartSymbols = [normalized, ...this.recentChartSymbols.filter((item) => item !== normalized)].slice(0, 10)
+  }
+
+  async refreshSymbol(symbol) {
+    await super.refreshSymbol(symbol)
+    const existing = this.candleCache.get(symbol) ?? []
+    const result = await repairMissingIntradayHistory({
+      client: this.client,
+      symbol,
+      existing,
+      maxItems: this.maxCandlesPerSymbol,
+      maxPages: 8,
+    })
+    this.candleCache.set(symbol, result.candles)
+    this.gapRepairDiagnostics.set(symbol, {
+      checkedAt: new Date().toISOString(),
+      beforeGapCount: result.beforeGapCount,
+      afterGapCount: result.afterGapCount,
+      pages: result.pages,
+      requests: result.requests,
+      repaired: result.repaired,
+    })
+    return result.candles
   }
 
   async stockChartReady(symbol, { fallbackName = null } = {}) {
@@ -341,6 +368,7 @@ export class ThemeFlowServiceFive extends ThemeFlowService {
           chart: 'weighted-close-line',
           tradingAmount: 'market-ranking-1d + intraday-3m-weight',
           historyTradingDays: 2,
+          gapRepair: 'remaining 15m+ gap -> direct before=<gap.to> 1m backfill',
           persisted: true,
           cacheGuard: 'oversize-skip + active/recent-symbol-prune + 5m-persist-throttle',
         },
