@@ -5,6 +5,7 @@ import UsMarketWorkspace from './UsMarketWorkspace'
 import UsDataNotice from './UsDataNotice'
 import StockQuiz, { warmQuizUniverse } from './StockQuiz'
 import FeatureNews from './FeatureNews'
+import DailyIssues from './DailyIssues'
 import './liveMarket.css'
 import './theme.css'
 import './usMarketWorkspace.css'
@@ -13,7 +14,7 @@ export { moneyFlowScore } from './marketData'
 export { answerIsCorrect, buildQuizRound } from './StockQuiz'
 
 type Theme = 'light' | 'dark'
-type Page = 'liquidity' | 'flow' | 'us-flow' | 'quiz'
+type Page = 'liquidity' | 'flow' | 'us-flow' | 'daily-issues' | 'quiz'
 
 export default function App() {
   const [page, setPage] = useState<Page>('liquidity')
@@ -62,6 +63,7 @@ export default function App() {
   let content = <LiquidityDashboard key={`liquidity-${dataRevision}`} />
   if (page === 'flow') content = <div className="flow-page-with-news" key={`flow-${dataRevision}`}><FeatureNews /><MarketWorkspace /></div>
   if (page === 'us-flow') content = <div key={`us-flow-${dataRevision}`}><UsDataNotice /><UsMarketWorkspace /></div>
+  if (page === 'daily-issues') content = <DailyIssues key={`daily-issues-${dataRevision}`} />
   if (page === 'quiz') content = <StockQuiz key={`quiz-${dataRevision}`} />
 
   return <div className="app-root">
@@ -71,6 +73,7 @@ export default function App() {
         <button className={page === 'liquidity' ? 'active' : ''} onClick={() => setPage('liquidity')}>증시 자금</button>
         <button className={page === 'flow' ? 'active' : ''} onClick={() => setPage('flow')}>국내 테마 흐름</button>
         <button className={page === 'us-flow' ? 'active' : ''} onClick={() => setPage('us-flow')}>미국 테마 흐름</button>
+        <button className={page === 'daily-issues' ? 'active' : ''} onClick={() => setPage('daily-issues')}>금일 이슈 정리</button>
         <button className={page === 'quiz' ? 'active' : ''} onClick={() => setPage('quiz')}>종목 퀴즈</button>
       </div>
       <aside className="nav-actions">
