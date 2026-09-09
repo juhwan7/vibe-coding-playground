@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
+  buildDailyBars,
   buildIntradayLine,
   buildThemeNewsEvidence,
   buildTwoDayIntraday,
@@ -10,29 +11,58 @@ import {
   summarizeThemeFallback,
 } from './dailyIssueService.mjs'
 
+function candle(timestamp, openPrice, highPrice, lowPrice, closePrice, volume = 1000) {
+  return { timestamp, openPrice, highPrice, lowPrice, closePrice, volume }
+}
+
 test('buildIntradayLine keeps every real 1-minute close from the latest trading day', () => {
   const points = buildIntradayLine([
-    { timestamp: '2026-09-08T09:00:00+09:00', closePrice: 90 },
-    { timestamp: '2026-09-09T09:00:00+09:00', closePrice: 100 },
-    { timestamp: '2026-09-09T09:01:00+09:00', closePrice: 101 },
-    { timestamp: '2026-09-09T09:02:00+09:00', closePrice: 102 },
+    candle('2026-09-08T09:00:00+09:00', 89, 91, 88, 90),
+    candle('2026-09-09T09:00:00+09:00', 99, 101, 98, 100),
+    candle('2026-09-09T09:01:00+09:00', 100, 102, 99, 101),
+    candle('2026-09-09T09:02:00+09:00', 101, 103, 100, 102),
   ])
   assert.deepEqual(points.map((point) => point.value), [100, 101, 102])
 })
 
-test('buildTwoDayIntraday keeps latest two trading days separate without 5-minute compression', () => {
+test('buildTwoDayIntraday keeps latest two trading days separate and preserves every real 1-minute OHLC bar', () => {
   const days = buildTwoDayIntraday([
-    { timestamp: '2026-09-07T09:00:00+09:00', closePrice: 80 },
-    { timestamp: '2026-09-08T09:00:00+09:00', closePrice: 90 },
-    { timestamp: '2026-09-08T09:01:00+09:00', closePrice: 91 },
-    { timestamp: '2026-09-08T09:02:00+09:00', closePrice: 92 },
-    { timestamp: '2026-09-09T09:00:00+09:00', closePrice: 100 },
-    { timestamp: '2026-09-09T09:01:00+09:00', closePrice: 101 },
-    { timestamp: '2026-09-09T09:02:00+09:00', closePrice: 102 },
+    candle('2026-09-07T09:00:00+09:00', 79, 81, 78, 80),
+    candle('2026-09-08T09:00:00+09:00', 89, 91, 88, 90),
+    candle('2026-09-08T09:01:00+09:00', 90, 92, 89, 91),
+    candle('2026-09-08T09:02:00+09:00', 91, 93, 90, 92),
+    candle('2026-09-09T09:00:00+09:00', 99, 101, 98, 100),
+    candle('2026-09-09T09:01:00+09:00', 100, 102, 99, 101),
+    candle('2026-09-09T09:02:00+09:00', 101, 103, 100, 102),
   ])
   assert.deepEqual(days.map((day) => day.date), ['2026-09-08', '2026-09-09'])
-  assert.deepEqual(days[0].points.map((point) => point.value), [90, 91, 92])
-  assert.deepEqual(days[1].points.map((point) => point.value), [100, 101, 102])
+  assert.deepEqual(days[0].points.map((point) => point.close), [90, 91, 92])
+  assert.deepEqual(days[1].points.map((point) => point.close), [100, 101, 102])
+  assert.deepEqual(days[1].points[0], {
+    timestamp: '2026-09-09T09:00:00+09:00',
+    open: 99,
+    high: 101,
+    low: 98,
+    close: 100,
+    volume: 1000,
+  })
+})
+
+test('buildDailyBars keeps only the latest requested real daily OHLC bars', () => {
+  const bars = buildDailyBars([
+    candle('2026-09-05T15:30:00+09:00', 80, 85, 78, 84, 10000),
+    candle('2026-09-08T15:30:00+09:00', 84, 90, 82, 89, 12000),
+    candle('2026-09-09T15:20:00+09:00', 89, 94, 87, 93, 14000),
+  ], 2)
+  assert.deepEqual(bars.map((bar) => bar.timestamp), ['2026-09-08T15:30:00+09:00', '2026-09-09T15:20:00+09:00'])
+  assert.deepEqual(bars[1], {
+    timestamp: '2026-09-09T15:20:00+09:00',
+    open: 89,
+    high: 94,
+    low: 87,
+    close: 93,
+    volume: 14000,
+  })
 })
 
 test('compactCompanySummary prefers the core business sentence over company history', () => {

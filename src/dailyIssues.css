@@ -215,6 +215,7 @@
   padding: 15px 15px 12px;
   min-width: 0;
 }
+.daily-issues-chart-wrap.daily-context { padding-bottom: 10px; }
 .daily-issues-chart-summary {
   display: flex;
   justify-content: flex-end;
@@ -226,16 +227,32 @@
 .daily-issues-chart-summary span { margin-right: auto; color: #708696; font-size: 16px; font-weight: 800; }
 .daily-issues-chart-summary strong { font-size: 26px; }
 .daily-issues-chart-summary b { font-size: 18px; }
+.daily-issues-chart-summary.compact-chart-summary strong { font-size: 22px; }
+
 .daily-issues-big-chart { width: 100%; height: 380px; overflow: visible; display: block; }
+.daily-issues-daily-chart { width: 100%; height: 190px; overflow: visible; display: block; }
 .daily-issues-big-grid { stroke: rgba(113, 136, 153, .16); stroke-width: 1; vector-effect: non-scaling-stroke; }
 .daily-issues-big-tick { stroke: rgba(113, 136, 153, .4); stroke-width: 1; vector-effect: non-scaling-stroke; }
 .daily-issues-session-divider { stroke: rgba(113, 136, 153, .34); stroke-width: 1; stroke-dasharray: 4 5; vector-effect: non-scaling-stroke; }
 .daily-issues-big-y-label,
 .daily-issues-big-x-label { fill: #688091; font-size: 14px; font-weight: 700; }
 .daily-issues-big-day-label { fill: #9aafbd; font-size: 16px; font-weight: 900; }
-.daily-issues-big-line { stroke-width: 2.4; vector-effect: non-scaling-stroke; stroke-linecap: round; stroke-linejoin: round; }
-.daily-issues-big-chart.up .daily-issues-big-line { stroke: #ff5575; }
-.daily-issues-big-chart.down .daily-issues-big-line { stroke: #4d95ff; }
+
+.daily-issues-ohlc-bar { color: #8799a5; }
+.daily-issues-ohlc-bar.up { color: #ff5575; }
+.daily-issues-ohlc-bar.down { color: #4d95ff; }
+.daily-issues-ohlc-bar.flat { color: #8799a5; }
+.daily-issues-ohlc-wick,
+.daily-issues-ohlc-tick {
+  stroke: currentColor;
+  vector-effect: non-scaling-stroke;
+  shape-rendering: geometricPrecision;
+}
+.daily-issues-ohlc-wick { stroke-width: 1.05; }
+.daily-issues-ohlc-tick { stroke-width: 1.2; }
+.daily-issues-daily-bar .daily-issues-ohlc-wick { stroke-width: 1.5; }
+.daily-issues-daily-bar .daily-issues-ohlc-tick { stroke-width: 1.8; }
+
 .daily-issues-chart-legend {
   display: flex;
   justify-content: center;
@@ -247,6 +264,21 @@
 }
 .daily-issues-chart-legend span { display: inline-flex; gap: 7px; }
 .daily-issues-chart-legend b { color: #a2b4bf; }
+.daily-issues-ohlc-legend {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding-top: 5px;
+  color: #708696;
+  font-size: 13px;
+}
+.daily-issues-ohlc-legend span { display: inline-flex; align-items: center; gap: 6px; font-weight: 800; }
+.daily-issues-ohlc-legend i { width: 13px; height: 2px; border-radius: 999px; display: inline-block; background: #8799a5; }
+.daily-issues-ohlc-legend i.up { background: #ff5575; }
+.daily-issues-ohlc-legend i.down { background: #4d95ff; }
+.daily-issues-ohlc-legend small { font-size: 13px; color: #708696; }
 
 .daily-issues-detail-issue {
   display: grid;
@@ -273,6 +305,7 @@
   border: 1px dashed rgba(113, 135, 151, .2);
   border-radius: 7px;
 }
+.daily-issues-chart-empty.daily { height: 165px; }
 .daily-issues-chart-empty.large { height: 380px; font-size: 20px; }
 
 :root[data-theme='light'] .daily-issues-wait strong,
@@ -316,7 +349,7 @@
 
 @media (max-width: 1250px) {
   .daily-issues-layout { grid-template-columns: 1fr; }
-  .daily-issues-detail { position: static; order: -1; }
+  .daily-issues-detail { position: static; }
   .daily-issues-list-body { max-height: none; }
   .daily-issues-list-head,
   .daily-issues-list-row { grid-template-columns: 48px minmax(220px, 1fr) 92px 120px minmax(260px, 1.6fr); }
@@ -342,7 +375,9 @@
   .daily-issues-detail-price { justify-items: start; grid-auto-flow: column; align-items: baseline; gap: 10px; }
   .daily-issues-detail-head h2 { font-size: 31px; }
   .daily-issues-company-summary { font-size: 17px; }
+  .daily-issues-daily-chart { height: 160px; }
   .daily-issues-big-chart { height: 300px; }
   .daily-issues-chart-summary { flex-wrap: wrap; }
   .daily-issues-chart-summary span { flex: 1 0 100%; }
+  .daily-issues-ohlc-legend { justify-content: flex-start; }
 }
