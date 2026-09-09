@@ -69,6 +69,12 @@ export default function ThemeAverageCandleChart({ theme, accent }: { theme: Them
   const ticks = days.flatMap((day, dayIndex) => [8, 10, 12, 14, 16, 18, 20].map((hour) => ({ day, dayIndex, hour, minute: (hour - 8) * 60 })))
   const perDay = days.map((day) => points.filter((point) => point.day === day))
   const latest = points.at(-1)!
+  const latestX = xForTimestamp(latest.timestamp, latest.day)
+  const latestY = y(latest.lineValue)
+  const currentLabelWidth = 100
+  const currentLabelHeight = 26
+  const currentLabelX = latestX > width - currentLabelWidth - 14 ? latestX - currentLabelWidth - 10 : latestX + 10
+  const currentLabelY = Math.max(chartTop + 4, Math.min(chartBottom - currentLabelHeight - 4, latestY - currentLabelHeight / 2))
 
   return <div className="theme-chart-wrap theme-chart-emphasis" style={{ ['--theme-accent' as string]: accent }}>
     <div className="theme-chart-title">
@@ -91,13 +97,19 @@ export default function ThemeAverageCandleChart({ theme, accent }: { theme: Them
       {days.map((day, dayIndex) => <text key={`${day}-label`} x={xForMinute(dayIndex, 0) + 4} y="15" className="theme-day-label">{compactDay(day)} {dayIndex === days.length - 1 ? '오늘' : '전일'}</text>)}
       <text x={width - 5} y={chartTop + 10} textAnchor="end" className="theme-candle-price-label">{fmtRate(hi)}</text>
       <text x={width - 5} y={chartBottom - 4} textAnchor="end" className="theme-candle-price-label">{fmtRate(lo)}</text>
+      <line x1={latestX} x2={latestX} y1={chartTop} y2={chartBottom} className="theme-current-guide" />
       {perDay.map((dayPoints, index) => {
         const polyline = dayPoints.map((point) => `${xForTimestamp(point.timestamp, point.day)},${y(point.lineValue)}`).join(' ')
         return <polyline key={days[index]} points={polyline} className="theme-average-line" fill="none" />
       })}
-      <circle cx={xForTimestamp(latest.timestamp, latest.day)} cy={y(latest.lineValue)} r="4.2" className="theme-average-current-dot">
+      <circle cx={latestX} cy={latestY} r="9" className="theme-average-current-halo" aria-hidden="true" />
+      <circle cx={latestX} cy={latestY} r="4.8" className="theme-average-current-dot">
         <title>{`${compactDay(latest.day)} · ${fmtRate(latest.lineValue)}`}</title>
       </circle>
+      <g className="theme-current-label" transform={`translate(${currentLabelX} ${currentLabelY})`}>
+        <rect width={currentLabelWidth} height={currentLabelHeight} rx="6" />
+        <text x="9" y="17">현재 {fmtRate(latest.lineValue)}</text>
+      </g>
     </svg>
   </div>
 }
