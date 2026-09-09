@@ -75,15 +75,42 @@ test('daily issue digest menu is available before or after 15:20', async ({ page
   await page.screenshot({ path: testInfo.outputPath('daily-issues.png'), fullPage: true })
 })
 
-test('stock quiz separates full KOSPI200 and KOSDAQ150 company-description pools', async ({ page }) => {
+test('stock quiz uses one prepared cache and shows four choices immediately', async ({ page }) => {
+  await page.route('**/data/quiz-prepared.json', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        ok: true,
+        source: 'test prepared cache',
+        sourceDate: '20260909',
+        expectedCounts: { kospi200: 200, kosdaq150: 150, total: 350 },
+        counts: { kospi200: 4, kosdaq150: 4, ready: 8 },
+        kospi200: [
+          { code: '005930', name: '삼성전자', description: '메모리 반도체와 스마트폰 등을 생산하는 기업임.', source: 'test' },
+          { code: '000660', name: 'SK하이닉스', description: 'DRAM과 NAND 등 메모리 반도체를 생산하는 기업임.', source: 'test' },
+          { code: '005380', name: '현대차', description: '승용차와 상용차를 제조하고 판매하는 완성차 기업임.', source: 'test' },
+          { code: '000270', name: '기아', description: '국내외에서 자동차를 생산하고 판매하는 완성차 기업임.', source: 'test' },
+        ],
+        kosdaq150: [
+          { code: '196170', name: '알테오젠', description: '바이오의약품 플랫폼 기술을 개발하는 기업임.', source: 'test' },
+          { code: '086520', name: '에코프로', description: '이차전지 소재 관련 사업을 영위하는 기업임.', source: 'test' },
+          { code: '247540', name: '에코프로비엠', description: '이차전지 양극재를 생산하는 기업임.', source: 'test' },
+          { code: '036930', name: '주성엔지니어링', description: '반도체와 디스플레이 제조 장비를 개발하는 기업임.', source: 'test' },
+        ],
+      }),
+    })
+  })
+
   await page.goto('/')
   await page.getByRole('button', { name: '종목 퀴즈' }).click()
   await expect(page.getByTestId('index-quiz')).toBeVisible()
   await expect(page.getByRole('heading', { name: /어느 시장의 기업을 더 많이 알고 있을까/ })).toBeVisible()
-  await expect(page.getByTestId('quiz-pool-kospi200')).toContainText('KOSPI 200')
-  await expect(page.getByTestId('quiz-pool-kosdaq150')).toContainText('KOSDAQ 150')
+  await expect(page.getByTestId('quiz-pool-kospi200')).toContainText('4개 즉시 출제 가능')
+  await expect(page.getByTestId('quiz-pool-kosdaq150')).toContainText('4개 즉시 출제 가능')
   await page.getByTestId('quiz-pool-kospi200').click()
   await expect(page.locator('.index-quiz-choices button')).toHaveCount(4)
+  await expect(page.getByText(/Pi 캐시 확인 중/)).toHaveCount(0)
 })
 
 test('pages have no horizontal overflow', async ({ page }) => {
