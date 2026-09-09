@@ -69,7 +69,7 @@ let preparedRequest: Promise<PreparedQuizPayload | null> | null = null
 export function warmQuizPrepared(force = false) {
   if (!force && preparedCache) return Promise.resolve(preparedCache)
   if (preparedRequest) return preparedRequest
-  preparedRequest = fetch('/api/quiz/prepared', {
+  preparedRequest = fetch('/data/quiz-prepared.json', {
     headers: { Accept: 'application/json' },
     cache: 'no-store',
   })
@@ -86,9 +86,11 @@ export function warmQuizPrepared(force = false) {
   return preparedRequest
 }
 
-// App.tsx already calls this on first mount. Keep the old export name while
-// changing its job to refresh the single prepared quiz cache in the background.
+// Keep the old export name used by App.tsx. KRX universe refresh is kicked off
+// independently so a clean Pi can rebuild its universe while the UI reads only
+// the prepared static JSON and never waits for KRX on menu entry.
 export function warmQuizUniverse() {
+  void fetch('/api/quiz/universe', { headers: { Accept: 'application/json' } }).catch(() => {})
   return warmQuizPrepared(true)
 }
 
