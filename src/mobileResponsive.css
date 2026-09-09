@@ -1,1 +1,202 @@
 /* 모바일 전용 레이아웃 보정. 데스크톱 비율은 유지하고 760px 이하에서만 적용한다. */
+@media (max-width: 760px) {
+  html { font-size: 15px; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+  body, #root, .app-root { width: 100%; max-width: 100%; overflow-x: hidden; }
+
+  .global-nav {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "brand actions" "tabs tabs";
+    height: auto;
+    min-height: 58px;
+    gap: 6px 8px;
+    padding: 7px 8px 6px;
+  }
+  .global-nav .brand { grid-area: brand; min-width: 0; font-size: 11px !important; white-space: nowrap; }
+  .global-nav > div {
+    grid-area: tabs;
+    width: 100%;
+    min-width: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    justify-content: flex-start;
+    flex-wrap: nowrap;
+    gap: 3px;
+    padding: 3px;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-inline: contain;
+  }
+  .global-nav > div::-webkit-scrollbar { display: none; }
+  .global-nav > div button { flex: 0 0 auto; min-width: max-content; padding: 6px 8px; font-size: 11px !important; line-height: 1.2; white-space: nowrap; }
+  .nav-actions { grid-area: actions; min-width: 0; gap: 4px !important; }
+  .manual-refresh { min-width: 0; height: 30px !important; padding-inline: 7px !important; font-size: 10px !important; white-space: nowrap; }
+  .theme-toggle { min-width: 66px !important; height: 30px !important; font-size: 10px !important; }
+
+  .terminal-shell, .market-workspace, .liquidity-page, .daily-issues-page, .market-replay, .quiz-layout, .result-card {
+    width: calc(100% - 10px) !important;
+    max-width: calc(100% - 10px) !important;
+  }
+  .market-workspace { padding-top: 6px; }
+
+  .theme-flow-workspace .theme-board-head { padding: 14px 12px 12px; gap: 12px; }
+  .feature-news-head h2, .theme-board-head h1, .daily-issues-head h1 {
+    font-size: 20px !important;
+    line-height: 1.25 !important;
+    overflow-wrap: anywhere;
+  }
+  .feature-news-head small, .theme-board-head small, .daily-issues-head p, .daily-issues-head small {
+    font-size: 11px !important;
+    line-height: 1.5 !important;
+    overflow-wrap: anywhere;
+  }
+
+  .theme-saas-summary-bar, .us-theme-saas-summary-bar {
+    grid-template-columns: 1fr !important;
+    gap: 9px;
+    margin: 8px;
+    padding: 10px;
+  }
+  .theme-saas-leaders, .us-theme-saas-summary-bar .theme-saas-leaders {
+    display: flex;
+    flex-wrap: nowrap;
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    gap: 6px;
+    padding-bottom: 2px;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .theme-saas-leaders::-webkit-scrollbar { display: none; }
+  .theme-saas-leader-chip, .us-theme-saas-summary-bar .theme-saas-leader-chip { flex: 0 0 auto; max-width: min(78vw, 250px); }
+  .theme-saas-leader-chip > span { min-width: 0; max-width: 135px; }
+  .theme-saas-summary-metrics, .us-theme-saas-summary-bar .theme-saas-summary-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 6px;
+  }
+  .theme-saas-summary-metrics > span { padding: 7px; }
+  .theme-saas-summary-metrics small { font-size: 8px !important; }
+  .theme-saas-summary-metrics b { font-size: 10px !important; }
+
+  .theme-flow-workspace .theme-method-strip { margin: 0 8px 8px; }
+  .theme-method-strip { grid-template-columns: 1fr !important; font-size: 10px !important; }
+  .theme-method-strip span { padding: 8px 10px !important; overflow-wrap: anywhere; }
+  .theme-flow-workspace .theme-strength-list { gap: 8px; padding: 0 6px 8px; }
+  .theme-strength-row { display: block !important; min-height: 0; }
+  .theme-summary-cell, .theme-members-cell, .theme-chart-wrap, .theme-window-stats { width: 100%; max-width: 100%; min-width: 0; }
+  .theme-summary-cell { padding: 14px 12px 12px 16px; }
+  .theme-rank-line { min-width: 0; }
+  .theme-rank-line h2 { min-width: 0; font-size: 17px !important; line-height: 1.25; overflow-wrap: anywhere; }
+  .theme-summary-cell > strong { font-size: 22px !important; }
+  .theme-summary-cell p, .theme-summary-cell div, .theme-cell-title { font-size: 10.5px !important; }
+  .theme-members-cell { padding: 12px; }
+  .theme-member-list > button { min-width: 0; font-size: 11.5px !important; }
+  .theme-member-list > button strong { font-size: 10.5px !important; white-space: nowrap; }
+
+  .theme-chart-wrap { padding: 10px 7px 7px; overflow: hidden; }
+  .theme-chart-title { display: grid !important; grid-template-columns: 1fr; gap: 6px; }
+  .theme-chart-name { min-width: 0; font-size: 11px !important; white-space: normal; overflow-wrap: anywhere; }
+  .theme-chart-metrics {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+    max-width: 100%;
+    gap: 5px;
+    justify-content: stretch !important;
+    font-size: 9px !important;
+  }
+  .theme-chart-metrics > span { min-width: 0; padding: 4px 5px; font-size: 8.5px !important; white-space: normal !important; overflow-wrap: anywhere; }
+  .theme-chart { width: 100%; height: 148px; }
+  .theme-event-layer { left: 7px; right: 7px; }
+  .theme-window-stats { display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 6px; padding: 9px 8px; }
+  .theme-window-stats > div { min-width: 0; padding: 8px 7px !important; }
+  .theme-window-stats span { font-size: 9.5px !important; overflow-wrap: anywhere; }
+  .theme-window-stats strong { font-size: 13px !important; }
+
+  .market-bottom-strip, .us-theme-workspace .market-bottom-strip { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 6px !important; }
+  .market-mini-panel { min-width: 0; min-height: 88px; padding: 11px 10px; }
+  .market-mini-panel > span { font-size: 10px !important; overflow-wrap: anywhere; }
+  .market-mini-panel > strong { font-size: 16px !important; overflow-wrap: anywhere; }
+  .market-mini-panel > b { font-size: 10px !important; overflow-wrap: anywhere; }
+
+  .top100-rail { height: 620px !important; min-height: 0; }
+  .top100-head { padding: 12px 10px 10px !important; gap: 8px; }
+  .top100-head h2 { font-size: 16px !important; line-height: 1.3; overflow-wrap: anywhere; }
+  .top100-head > span, .top100-head p { font-size: 9.5px !important; overflow-wrap: anywhere; }
+  .top100-list-head, .top100-row {
+    grid-template-columns: 24px minmax(0, 1fr) 52px 70px !important;
+    gap: 4px !important;
+    padding-left: 6px !important;
+    padding-right: 6px !important;
+  }
+  .top100-list-head { font-size: 9px !important; }
+  .top100-row { min-height: 54px; }
+  .top100-row > b { font-size: 10px !important; }
+  .top100-stock strong { font-size: 12px !important; }
+  .top100-stock small { font-size: 9px !important; }
+  .top100-rate, .top100-amount { font-size: 11px !important; white-space: nowrap; }
+
+  .daily-issues-head { padding: 16px 12px !important; gap: 10px; }
+  .daily-issues-layout, .daily-issues-detail, .daily-issues-list, .daily-issues-chart-wrap { width: 100%; min-width: 0; max-width: 100%; }
+  .daily-issues-list-head, .daily-issues-list-row {
+    grid-template-columns: 24px minmax(0, 1fr) 52px 70px !important;
+    gap: 4px !important;
+    padding-left: 7px !important;
+    padding-right: 7px !important;
+  }
+  .daily-issues-list-head { font-size: 9.5px !important; }
+  .daily-issues-list-row { min-height: 88px !important; }
+  .daily-issues-stock-title strong, .daily-issue-name strong { font-size: 14px !important; line-height: 1.3; overflow-wrap: anywhere; }
+  .daily-issues-stock p { font-size: 11px !important; }
+  .daily-issues-rate, .daily-issues-amount { font-size: 12px !important; white-space: nowrap; }
+  .daily-issues-detail { padding: 12px !important; }
+  .daily-issues-detail-head h2 { font-size: 23px !important; line-height: 1.25; overflow-wrap: anywhere; }
+  .daily-issues-company-summary { font-size: 13px !important; line-height: 1.5 !important; }
+  .daily-issues-daily-chart { height: 135px !important; }
+  .daily-issues-big-chart { height: 250px !important; }
+  .daily-issues-chart-legend, .daily-issues-ohlc-legend { font-size: 11px !important; gap: 8px; }
+  .daily-issues-ohlc-legend small { font-size: 10px !important; }
+  .daily-issues-detail-issue { padding: 12px; }
+  .daily-issues-detail-issue > span { font-size: 12px; }
+  .daily-issues-detail-issue > strong { font-size: 15px; line-height: 1.5; }
+  .daily-issues-detail-issue > small, .daily-issues-detail-issue a { font-size: 12px; }
+
+  .liquidity-hero { padding: 15px 12px !important; }
+  .liquidity-hero h1 { font-size: 22px !important; line-height: 1.25; overflow-wrap: anywhere; }
+  .liquidity-section { padding: 10px !important; }
+
+  .market-replay { margin-top: 8px; }
+  .replay-hero { padding: 14px; gap: 12px; }
+  .replay-hero h1 { font-size: 22px; }
+  .replay-hero small { font-size: 11px; }
+  .replay-controls { width: 100%; }
+  .replay-controls label { min-width: 0; flex: 1 1 120px; }
+  .replay-controls select { width: 100%; min-width: 0; }
+  .replay-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 6px; }
+  .replay-kpis > div { min-width: 0; min-height: 82px; padding: 11px; }
+  .replay-kpis strong { font-size: 15px; overflow-wrap: anywhere; }
+  .replay-table-head, .replay-table-row { grid-template-columns: 24px minmax(0, 1fr) 54px 68px !important; gap: 4px; padding-left: 7px; padding-right: 7px; }
+  .replay-table-row { font-size: 10px; }
+  .replay-themes > div { grid-template-columns: 26px minmax(0, 1fr) 82px; gap: 5px; padding: 10px 8px; }
+  .replay-turns > div { grid-template-columns: 46px minmax(0, 1fr) 74px; gap: 6px; padding: 10px 8px; }
+  .replay-chart-panel svg { height: 220px; padding-left: 8px; padding-right: 8px; }
+
+  .brief-drawer { width: min(100%, 430px) !important; max-width: 100vw !important; }
+  .brief-drawer-trigger { right: 8px !important; bottom: calc(8px + env(safe-area-inset-bottom)); max-width: calc(100vw - 16px); }
+
+  .question-card { padding: 18px; }
+  .question-card h2 { font-size: clamp(34px, 12vw, 52px); overflow-wrap: anywhere; }
+  .choice-card { min-width: 0; padding: 16px; }
+}
+
+@media (max-width: 390px) {
+  .global-nav .brand { font-size: 10px !important; }
+  .manual-refresh { font-size: 9px !important; padding-inline: 5px !important; }
+  .theme-toggle { min-width: 60px !important; }
+  .theme-saas-summary-metrics, .us-theme-saas-summary-bar .theme-saas-summary-metrics, .market-bottom-strip, .us-theme-workspace .market-bottom-strip, .replay-kpis { grid-template-columns: 1fr !important; }
+  .top100-list-head, .top100-row, .daily-issues-list-head, .daily-issues-list-row, .replay-table-head, .replay-table-row { grid-template-columns: 22px minmax(0, 1fr) 48px 64px !important; }
+  .theme-chart-metrics, .theme-window-stats { grid-template-columns: 1fr !important; }
+  .daily-issues-detail-head h2 { font-size: 21px !important; }
+  .replay-turns > div { grid-template-columns: 42px minmax(0, 1fr) 66px; }
+}
