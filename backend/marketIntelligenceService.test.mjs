@@ -22,8 +22,8 @@ test('news evidence never upgrades a single ordinary article to verified', () =>
   assert.equal(payload.items[2].evidence.grade, 'A')
 })
 
-test('theme intelligence always exposes at most four stabilized themes', () => {
-  const service = new MarketIntelligenceService({ themeCount: 4 })
+test('theme intelligence exposes five stabilized themes', () => {
+  const service = new MarketIntelligenceService({ themeCount: 5 })
   const theme = (name, amount, currentValue) => ({
     name,
     tradingAmount: amount,
@@ -37,7 +37,7 @@ test('theme intelligence always exposes at most four stabilized themes', () => {
   const result = service.enrichThemes({ themes: [
     theme('A', 5e12, 2), theme('B', 4e12, 1.8), theme('C', 3e12, 1.5), theme('D', 2e12, 1.2), theme('E', 1e12, 1),
   ] }, Date.parse('2026-09-09T03:00:00.000Z'))
-  assert.equal(result.length, 4)
+  assert.equal(result.length, 5)
   assert.ok(result.every((item) => Number.isFinite(item.strengthScore)))
 })
 
