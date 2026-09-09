@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { marketSessionLabel, rankingItem } from './marketCollector.mjs'
+import { isDisplayableIndividualRanking, marketSessionLabel, rankingItem } from './marketCollector.mjs'
 
 test('classifies NXT pre-market in Korea time', () => {
   assert.match(marketSessionLabel(new Date('2026-09-08T23:10:00Z')), /NXT PRE/)
@@ -31,4 +31,13 @@ test('TOP100 랭킹의 shortName과 koreanName도 실제 종목명으로 사용�
 test('TOP100 랭킹의 중첩 stock 이름 필드와 이전 정상 이름을 보존한다', () => {
   assert.equal(rankingItem({ stock: { symbol: '000660', koreanName: 'SK하이닉스' } }).name, 'SK하이닉스')
   assert.equal(rankingItem({ symbol: '000660', name: '000660' }, 'SK하이닉스').name, 'SK하이닉스')
+})
+
+test('TOP100 개별주 목록에서 이름 미확인 상품과 ETF/ETN을 제외한다', () => {
+  assert.equal(isDisplayableIndividualRanking({ symbol: '005930', name: '삼성전자' }), true)
+  assert.equal(isDisplayableIndividualRanking({ symbol: '069500', name: null }), false)
+  assert.equal(isDisplayableIndividualRanking({ symbol: '069500', name: 'KODEX 200' }), false)
+  assert.equal(isDisplayableIndividualRanking({ symbol: '122630', name: 'KODEX 레버리지' }), false)
+  assert.equal(isDisplayableIndividualRanking({ symbol: '102110', name: 'TIGER 200' }), false)
+  assert.equal(isDisplayableIndividualRanking({ symbol: '005930', name: '005930' }), false)
 })
