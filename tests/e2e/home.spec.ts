@@ -78,13 +78,14 @@ test('stock quiz separates full KOSPI200 and KOSDAQ150 company-description pools
   await expect(page.getByRole('heading', { name: /어느 시장의 기업을 더 많이 알고 있을까/ })).toBeVisible()
   await expect(page.getByTestId('quiz-pool-kospi200')).toContainText('KOSPI 200')
   await expect(page.getByTestId('quiz-pool-kosdaq150')).toContainText('KOSDAQ 150')
+  await page.getByTestId('quiz-pool-kospi200').click()
   await expect(page.locator('.index-quiz-choices button')).toHaveCount(4)
 })
 
 test('pages have no horizontal overflow', async ({ page }) => {
   await page.goto('/')
   for (const label of ['국내 테마 흐름', '미국 테마 흐름', '금일 이슈 정리', '종목 퀴즈']) {
-    let sizes = await page.evaluate(() => ({ scrollWidth: document.documentElement.scrollWidth, clientWidth: document.documentElement.clientWidth }))
+    const sizes = await page.evaluate(() => ({ scrollWidth: document.documentElement.scrollWidth, clientWidth: document.documentElement.clientWidth }))
     expect(sizes.scrollWidth).toBeLessThanOrEqual(sizes.clientWidth + 1)
     await page.getByRole('button', { name: label }).click()
   }
