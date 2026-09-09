@@ -54,6 +54,12 @@
   stroke-linejoin: round;
 }
 
+.theme-chart-expanded { height: 226px; }
+.theme-chart-emphasis .theme-average-line {
+  stroke-width: 3.25;
+  filter: drop-shadow(0 0 2px color-mix(in srgb, var(--theme-accent) 45%, transparent));
+}
+.theme-chart-emphasis .theme-zero-line { stroke-width: 1.25; }
 .theme-stock-line { stroke-width: 2.6; }
 .theme-average-current-dot { fill: var(--theme-accent); stroke: #fff; stroke-width: 1.4; vector-effect: non-scaling-stroke; }
 
