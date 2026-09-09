@@ -10,9 +10,14 @@ import { QuizDescriptionService } from './quizDescriptionService.mjs'
 import { FeatureNewsTodayService } from './featureNewsTodayService.mjs'
 import { DailyIssueService } from './dailyIssueService.mjs'
 import { TossClient } from './tossClient.mjs'
+import { MarketIntelligenceService, buildEventTimeline, buildReplay, gradeNewsPayload } from './marketIntelligenceService.mjs'
+import { FuturesProvider } from './futuresProvider.mjs'
+import { CloseArchiveService } from './closeArchiveService.mjs'
 
 const port = Number(process.env.PORT || 8787)
 const primaryRefreshMs = Math.max(5000, Number(process.env.MARKET_PRIMARY_REFRESH_MS || process.env.POLL_MS || 10000))
+const manualRefreshCooldownMs = Math.max(10000, Number(process.env.MANUAL_REFRESH_COOLDOWN_MS || 20000))
+const allowedOrigin = String(process.env.MARKET_ALLOWED_ORIGIN || '').trim()
 const client = new TossClient({
   clientId: process.env.TOSS_CLIENT_ID,
   clientSecret: process.env.TOSS_CLIENT_SECRET,
@@ -40,6 +45,17 @@ const featureNews = new FeatureNewsTodayService({
 const dailyIssues = new DailyIssueService(client, {
   cachePath: process.env.DAILY_ISSUE_CACHE_PATH || '/app/data/daily-issues.json',
 })
+const futuresProvider = new FuturesProvider()
+const intelligence = new MarketIntelligenceService({
+  themeCount: 4,
+  replacementMargin: Number(process.env.THEME_REPLACEMENT_MARGIN || 0.08),
+  replacementConfirmations: Number(process.env.THEME_REPLACEMENT_CONFIRMATIONS || 3),
+})
+const closeArchive = new CloseArchiveService(
+  () => liveMarketSnapshot(),
+  () => liveKrThemePayload(),
+  { cachePath: process.env.CLOSE_ARCHIVE_CACHE_PATH || '/app/data/close-archive.json' },
+)
 let historyTimer = null
 let preparedTimer = null
 let preparedHistoryTimer = null
@@ -47,7 +63,12 @@ let newsStartTimer = null
 let newsRefreshTimer = null
 let krThemeStartTimer = null
 let usThemeStartTimer = null
+let futuresTimer = null
 let manualRefreshPromise = null
+let lastManualRefreshAt = 0
+let latestHistoryPayload = { days: 8, tradingDays: 0, samples: [] }
+let cachedIntelligence = null
+let cachedIntelligenceKey = ''
 
 function fundingStatus() {
   const configured = Boolean(process.env.DATA_GO_KR_SERVICE_KEY)
@@ -68,35 +89,96 @@ function fundingStatus() {
   }
 }
 
+function liveMarketSnapshot() {
+  if (!collector.snapshot) return null
+  const futures = futuresProvider.current()
+  return {
+    ...collector.snapshot,
+    futures: futures.available ? futures : (collector.snapshot.futures ?? futures),
+  }
+}
+
+function rawKrThemePayload() {
+  return buildLiveThemePayload(themeFlow.payload, liveMarketSnapshot())
+}
+
+function currentIntelligence() {
+  const snapshot = liveMarketSnapshot()
+  const rawTheme = rawKrThemePayload()
+  if (!snapshot) {
+    return {
+      ok: false,
+      generatedAt: new Date().toISOString(),
+      themes: [],
+      quality: { level: 'critical', issues: [{ severity: 'critical', code: 'no-snapshot', message: '시장 스냅샷 초기화 중입니다.' }] },
+    }
+  }
+  const historyUpdatedAt = latestHistoryPayload?.samples?.at(-1)?.updatedAt ?? ''
+  const key = [snapshot.updatedAt, rawTheme?.sourceUpdatedAt, featureNews.payload?.updatedAt, futuresProvider.current()?.updatedAt, historyUpdatedAt].join('|')
+  if (cachedIntelligence && cachedIntelligenceKey === key) return cachedIntelligence
+  cachedIntelligence = intelligence.build({
+    snapshot,
+    themePayload: rawTheme,
+    history: latestHistoryPayload,
+    featureNews: featureNews.payload,
+    futures: futuresProvider.current(),
+  })
+  cachedIntelligenceKey = key
+  return cachedIntelligence
+}
+
 function liveKrThemePayload() {
-  return buildLiveThemePayload(themeFlow.payload, collector.snapshot)
+  const raw = rawKrThemePayload()
+  if (!raw?.ok) return raw
+  const intel = currentIntelligence()
+  return {
+    ...raw,
+    themes: intel.themes ?? raw.themes ?? [],
+    criteria: { ...(raw.criteria ?? {}), themeCount: 4, hysteresis: '8%-or-3-confirmations', overlapAdjustment: '1/N' },
+    intelligence: {
+      market: intel.market ?? null,
+      quality: intel.quality ?? null,
+      freshness: intel.freshness ?? null,
+      rules: intel.rules ?? null,
+    },
+  }
 }
 
 async function publishPreparedFast() {
   const writes = []
-  if (collector.snapshot) writes.push(prepared.write('market-snapshot.json', collector.snapshot))
+  const snapshot = liveMarketSnapshot()
+  if (snapshot) writes.push(prepared.write('market-snapshot.json', snapshot))
   const krThemePayload = liveKrThemePayload()
   if (krThemePayload?.ok) writes.push(prepared.write('kr-theme-flow.json', krThemePayload))
+  const intelligencePayload = currentIntelligence()
+  if (intelligencePayload?.ok) writes.push(prepared.write('market-intelligence.json', intelligencePayload))
   if (usThemeFlow.payload?.ok) writes.push(prepared.write('us-theme-flow.json', usThemeFlow.payload))
-  if (featureNews.payload?.ok) writes.push(prepared.write('feature-news.json', featureNews.payload))
+  if (featureNews.payload?.ok) writes.push(prepared.write('feature-news.json', gradeNewsPayload(featureNews.payload)))
   if (writes.length) await Promise.allSettled(writes)
 }
 
 async function publishPreparedHistory() {
   const payload = await history.read({ days: 8, resolutionMinutes: 1 })
+  latestHistoryPayload = payload
+  cachedIntelligenceKey = ''
   await prepared.write('market-history.json', compactHistoryForBrowser(payload))
 }
 
 async function refreshPreparedNews() {
   const payload = await featureNews.get()
-  if (payload?.ok) await prepared.write('feature-news.json', payload)
+  cachedIntelligenceKey = ''
+  if (payload?.ok) await prepared.write('feature-news.json', gradeNewsPayload(payload))
 }
 
 async function refreshPrimaryMarket() {
   if (manualRefreshPromise) return manualRefreshPromise
   const startedAt = Date.now()
-  manualRefreshPromise = collector.refresh()
-    .then(async (snapshot) => {
+  manualRefreshPromise = Promise.all([
+    collector.refresh(),
+    futuresProvider.get().catch(() => futuresProvider.current()),
+  ])
+    .then(async ([snapshot]) => {
+      cachedIntelligenceKey = ''
       await history.maybeAppend(snapshot).catch(() => {})
       await publishPreparedFast().catch(() => {})
       await publishPreparedHistory().catch(() => {})
@@ -117,6 +199,8 @@ const server = http.createServer(async (request, response) => {
 
   if (url.pathname === '/api/health') {
     const dailyIssueState = dailyIssues.currentPayload()
+    const intelligenceState = currentIntelligence()
+    const futuresState = futuresProvider.current()
     return send(response, 200, {
       ok: true,
       configured: client.configured,
@@ -139,6 +223,12 @@ const server = http.createServer(async (request, response) => {
       quizDescriptionsCached: true,
       featureNewsEnabled: true,
       dailyIssuesEnabled: true,
+      closeArchiveEnabled: true,
+      marketIntelligenceEnabled: true,
+      marketIntelligenceQuality: intelligenceState?.quality?.level ?? null,
+      futuresConfigured: futuresState.configured,
+      futuresAvailable: futuresState.available,
+      futuresSource: futuresState.source,
       dailyIssuesStatus: dailyIssueState.status ?? null,
       dailyIssuesDate: dailyIssueState.date ?? null,
       refreshPolicy: {
@@ -148,9 +238,12 @@ const server = http.createServer(async (request, response) => {
         featureNewsWindow: '00:00-today',
         themeChartLiveSeconds: Math.round(primaryRefreshMs / 1000),
         themeCandleCollectionSeconds: Math.round(themeFlow.refreshMs / 1000),
-        themeCount: 5,
+        themeCount: 4,
+        themeReplacement: '8%-or-3-confirmations',
         dailyIssueFinalizeKst: '15:20',
+        closeArchiveKst: ['15:20', '15:35'],
         preparedPublishSeconds: 2,
+        manualRefreshCooldownSeconds: Math.round(manualRefreshCooldownMs / 1000),
         offSessionSeconds: 300,
       },
       requestScheduler: client.schedulerStats(),
@@ -159,11 +252,21 @@ const server = http.createServer(async (request, response) => {
   }
 
   if (url.pathname === '/api/market/snapshot') {
-    if (!collector.snapshot) return send(response, 503, { ok: false, error: '시장 데이터 초기화 중입니다.' })
-    return send(response, 200, collector.snapshot)
+    const snapshot = liveMarketSnapshot()
+    if (!snapshot) return send(response, 503, { ok: false, error: '시장 데이터 초기화 중입니다.' })
+    return send(response, 200, snapshot)
   }
 
   if (url.pathname === '/api/market/refresh' && request.method === 'POST') {
+    const elapsed = Date.now() - lastManualRefreshAt
+    if (!manualRefreshPromise && elapsed < manualRefreshCooldownMs) {
+      return send(response, 429, {
+        ok: false,
+        error: '수동 새로고침 쿨다운 중입니다.',
+        retryAfterSeconds: Math.ceil((manualRefreshCooldownMs - elapsed) / 1000),
+      })
+    }
+    lastManualRefreshAt = Date.now()
     try {
       const result = await refreshPrimaryMarket()
       return send(response, result.ok ? 200 : 503, {
@@ -182,6 +285,24 @@ const server = http.createServer(async (request, response) => {
     return send(response, payload?.ok ? 200 : 503, payload)
   }
 
+  if (url.pathname === '/api/market/intelligence') {
+    const payload = currentIntelligence()
+    return send(response, payload?.ok ? 200 : 503, payload)
+  }
+
+  if (url.pathname === '/api/market/event-timeline') {
+    const symbol = String(url.searchParams.get('symbol') || '').trim()
+    if (!/^\d{6}$/.test(symbol)) return send(response, 400, { ok: false, error: '올바른 국내 종목코드가 필요합니다.', events: [] })
+    const snapshot = liveMarketSnapshot()
+    const stock = (snapshot?.topRankings ?? []).find((item) => item.symbol === symbol)
+      ?? Object.values(snapshot?.stocks ?? {}).find((item) => item?.symbol === symbol)
+      ?? (liveKrThemePayload()?.themes ?? []).flatMap((theme) => theme.members ?? []).find((item) => item.symbol === symbol)
+      ?? { symbol, name: url.searchParams.get('name') || symbol }
+    const chart = await themeFlow.stockChartReady(symbol, { fallbackName: stock?.name ?? symbol }).catch(() => themeFlow.stockChart(symbol))
+    const news = gradeNewsPayload(await featureNews.get().catch(() => featureNews.payload))
+    return send(response, 200, buildEventTimeline({ stock, chart, news }))
+  }
+
   if (url.pathname === '/api/market/theme-stock-chart') {
     const symbol = String(url.searchParams.get('symbol') || '').trim()
     const fallbackName = String(url.searchParams.get('name') || '').trim() || null
@@ -194,13 +315,32 @@ const server = http.createServer(async (request, response) => {
   }
 
   if (url.pathname === '/api/market/feature-news') {
-    const payload = await featureNews.get()
+    const payload = gradeNewsPayload(await featureNews.get())
+    cachedIntelligenceKey = ''
     if (payload?.ok) await prepared.write('feature-news.json', payload).catch(() => {})
     return send(response, payload.ok ? 200 : 503, payload)
   }
 
   if (url.pathname === '/api/market/daily-issues') {
     const payload = await dailyIssues.get()
+    return send(response, 200, payload)
+  }
+
+  if (url.pathname === '/api/market/close-archive') {
+    await closeArchive.check().catch(() => {})
+    return send(response, 200, closeArchive.current())
+  }
+
+  if (url.pathname === '/api/market/replay') {
+    const days = Math.max(1, Math.min(35, Number(url.searchParams.get('days') || 2)))
+    const resolutionMinutes = Math.max(1, Math.min(30, Number(url.searchParams.get('resolution') || 5)))
+    const payload = await history.read({ days, resolutionMinutes })
+    return send(response, 200, { ...buildReplay(payload), closeArchive: closeArchive.current().records })
+  }
+
+  if (url.pathname === '/api/market/futures') {
+    const payload = await futuresProvider.get()
+    cachedIntelligenceKey = ''
     return send(response, 200, payload)
   }
 
@@ -232,7 +372,7 @@ const server = http.createServer(async (request, response) => {
 
 function send(response, status, payload) {
   response.statusCode = status
-  response.setHeader('Access-Control-Allow-Origin', '*')
+  if (allowedOrigin) response.setHeader('Access-Control-Allow-Origin', allowedOrigin)
   response.setHeader('Access-Control-Allow-Headers', 'Content-Type, Accept')
   response.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
   response.setHeader('Cache-Control', 'no-store')
@@ -259,15 +399,17 @@ server.listen(port, '0.0.0.0', () => {
       return collector.start()
     })
     .then(async () => {
+      await futuresProvider.get().catch(() => {})
       await history.maybeAppend(collector.snapshot).catch(() => {})
       await publishPreparedFast().catch(() => {})
       await publishPreparedHistory().catch(() => {})
       void dailyIssues.start().catch((error) => console.error('[market-backend] daily issues initialization failed', error))
+      void closeArchive.start().catch((error) => console.error('[market-backend] close archive initialization failed', error))
     })
     .then(() => {
       krThemeStartTimer = setTimeout(() => {
         void themeFlow.start()
-          .then(() => publishPreparedFast())
+          .then(() => { cachedIntelligenceKey = ''; return publishPreparedFast() })
           .catch((error) => console.error('[market-backend] KR theme initialization failed', error))
       }, Number(process.env.KR_THEME_START_DELAY_MS || 3000))
       krThemeStartTimer.unref?.()
@@ -289,7 +431,7 @@ server.listen(port, '0.0.0.0', () => {
   preparedTimer = setInterval(() => publishPreparedFast().catch(() => {}), 2000)
   preparedTimer.unref?.()
 
-  historyTimer = setInterval(() => history.maybeAppend(collector.snapshot).catch(() => {}), 60000)
+  historyTimer = setInterval(() => history.maybeAppend(liveMarketSnapshot()).catch(() => {}), 60000)
   historyTimer.unref?.()
 
   preparedHistoryTimer = setInterval(() => publishPreparedHistory().catch(() => {}), 60000)
@@ -298,6 +440,11 @@ server.listen(port, '0.0.0.0', () => {
   const newsRefreshMs = Math.max(180000, Number(process.env.FEATURE_NEWS_REFRESH_MS || 180000))
   newsRefreshTimer = setInterval(() => refreshPreparedNews().catch(() => {}), newsRefreshMs)
   newsRefreshTimer.unref?.()
+
+  futuresTimer = setInterval(() => {
+    void futuresProvider.get().then(() => { cachedIntelligenceKey = '' }).catch(() => {})
+  }, futuresProvider.refreshMs)
+  futuresTimer.unref?.()
 })
 
 const shutdown = () => {
@@ -305,6 +452,7 @@ const shutdown = () => {
   themeFlow.stop()
   usThemeFlow.stop()
   dailyIssues.stop()
+  closeArchive.stop()
   if (historyTimer) clearInterval(historyTimer)
   if (preparedTimer) clearInterval(preparedTimer)
   if (preparedHistoryTimer) clearInterval(preparedHistoryTimer)
@@ -312,6 +460,7 @@ const shutdown = () => {
   if (newsRefreshTimer) clearInterval(newsRefreshTimer)
   if (krThemeStartTimer) clearTimeout(krThemeStartTimer)
   if (usThemeStartTimer) clearTimeout(usThemeStartTimer)
+  if (futuresTimer) clearInterval(futuresTimer)
   server.close(() => process.exit(0))
   setTimeout(() => process.exit(1), 3000).unref()
 }
