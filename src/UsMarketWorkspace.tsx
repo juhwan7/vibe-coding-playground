@@ -47,6 +47,24 @@ type UsThemeFlowResponse = {
   marketTradingAmount?: number | null
   topRankings?: RankingItem[]
   themes?: ThemeGroup[]
+  regularSession?: {
+    day?: string | null
+    closedAt?: string | null
+    source?: string | null
+    themes?: Array<{ name: string; memberCount: number; tradingAmount: number; sessionChange: number | null; closeValue: number | null; closedAt: string | null }>
+  }
+  afterHours?: {
+    sessionDay?: string | null
+    active?: boolean
+    observedSymbols?: number
+    sampledAt?: string | null
+    source?: string
+    note?: string
+    themes?: Array<{ name: string; regularMemberCount: number; observedMemberCount: number; currentValue: number | null; sampledAt: string | null; points: ThemePoint[] }>
+    movers?: Array<{ symbol: string; name: string; market: string; theme: string; regularClose: number; afterHoursPrice: number; afterHoursChangeRate: number; sampledAt: string }>
+  }
+  regularSnapshotCapturedAt?: string | null
+  regularSnapshotSource?: string | null
   error?: string | null
 }
 
@@ -238,6 +256,29 @@ function UsThemeChart({ theme, accent }: { theme: ThemeGroup; accent: string }) 
   </div>
 }
 
+function AfterHoursSparkline({ points, accent }: { points: ThemePoint[]; accent: string }) {
+  const sorted = [...(points ?? [])].sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp))
+  if (sorted.length < 2) return <span className="us-after-spark-empty">실제 샘플 대기</span>
+  const width = 220
+  const height = 46
+  const values = [0, ...sorted.map((point) => point.value)]
+  const lo = Math.min(...values)
+  const hi = Math.max(...values)
+  const pad = Math.max(.08, (hi - lo) * .14)
+  const min = lo - pad
+  const max = hi + pad
+  const range = Math.max(.01, max - min)
+  const start = Date.parse(sorted[0].timestamp)
+  const end = Math.max(start + 1, Date.parse(sorted.at(-1)!.timestamp))
+  const x = (timestamp: string) => (Date.parse(timestamp) - start) / (end - start) * width
+  const y = (value: number) => height - 4 - ((value - min) / range) * (height - 8)
+  const path = sorted.map((point, index) => `${index ? 'L' : 'M'}${x(point.timestamp).toFixed(1)},${y(point.value).toFixed(1)}`).join(' ')
+  return <svg className="us-after-spark" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" role="img" aria-label="정규장 종료 후 테마 변화 흐름" style={{ ['--theme-accent' as string]: accent } as CSSProperties}>
+    <line x1="0" x2={width} y1={y(0)} y2={y(0)} className="us-after-zero" />
+    <path d={path} className="us-after-line" />
+  </svg>
+}
+
 function UsThemeRow({ theme, rank }: { theme: ThemeGroup; rank: number }) {
   const accent = ACCENTS[(rank - 1) % ACCENTS.length]
   const members = [...theme.members].sort((a, b) => (b.tradingAmount ?? 0) - (a.tradingAmount ?? 0)).slice(0, 7)
@@ -299,6 +340,11 @@ export default function UsMarketWorkspace() {
   const totalAmount = flow.marketTradingAmount ?? rankings.reduce((sum, item) => sum + (item.tradingAmount ?? 0), 0)
   const breadth = useMemo(() => usMarketBreadth(rankings), [rankings])
   const leadConcentration = usThemeConcentration(themes[0])
+  const regularSession = flow.regularSession
+  const afterHours = flow.afterHours
+  const regularThemeMap = useMemo(() => new Map((regularSession?.themes ?? []).map((theme) => [theme.name, theme])), [regularSession?.themes])
+  const afterThemeMap = useMemo(() => new Map((afterHours?.themes ?? []).map((theme) => [theme.name, theme])), [afterHours?.themes])
+  const afterMovers = afterHours?.movers ?? []
   const themeMembership = useMemo(() => {
     const map = new Map<string, { name: string; accent: string }>()
     themes.forEach((theme, themeIndex) => {
@@ -312,16 +358,54 @@ export default function UsMarketWorkspace() {
 
   return <div className="market-workspace theme-flow-workspace us-theme-workspace">
     <section className="workspace-main">
+      <section className="us-session-compare panel" data-testid="us-session-compare">
+        <header className="us-session-compare-head">
+          <div>
+            <p>REGULAR CLOSE → AFTER HOURS</p>
+            <h1>전날 밤 정규장 마감과 정규장 이후 변화</h1>
+            <small>정규장 상세 데이터는 아래에서 한 번만 보여주고, 여기의 애프터 영역은 16:00 ET 종가를 0% 기준으로 한 이후 실제 가격 변화만 표시합니다.</small>
+          </div>
+          <div className="us-session-status">
+            <span>정규장 {regularSession?.day ? compactDay(regularSession.day) : '-'}</span><b>→</b>
+            <span className={afterHours?.active ? 'flow-live' : ''}>애프터 {afterHours?.active ? '진행 중' : afterMovers.length ? '최근 기록' : '수집 대기'}</span>
+          </div>
+        </header>
+        <div className="us-session-compare-grid">
+          <div className="us-session-column-head">테마</div>
+          <div className="us-session-column-head">정규장 하루</div>
+          <div className="us-session-column-head">정규장 이후</div>
+          <div className="us-session-column-head">16:00 ET 이후 흐름</div>
+          {themes.map((theme, index) => {
+            const regular = regularThemeMap.get(theme.name)
+            const after = afterThemeMap.get(theme.name)
+            const accent = ACCENTS[index % ACCENTS.length]
+            return <div className="us-session-compare-row" key={`session-${theme.name}`} style={{ ['--theme-accent' as string]: accent } as CSSProperties}>
+              <div className="us-session-theme"><i /><strong>{theme.name}</strong><small>{regular?.memberCount ?? theme.memberCount}종목</small></div>
+              <strong className={(regular?.sessionChange ?? 0) >= 0 ? 'up' : 'down'}>{fmtRate(regular?.sessionChange)}</strong>
+              <div className="us-after-value"><strong className={(after?.currentValue ?? 0) >= 0 ? 'up' : 'down'}>{fmtRate(after?.currentValue)}</strong><small>{after?.observedMemberCount ? `${after.observedMemberCount}종목 실제 샘플` : '변화분만 표시'}</small></div>
+              <AfterHoursSparkline points={after?.points ?? []} accent={accent} />
+            </div>
+          })}
+        </div>
+        <div className="us-session-foot">
+          <span>정규장 마감 <b>{displayKstTime(regularSession?.closedAt)}</b></span>
+          <span>애프터 최근 샘플 <b>{displayKstTime(afterHours?.sampledAt)}</b></span>
+          <span>애프터 관측 종목 <b>{afterHours?.observedSymbols ?? 0}</b></span>
+          <span>애프터 거래대금 <b>표시 안 함 · 검증값 없음</b></span>
+        </div>
+        {flow.regularSnapshotSource === 'reconstructed-current-ranking' && <div className="us-session-data-note">이번 세션은 정규장 스냅샷 기능 배포 전 데이터라 테마 구성은 현재 랭킹으로 복원했습니다. 다음 정규장부터 16:00 ET 직전 구성이 별도 저장됩니다.</div>}
+      </section>
+
       <section className="theme-strength-board panel" data-testid="us-theme-strength-board">
         <header className="theme-board-head">
           <div>
-            <p>US THEME ROTATION / STOCK TOP 50</p>
-            <h1>미국 테마 강도 비교 <span>(ETF/ETN 제외 · 개별주 거래대금 TOP50)</span></h1>
-            <small>개별주 TOP50으로 5개 주도 테마를 구성합니다. 중앙 차트는 장중 실제 현재가를 30초마다 저장해 연결하고 순간 튐은 90초 추세로 완화합니다. 토스가 과거 30초 캔들을 제공하지 않는 구간은 실제 1분봉만 사용하며 30초 값을 임의 보간하지 않습니다.</small>
+            <p>US REGULAR SESSION / STOCK TOP 50</p>
+            <h1>미국 정규장 기록 <span>(09:30~16:00 ET · ETF/ETN 제외)</span></h1>
+            <small>이 영역은 정규장 상황만 보존합니다. TOP50·5개 주도 테마·정규장 1분봉과 정규장 중 실제 30초 가격만 사용하며, 16:00 ET 이후 값은 위 비교 영역과 애프터 변동 목록에만 따로 표시합니다.</small>
           </div>
           <div className="theme-board-controls">
             <span className={flow.ok ? 'flow-live' : 'flow-loading'}>{flow.stage === 'ready' ? '● 30초 실시간' : flow.ok ? '● TOP50 개별주 연결 · 차트 복원 중' : '● 데이터 준비 중'}</span>
-            <div className="segmented-control"><button className="active">전일 + 오늘</button><button disabled>3일</button><button disabled>5일</button></div>
+            <div className="segmented-control"><button className="active">정규장 2거래일</button><button disabled>3일</button><button disabled>5일</button></div>
           </div>
         </header>
 
@@ -338,7 +422,7 @@ export default function UsMarketWorkspace() {
           </div>
         </div>
 
-        <div className="theme-method-strip"><span>유니버스 <b>ETF/ETN 제외 · 개별주 TOP50</b></span><span>테마 <b>5개 고정 · 거래대금 합계 순</b></span><span>차트 <b>30초 실시간 · 90초 추세 · 과거 1분 백필</b></span><span>최신화 <b>30초 · {displayKstTime(flow.liveSampledAt ?? flow.updatedAt)}</b></span></div>
+        <div className="theme-method-strip"><span>유니버스 <b>ETF/ETN 제외 · 개별주 TOP50</b></span><span>테마 <b>5개 고정 · 거래대금 합계 순</b></span><span>정규장 차트 <b>09:30~16:00 ET만 · 애프터 제외</b></span><span>최신화 <b>30초 · {displayKstTime(flow.liveSampledAt ?? flow.updatedAt)}</b></span></div>
 
         <div className="theme-strength-list" data-testid="us-fixed-five-themes">
           {themes.map((theme, index) => <UsThemeRow key={theme.name} theme={theme} rank={index + 1} />)}
@@ -347,15 +431,24 @@ export default function UsMarketWorkspace() {
       </section>
 
       <section className="market-bottom-strip" style={{ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}>
-        <div className="market-mini-panel panel"><span>미국 개별주 TOP50 1일 누적 거래대금</span><strong>{fmtUsdAmount(totalAmount)}</strong><b>{rankings.length}/50 종목 · ETF/ETN 제외</b></div>
+        <div className="market-mini-panel panel"><span>정규장 스냅샷 TOP50 거래대금</span><strong>{fmtUsdAmount(totalAmount)}</strong><b>{rankings.length}/50 종목 · ETF/ETN 제외</b></div>
         <div className="market-mini-panel panel"><span>테마 생성 기준</span><strong>TOP50 · 5개 고정</strong><b>3종 이상 우선 · 부족 시 TOP50 내부 후보로 보강</b></div>
         <div className="market-mini-panel panel"><span>중앙 추세 차트</span><strong>30초 실시간 · 90초 완화</strong><b>거래대금 영역 축소 · 과거는 실제 1분봉</b></div>
       </section>
     </section>
 
     <aside className="top100-rail panel" data-testid="us-top100-ranking">
-      <div className="top100-tabs"><button className="active">미국 개별주 거래대금 TOP50</button><button disabled>ETF/ETN 제외</button></div>
-      <div className="top100-head"><div><p>US STOCK TURNOVER / 1 DAY</p><h2>미국 거래대금 TOP50 · 개별주만</h2></div><span>{displayKstTime(flow.rankedAt ?? flow.updatedAt)}</span></div>
+      <div className="top100-tabs"><button className="active">정규장 거래대금 TOP50</button><button disabled>ETF/ETN 제외</button></div>
+      <section className="us-after-movers" data-testid="us-after-hours-movers">
+        <div className="us-after-movers-head"><div><p>AFTER HOURS DELTA</p><h3>정규장 이후 변동 종목</h3></div><span>16:00 ET 종가 대비</span></div>
+        {afterMovers.slice(0, 10).map((item, index) => <div className="us-after-mover" key={`after-${item.symbol}`}>
+          <b>{index + 1}</b>
+          <div><strong>{item.symbol} · {item.name}</strong><small>{item.theme} · 종가 {fmtUsdPrice(item.regularClose)} → {fmtUsdPrice(item.afterHoursPrice)}</small></div>
+          <strong className={item.afterHoursChangeRate >= 0 ? 'up' : 'down'}>{fmtRate(item.afterHoursChangeRate)}</strong>
+        </div>)}
+        {!afterMovers.length && <div className="us-after-empty">검증된 16:00 ET 이후 가격 샘플을 기다리고 있습니다. 정규장 데이터를 복사해 채우지 않습니다.</div>}
+      </section>
+      <div className="top100-head"><div><p>REGULAR SESSION TURNOVER / 1 DAY</p><h2>정규장 거래대금 TOP50 · 개별주만</h2></div><span>{displayKstTime(flow.rankedAt ?? flow.updatedAt)}</span></div>
       <div className="top100-list-head"><span>순위</span><span>종목명</span><span>등락률</span><span>거래대금</span></div>
       <div className="top100-list">
         {rankings.map((item, index) => {

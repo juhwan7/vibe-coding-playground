@@ -2,9 +2,11 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { buildUsThemeGroups, selectUsThemeGroups } from './usThemeCatalog.mjs'
 import {
+  aggregateUsAfterHoursThemeSeries,
   aggregateUsLiveThemeSeries,
   aggregateUsThemeSeries,
   isUsIndividualStock,
+  isUsPostMarketTimestamp,
   loadUsLivePrices,
   loadUsRanking,
   mergeUsLivePriceSamples,
@@ -192,4 +194,56 @@ test('loadUsRanking labels Toss-specific turnover as a non-market-wide final fal
   assert.equal(result.isMarketWide, false)
   assert.equal(result.rankings[0].symbol, 'TSLA')
   assert.equal(result.attempts.length, 3)
+})
+
+
+test('US after-hours starts strictly after 16:00 ET and includes exactly 20:00 ET', () => {
+  assert.equal(isUsPostMarketTimestamp('2026-09-09T20:00:00.000Z'), false)
+  assert.equal(isUsPostMarketTimestamp('2026-09-09T20:00:30.000Z'), true)
+  assert.equal(isUsPostMarketTimestamp('2026-09-10T00:00:00.000Z'), true)
+  assert.equal(isUsPostMarketTimestamp('2026-09-10T00:00:30.000Z'), false)
+})
+
+test('live cache keeps regular and verified after-hours but drops premarket and unverified after-hours', () => {
+  const samples = mergeUsLivePriceSamples([], [
+    { timestamp: '2026-09-09T12:00:00.000Z', lastPrice: 99, timestampVerified: true },
+    { timestamp: '2026-09-09T13:30:12.000Z', lastPrice: 100, timestampVerified: true },
+    { timestamp: '2026-09-09T20:00:30.000Z', lastPrice: 101, timestampVerified: true },
+    { timestamp: '2026-09-09T20:01:00.000Z', lastPrice: 102, timestampVerified: false },
+  ])
+  assert.deepEqual(samples.map((sample) => sample.timestamp), [
+    '2026-09-09T13:30:00.000Z',
+    '2026-09-09T20:00:30.000Z',
+  ])
+})
+
+test('after-hours theme series uses regular close as zero baseline and does not duplicate regular turnover', () => {
+  const points = aggregateUsAfterHoursThemeSeries([
+    {
+      symbol: 'NVDA', regularClose: 100, weight: 300,
+      samples: [
+        { timestamp: '2026-09-09T20:00:30.000Z', lastPrice: 101, timestampVerified: true },
+        { timestamp: '2026-09-09T20:01:00.000Z', lastPrice: 102, timestampVerified: true },
+      ],
+    },
+    {
+      symbol: 'AMD', regularClose: 200, weight: 100,
+      samples: [
+        { timestamp: '2026-09-09T20:00:30.000Z', lastPrice: 198, timestampVerified: true },
+        { timestamp: '2026-09-09T20:01:00.000Z', lastPrice: 202, timestampVerified: true },
+      ],
+    },
+  ])
+  assert.equal(points.length, 2)
+  assert.ok(Math.abs(points[0].value - 0.5) < 1e-9)
+  assert.ok(Math.abs(points[1].value - 1.75) < 1e-9)
+  assert.equal(points[0].tradingAmount, null)
+  assert.equal(points[0].source, '30s-after-hours')
+})
+
+test('loadUsLivePrices marks fallback timestamps unverified so they cannot masquerade as after-hours prints', async () => {
+  const client = { async request() { return { result: [{ symbol: 'NVDA', lastPrice: 181 }] } } }
+  const prices = await loadUsLivePrices(client, ['NVDA'], '2026-09-09T20:30:00.000Z')
+  assert.equal(prices[0].timestamp, '2026-09-09T20:30:00.000Z')
+  assert.equal(prices[0].timestampVerified, false)
 })
