@@ -1,4 +1,20 @@
 const NEWS_URL = 'https://news.google.com/rss/search'
+const ISSUE_WINDOW_MS = 90 * 60 * 1000
+
+const PROMOTIONAL_PATTERNS = [
+  /(?:^|\s|\[)(?:광고|홍보|PR)(?:\]|\s|$)/i,
+  /리딩\s*방/i,
+  /무료\s*(?:추천|체험|상담|종목|방)/i,
+  /(?:카톡|카카오톡|텔레그램)\s*(?:방|채널|무료|초대)/i,
+  /회원\s*(?:모집|가입)/i,
+  /추천주\s*(?:공개|받기|무료)/i,
+  /수익률\s*\d+(?:\.\d+)?%.*(?:무료|체험|추천)/i,
+]
+
+const TOKEN_STOP_WORDS = new Set([
+  '특징주', '증시', '오늘', '코스피', '코스닥', '장중', '마감', '급등', '상승', '강세', '약세', '하락', '주가', '관련주',
+  '기대', '기대감', '영향', '전망', '소식', '속보', '단독', '종목', '시장', '기자', '오전', '오후',
+])
 
 function decode(value = '') {
   return String(value)
@@ -36,6 +52,93 @@ export function parseNewsRss(xml = '') {
   return items
 }
 
+export function summarizeIssueTitle(title = '') {
+  return String(title)
+    .replace(/^\s*(?:\[[^\]]{1,30}\]\s*)+/g, '')
+    .replace(/^["'“‘]+|["'”’]+$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 120)
+}
+
+export function isPromotionalNews(item = {}) {
+  const haystack = `${item.title ?? ''} ${item.source ?? ''}`
+  return PROMOTIONAL_PATTERNS.some((pattern) => pattern.test(haystack))
+}
+
+function issueTokens(title = '') {
+  const tokens = summarizeIssueTitle(title).toLowerCase().match(/[가-힣a-z0-9]+/g) ?? []
+  return new Set(tokens.filter((token) => token.length >= 2 && !TOKEN_STOP_WORDS.has(token)))
+}
+
+function comparableIssue(a, b) {
+  const normalizedA = summarizeIssueTitle(a).toLowerCase().replace(/[^가-힣a-z0-9]/g, '')
+  const normalizedB = summarizeIssueTitle(b).toLowerCase().replace(/[^가-힣a-z0-9]/g, '')
+  if (normalizedA && normalizedA === normalizedB) return true
+
+  const aTokens = issueTokens(a)
+  const bTokens = issueTokens(b)
+  if (!aTokens.size || !bTokens.size) return false
+  let common = 0
+  for (const token of aTokens) if (bTokens.has(token)) common += 1
+  const overlap = common / Math.min(aTokens.size, bTokens.size)
+  return common >= 3 && overlap >= 0.55
+}
+
+function timeValue(value) {
+  const parsed = Date.parse(value ?? 0)
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+export function collapseNewsIssues(items = []) {
+  const ordered = [...items]
+    .filter((item) => item?.title && item?.link && !isPromotionalNews(item))
+    .sort((a, b) => timeValue(a.publishedAt) - timeValue(b.publishedAt))
+
+  const groups = []
+  for (const item of ordered) {
+    const published = timeValue(item.publishedAt)
+    const summary = summarizeIssueTitle(item.title)
+    let group = null
+
+    for (let index = groups.length - 1; index >= 0; index -= 1) {
+      const candidate = groups[index]
+      if (published && candidate.lastPublished && published - candidate.lastPublished > ISSUE_WINDOW_MS) break
+      if (comparableIssue(summary, candidate.summary)) {
+        group = candidate
+        break
+      }
+    }
+
+    if (!group) {
+      groups.push({
+        summary,
+        firstPublished: published,
+        lastPublished: published,
+        representative: item,
+        count: 1,
+        sources: new Set([item.source || '뉴스']),
+      })
+      continue
+    }
+
+    group.count += 1
+    group.lastPublished = Math.max(group.lastPublished, published)
+    group.sources.add(item.source || '뉴스')
+    if (summary.length > group.summary.length) group.summary = summary
+    if (published >= timeValue(group.representative.publishedAt)) group.representative = item
+  }
+
+  return groups.map((group) => ({
+    ...group.representative,
+    summary: group.summary,
+    publishedAt: group.firstPublished ? new Date(group.firstPublished).toISOString() : group.representative.publishedAt,
+    lastPublishedAt: group.lastPublished ? new Date(group.lastPublished).toISOString() : group.representative.publishedAt,
+    duplicateCount: group.count,
+    sourceCount: group.sources.size,
+  }))
+}
+
 async function fetchQuery(query) {
   const params = new URLSearchParams({ q: query, hl: 'ko', gl: 'KR', ceid: 'KR:ko' })
   const response = await fetch(`${NEWS_URL}?${params}`, {
@@ -67,21 +170,12 @@ export class FeatureNewsService {
         fetchQuery('특징주 코스피 코스닥 when:1d'),
         fetchQuery('주식 급등 상한가 특징주 when:1d'),
       ])
-      const seen = new Set()
-      const items = batches.flat()
-        .filter((item) => {
-          const key = item.title.replace(/\s+/g, ' ').toLowerCase()
-          if (seen.has(key)) return false
-          seen.add(key)
-          return true
-        })
-        .sort((a, b) => Date.parse(b.publishedAt ?? 0) - Date.parse(a.publishedAt ?? 0))
-        .slice(0, 24)
-      this.payload = { ok: true, updatedAt: new Date().toISOString(), source: 'Google News RSS · 원문 기사 연결', items, error: null }
+      const items = collapseNewsIssues(batches.flat()).slice(-24)
+      this.payload = { ok: true, updatedAt: new Date().toISOString(), source: 'Google News RSS · 중복/홍보 필터 · 원문 기사 연결', items, error: null }
       return this.payload
     } catch (error) {
       if (this.payload.items.length) return { ...this.payload, stale: true, error: error instanceof Error ? error.message : String(error) }
-      this.payload = { ok: false, updatedAt: new Date().toISOString(), source: 'Google News RSS · 원문 기사 연결', items: [], error: error instanceof Error ? error.message : String(error) }
+      this.payload = { ok: false, updatedAt: new Date().toISOString(), source: 'Google News RSS · 중복/홍보 필터 · 원문 기사 연결', items: [], error: error instanceof Error ? error.message : String(error) }
       return this.payload
     }
   }
