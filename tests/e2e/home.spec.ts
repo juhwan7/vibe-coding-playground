@@ -60,8 +60,9 @@ test('domestic theme flow keeps the brief hidden in a side drawer and shows five
 test('US theme flow page is available', async ({ page }, testInfo) => {
   await page.goto('/')
   await page.getByRole('button', { name: '미국 테마 흐름' }).click()
+  await expect(page.getByTestId('us-session-compare')).toBeVisible()
   await expect(page.getByTestId('us-theme-strength-board')).toBeVisible()
-  await expect(page.getByRole('heading', { name: /미국 테마 강도 비교/ })).toBeVisible()
+  await expect(page.getByRole('heading', { name: /미국 정규장 기록/ })).toBeVisible()
   await expect(page.getByTestId('us-top100-ranking')).toBeVisible()
   await page.screenshot({ path: testInfo.outputPath('us-theme-flow-dashboard.png'), fullPage: true })
 })
