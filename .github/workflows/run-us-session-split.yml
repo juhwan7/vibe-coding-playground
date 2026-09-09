@@ -19,30 +19,8 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - name: Run stored patch script
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-          text = Path('.github/workflows/apply-us-session-split-v2.yml').read_text()
-          start_marker = "          python3 <<'PY'\n"
-          end_marker = "          PY\n      - name: Install dependencies"
-          start = text.index(start_marker) + len(start_marker)
-          end = text.index(end_marker, start)
-          lines = text[start:end].splitlines()
-          script = '\n'.join(line[10:] if line.startswith('          ') else line for line in lines) + '\n'
-          old_anchor = '''"""  async sampleLivePrices() {
-            if (this.liveSampling || this.refreshing || !this.client.configured || !usRegularSessionActive() || !this.activeGroups.length) return this.payload
-          """,'''
-          new_anchor = '''"""  async sampleLivePrices() {
-          """,'''
-          if old_anchor not in script:
-              raise SystemExit('stored patch session anchor normalization target not found')
-          script = script.replace(old_anchor, new_anchor, 1)
-          Path('/tmp/apply-us-session-split.py').write_text(script)
-          PY
-          python3 /tmp/apply-us-session-split.py
+      - name: Apply session split
+        run: python3 .github/apply-us-session-split.py
       - name: Install dependencies
         run: npm ci
       - name: Verify feature
@@ -56,7 +34,7 @@ jobs:
           set -euo pipefail
           git config user.name 'juhwan7'
           git config user.email '43717710+juhwan7@users.noreply.github.com'
-          git rm -f .github/workflows/apply-us-session-split.yml .github/workflows/apply-us-session-split-v2.yml .github/workflows/run-us-session-split.yml .github/us-session-split-trigger.txt
+          git rm -f .github/apply-us-session-split.py .github/workflows/apply-us-session-split.yml .github/workflows/apply-us-session-split-v2.yml .github/workflows/run-us-session-split.yml .github/us-session-split-trigger.txt
           git add backend/usThemeFlowService.mjs backend/usThemeFlowService.test.mjs src/UsMarketWorkspace.tsx src/marketWorkspaceEnhancements.css
           git commit -m 'feat: 미국 정규장과 애프터 흐름 분리'
           git push origin HEAD:main
