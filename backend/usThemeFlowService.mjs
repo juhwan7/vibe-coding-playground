@@ -1,7 +1,12 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
-import { buildUsThemeGroups } from './usThemeCatalog.mjs'
+import { selectUsThemeGroups } from './usThemeCatalog.mjs'
 import { sleep } from './tossClient.mjs'
+
+const EXCHANGE_TRADED_NAME = /(ETF|ETN|SPDR|ISHARES|PROSHARES|DIREXION|VANGUARD|INVESCO|ARK\s|GLOBAL X|WISDOMTREE|VANECK)/i
+const EXCHANGE_TRADED_SYMBOLS = new Set([
+  'SPY','QQQ','IWM','DIA','VOO','VTI','IVV','TQQQ','SQQQ','SOXL','SOXS','UVXY','VXX','XLF','XLE','XLK','XLV','SMH','IBIT','FBTC',
+])
 
 function number(value) {
   const parsed = Number(value)
@@ -112,12 +117,21 @@ function stockMeta(item) {
   return {
     symbol: item?.symbol ?? item?.stock?.symbol ?? null,
     name: item?.name ?? item?.stockName ?? item?.displayName ?? item?.shortName ?? item?.stock?.name ?? null,
-    englishName: item?.englishName ?? null,
+    englishName: item?.englishName ?? item?.stock?.englishName ?? null,
     market: item?.market ?? item?.marketName ?? item?.exchange ?? item?.stock?.market ?? null,
-    securityType: item?.securityType ?? null,
-    isCommonShare: item?.isCommonShare ?? null,
-    currency: item?.currency ?? 'USD',
+    securityType: item?.securityType ?? item?.stock?.securityType ?? null,
+    isCommonShare: item?.isCommonShare ?? item?.stock?.isCommonShare ?? null,
+    currency: item?.currency ?? item?.stock?.currency ?? 'USD',
   }
+}
+
+export function isUsIndividualStock(item = {}) {
+  const symbol = String(item?.symbol ?? '').trim().toUpperCase()
+  const securityType = String(item?.securityType ?? '').trim().toUpperCase()
+  if (securityType) return securityType === 'STOCK'
+  if (EXCHANGE_TRADED_SYMBOLS.has(symbol)) return false
+  const name = `${item?.name ?? ''} ${item?.englishName ?? ''}`.trim()
+  return !EXCHANGE_TRADED_NAME.test(name)
 }
 
 function candleRecords(payload) {
@@ -239,8 +253,9 @@ export function aggregateUsThemeSeries(memberSeries) {
       perBucket.set(key, current)
     }
     for (const [key, point] of perBucket) {
-      const aggregate = buckets.get(key) ?? { timestamp: point.timestamp, values: [], volume: 0, tradingAmount: 0, symbols: new Set() }
+      const aggregate = buckets.get(key) ?? { timestamp: point.timestamp, values: [], weights: [], volume: 0, tradingAmount: 0, symbols: new Set() }
       aggregate.values.push(point.value)
+      aggregate.weights.push(Math.max(0, Number(point.tradingAmount) || 0))
       aggregate.volume += point.volume
       aggregate.tradingAmount += point.tradingAmount
       aggregate.symbols.add(symbol)
@@ -250,14 +265,20 @@ export function aggregateUsThemeSeries(memberSeries) {
 
   return [...buckets.values()]
     .sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp))
-    .map((bucket) => ({
-      timestamp: bucket.timestamp,
-      value: bucket.values.reduce((sum, value) => sum + value, 0) / Math.max(1, bucket.values.length),
-      volume: bucket.volume,
-      tradingAmount: bucket.tradingAmount,
-      memberCount: bucket.symbols.size,
-      day: usDateKey(bucket.timestamp),
-    }))
+    .map((bucket) => {
+      const totalWeight = bucket.weights.reduce((sum, weight) => sum + weight, 0)
+      const weightedValue = totalWeight > 0
+        ? bucket.values.reduce((sum, value, index) => sum + value * bucket.weights[index], 0) / totalWeight
+        : bucket.values.reduce((sum, value) => sum + value, 0) / Math.max(1, bucket.values.length)
+      return {
+        timestamp: bucket.timestamp,
+        value: weightedValue,
+        volume: bucket.volume,
+        tradingAmount: bucket.tradingAmount,
+        memberCount: bucket.symbols.size,
+        day: usDateKey(bucket.timestamp),
+      }
+    })
 }
 
 async function mapLimit(items, limit, worker) {
@@ -433,12 +454,13 @@ export class UsThemeFlowService {
 
       const symbols = rankings.map((item) => item.symbol).filter(Boolean)
       await this.ensureMeta(symbols).catch(() => {})
-      const topRankings = rankings.map((item) => this.enrichRanking(item))
+      const enrichedRankings = rankings.map((item) => this.enrichRanking(item))
+      const topRankings = enrichedRankings.filter(isUsIndividualStock).slice(0, 50)
       const marketTradingAmount = topRankings.reduce((sum, item) => sum + (item.tradingAmount ?? 0), 0)
-      const groups = buildUsThemeGroups(topRankings, { limit: 50, minMembers: 3, maxThemes: 10 })
+      const groups = selectUsThemeGroups(topRankings, { limit: 50, targetCount: 5 })
       const rankedAt = rankingResult.payload?.result?.rankedAt ?? null
 
-      // Publish TOP100 immediately. Theme charts can continue filling from persisted/backfilled candles.
+      // ETF/ETN을 제거한 실제 개별주 TOP50을 먼저 게시하고 테마 차트는 뒤에서 채운다.
       this.payload = {
         ...this.payload,
         ok: true,
@@ -467,22 +489,24 @@ export class UsThemeFlowService {
       await this.persistCache().catch(() => {})
 
       const themes = groups.map((group) => {
-        const members = group.members.map((member) => this.enrichRanking(member))
+        const members = group.members.map((member) => this.enrichRanking(member)).filter(isUsIndividualStock)
         const recentSeries = recentTradingDayFilter(members.map((member) => ({ symbol: member.symbol, candles: this.candleCache.get(member.symbol) ?? [] })), 2)
         const points = aggregateUsThemeSeries(recentSeries)
         return {
           name: group.name,
-          tradingAmount: group.tradingAmount,
+          tradingAmount: members.reduce((sum, member) => sum + (member.tradingAmount ?? 0), 0),
           memberCount: members.length,
           members,
           points,
+          selectionBasis: group.selectionBasis,
+          rankingLimit: 50,
           currentValue: points.at(-1)?.value ?? null,
           change1h: nearestDelta(points, 60),
           change3h: nearestDelta(points, 180),
           startDay: points[0]?.day ?? null,
           endDay: points.at(-1)?.day ?? null,
         }
-      })
+      }).slice(0, 5)
 
       this.payload = {
         ok: true,
@@ -501,10 +525,13 @@ export class UsThemeFlowService {
         chartFailures,
         criteria: {
           rankingLimit: 50,
-          minMembers: 3,
+          targetThemeCount: 5,
+          excludeExchangeTradedProducts: true,
+          preferredMinMembers: 3,
+          fallbackMinMembers: 1,
           candleInterval: '1m',
           aggregateInterval: '3m',
-          weighting: 'equal-return',
+          weighting: '3m-turnover-weighted-return',
           ranking: `${rankingResult.type}/US/${rankingResult.duration}`,
           chartSession: 'US regular 09:30-16:00 ET',
           historyTradingDays: 2,
