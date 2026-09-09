@@ -30,3 +30,31 @@ test('TOP100에 주도 여부와 무관하게 검증 테마 또는 대표 업종
   assert.deepEqual(result.topRankings[3].catalogThemes, ['기타·개별주'])
   assert.equal(result.topRankings[3].classificationKind, 'fallback')
 })
+
+test('테마 서비스 payload에 없는 실시간 TOP100 종목도 빠짐없이 분류한다', () => {
+  const payload = {
+    ok: true,
+    updatedAt: '2026-09-09T06:00:00.000Z',
+    topRankings: [
+      { symbol: '005930', name: '삼성전자', changeRate: 1, tradingAmount: 100 },
+    ],
+    themes: [],
+  }
+  const snapshot = {
+    updatedAt: '2026-09-09T06:00:10.000Z',
+    topRankings: [
+      { symbol: '005930', name: '삼성전자', changeRate: 1.1, tradingAmount: 110 },
+      { symbol: '009150', name: '삼성전기', changeRate: 2.4, tradingAmount: 95 },
+      { symbol: '999999', name: '미분류종목', changeRate: -0.5, tradingAmount: 80 },
+    ],
+  }
+
+  const result = buildLiveThemePayload(payload, snapshot)
+
+  assert.equal(result.topRankings.length, 3)
+  assert.equal(result.topRankings[0].symbol, '005930')
+  assert.deepEqual(result.topRankings[1].catalogThemes, ['전자·IT부품'])
+  assert.equal(result.topRankings[1].classificationKind, 'sector')
+  assert.deepEqual(result.topRankings[2].catalogThemes, ['기타·개별주'])
+  assert.equal(result.topRankings[2].classificationKind, 'fallback')
+})
