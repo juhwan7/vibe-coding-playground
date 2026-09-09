@@ -33,7 +33,7 @@ function fmtRate(value: number | null | undefined) {
 
 export default function ThemeAverageCandleChart({ theme, accent }: { theme: ThemeGroup; accent: string }) {
   const points = (theme.points ?? [])
-    .map((point) => ({ ...point, lineValue: point.closeValue ?? point.value }))
+    .map((point) => ({ ...point, lineValue: point.value }))
     .filter((point) => Number.isFinite(point.lineValue))
     .sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp))
 
