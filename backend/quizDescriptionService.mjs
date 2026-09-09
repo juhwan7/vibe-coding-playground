@@ -155,7 +155,7 @@ export class QuizDescriptionService {
     const results = new Map()
     let changed = false
 
-    await mapLimit(unique, 3, async (code) => {
+    await mapLimit(unique, 4, async (code) => {
       const cached = this.cache.get(code)
       if (this.isFresh(cached)) {
         results.set(code, { ...cached, stale: false })
