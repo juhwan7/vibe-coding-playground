@@ -66,27 +66,42 @@ test('US theme flow page is available', async ({ page }, testInfo) => {
   await page.screenshot({ path: testInfo.outputPath('us-theme-flow-dashboard.png'), fullPage: true })
 })
 
-test('daily issue digest uses half-width issue list and a selectable two-trading-day chart', async ({ page }, testInfo) => {
+test('daily issue digest puts chart on the left and shows daily plus real one-minute OHLC bars', async ({ page }, testInfo) => {
   const intraday = [
     {
       date: '2026-09-08',
       points: [
-        { timestamp: '2026-09-08T00:00:00.000Z', value: 70000 },
-        { timestamp: '2026-09-08T01:00:00.000Z', value: 70400 },
-        { timestamp: '2026-09-08T02:00:00.000Z', value: 70100 },
-        { timestamp: '2026-09-08T06:20:00.000Z', value: 70600 },
+        { timestamp: '2026-09-08T00:00:00.000Z', open: 70000, high: 70200, low: 69900, close: 70100 },
+        { timestamp: '2026-09-08T01:00:00.000Z', open: 70100, high: 70500, low: 70000, close: 70400 },
+        { timestamp: '2026-09-08T02:00:00.000Z', open: 70400, high: 70500, low: 70000, close: 70100 },
+        { timestamp: '2026-09-08T06:20:00.000Z', open: 70100, high: 70700, low: 70050, close: 70600 },
       ],
     },
     {
       date: '2026-09-09',
       points: [
-        { timestamp: '2026-09-09T00:00:00.000Z', value: 70800 },
-        { timestamp: '2026-09-09T01:00:00.000Z', value: 71600 },
-        { timestamp: '2026-09-09T02:00:00.000Z', value: 71300 },
-        { timestamp: '2026-09-09T06:20:00.000Z', value: 72100 },
+        { timestamp: '2026-09-09T00:00:00.000Z', open: 70800, high: 71000, low: 70700, close: 70900 },
+        { timestamp: '2026-09-09T01:00:00.000Z', open: 70900, high: 71700, low: 70800, close: 71600 },
+        { timestamp: '2026-09-09T02:00:00.000Z', open: 71600, high: 71700, low: 71200, close: 71300 },
+        { timestamp: '2026-09-09T06:20:00.000Z', open: 71300, high: 72200, low: 71200, close: 72100 },
       ],
     },
   ]
+  const daily = [
+    { timestamp: '2026-09-03T06:30:00.000Z', open: 69000, high: 69800, low: 68700, close: 69600 },
+    { timestamp: '2026-09-04T06:30:00.000Z', open: 69600, high: 70400, low: 69300, close: 70100 },
+    { timestamp: '2026-09-07T06:30:00.000Z', open: 70100, high: 70600, low: 69600, close: 70000 },
+    { timestamp: '2026-09-08T06:30:00.000Z', open: 70000, high: 70800, low: 69800, close: 70600 },
+    { timestamp: '2026-09-09T06:20:00.000Z', open: 70800, high: 72200, low: 70600, close: 72100 },
+  ]
+  const scaleBars = (bars: typeof intraday[number]['points'], multiplier: number) => bars.map((point) => ({
+    ...point,
+    open: point.open * multiplier,
+    high: point.high * multiplier,
+    low: point.low * multiplier,
+    close: point.close * multiplier,
+  }))
+
   await page.route('**/api/market/daily-issues', async (route) => {
     await route.fulfill({
       status: 200,
@@ -94,13 +109,13 @@ test('daily issue digest uses half-width issue list and a selectable two-trading
       body: JSON.stringify({
         ok: true,
         status: 'finalized',
-        schemaVersion: 2,
+        schemaVersion: 4,
         date: '2026-09-09',
         capturedAt: '2026-09-09T06:20:00.000Z',
-        source: '테스트 실제 1분봉 2거래일',
+        source: '테스트 실제 OHLC',
         rows: [
-          { symbol: 'A005930', name: '삼성전자', market: 'KOSPI', theme: '반도체', price: 72100, changeRate: 2.1, tradingAmount: 1500000000000, issueSummary: 'HBM 공급 관련 뉴스', articleCount: 2, sources: ['테스트뉴스'], intraday },
-          { symbol: 'A000660', name: 'SK하이닉스', market: 'KOSPI', theme: '반도체', price: 312000, changeRate: 1.2, tradingAmount: 1100000000000, issueSummary: '메모리 업황 관련 뉴스', articleCount: 1, sources: ['테스트뉴스'], intraday: intraday.map((day) => ({ ...day, points: day.points.map((point) => ({ ...point, value: point.value * 4 })) })) },
+          { symbol: 'A005930', name: '삼성전자', market: 'KOSPI', theme: '반도체', price: 72100, changeRate: 2.1, tradingAmount: 1500000000000, issueSummary: 'HBM 공급 관련 뉴스', articleCount: 2, sources: ['테스트뉴스'], intraday, daily },
+          { symbol: 'A000660', name: 'SK하이닉스', market: 'KOSPI', theme: '반도체', price: 312000, changeRate: 1.2, tradingAmount: 1100000000000, issueSummary: '메모리 업황 관련 뉴스', articleCount: 1, sources: ['테스트뉴스'], intraday: intraday.map((day) => ({ ...day, points: scaleBars(day.points, 4) })), daily: scaleBars(daily, 4) },
         ],
       }),
     })
@@ -110,14 +125,26 @@ test('daily issue digest uses half-width issue list and a selectable two-trading
   await page.getByRole('button', { name: '금일 이슈 정리' }).click()
   await expect(page.getByTestId('daily-issues')).toBeVisible()
   await expect(page.getByRole('heading', { name: '금일 이슈 정리' })).toBeVisible()
-  await expect(page.getByText(/전일과 오늘 2거래일/)).toBeVisible()
+  await expect(page.getByText(/최근 30거래일 실제 일봉/)).toBeVisible()
+  await expect(page.getByText(/전일\+오늘 실제 1분 OHLC/)).toBeVisible()
   await expect(page.getByTestId('daily-issues-chart-panel')).toContainText('삼성전자')
+  await expect(page.getByTestId('daily-issues-daily-chart')).toBeVisible()
+  await expect(page.getByTestId('daily-issues-intraday-chart')).toBeVisible()
+  await expect(page.locator('.daily-issues-daily-bar')).toHaveCount(5)
+  await expect(page.locator('.daily-issues-minute-bar')).toHaveCount(8)
   await expect(page.locator('.daily-issues-big-day-label')).toHaveText(['09.08', '09.09'])
 
   const split = await page.getByTestId('daily-issues-split-layout').evaluate((node) => {
     const children = Array.from(node.children) as HTMLElement[]
-    return { left: children[0]?.getBoundingClientRect().width ?? 0, right: children[1]?.getBoundingClientRect().width ?? 0 }
+    return {
+      left: children[0]?.getBoundingClientRect().width ?? 0,
+      right: children[1]?.getBoundingClientRect().width ?? 0,
+      leftTestId: children[0]?.dataset.testid ?? '',
+      rightClass: children[1]?.className ?? '',
+    }
   })
+  expect(split.leftTestId).toBe('daily-issues-chart-panel')
+  expect(split.rightClass).toContain('daily-issues-list')
   if (page.viewportSize() && page.viewportSize()!.width > 1180) {
     expect(split.left).toBeGreaterThan(split.right * .9)
     expect(split.left).toBeLessThan(split.right * 1.1)
@@ -125,6 +152,8 @@ test('daily issue digest uses half-width issue list and a selectable two-trading
 
   await page.getByRole('button', { name: /SK하이닉스/ }).click()
   await expect(page.getByTestId('daily-issues-chart-panel')).toContainText('SK하이닉스')
+  await expect(page.locator('.daily-issues-daily-bar')).toHaveCount(5)
+  await expect(page.locator('.daily-issues-minute-bar')).toHaveCount(8)
   await page.screenshot({ path: testInfo.outputPath('daily-issues.png'), fullPage: true })
 })
 
