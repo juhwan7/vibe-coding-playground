@@ -10,10 +10,14 @@ type DailyIssueRow = {
   name: string
   market?: string | null
   theme?: string | null
+  companySummary?: string | null
+  companySummarySource?: string | null
   price?: number | null
   changeRate?: number | null
   tradingAmount?: number | null
   issueSummary?: string | null
+  reasonType?: 'direct-news' | 'theme-news' | 'unconfirmed' | null
+  reasonTheme?: string | null
   articleCount?: number | null
   sources?: string[] | null
   links?: IssueLink[] | null
@@ -109,10 +113,22 @@ function fmtChartPrice(value: number) {
   return value.toLocaleString(undefined, { maximumFractionDigits: 2 })
 }
 
+function reasonLabel(row: DailyIssueRow) {
+  if (row.reasonType === 'direct-news') return '종목 직접 기사'
+  if (row.reasonType === 'theme-news') return '테마 연동 추정'
+  return '이유 미확인'
+}
+
+function companyText(row: DailyIssueRow) {
+  if (row.companySummary) return row.companySummary
+  if (row.theme && row.theme !== '기타' && row.theme !== '기타·개별주') return `기업개요 미확보 · ${row.theme} 분류 종목`
+  return '기업개요 확인 중'
+}
+
 function TwoDayIntradayChart({ intraday, changeRate }: { intraday?: IntradayValue | null; changeRate?: number | null }) {
   const days = normalizeIntraday(intraday)
   const allPoints = days.flatMap((day) => day.points)
-  if (allPoints.length < 2) return <div className="daily-issues-chart-empty large">2거래일 장중 차트 준비 중</div>
+  if (allPoints.length < 2) return <div className="daily-issues-chart-empty large">2거래일 실제 1분봉 준비 중</div>
 
   const width = 760
   const height = 330
@@ -144,11 +160,11 @@ function TwoDayIntradayChart({ intraday, changeRate }: { intraday?: IntradayValu
 
   return <div className="daily-issues-chart-wrap">
     <div className="daily-issues-chart-summary">
-      <span>실제 1분봉 → 5분 종가</span>
+      <span>실제 1분봉 · 보간/5분 압축 없음</span>
       <strong>{latest != null ? fmtChartPrice(latest) : '-'}</strong>
       <b className={(twoDayRate ?? 0) >= 0 ? 'up' : 'down'}>{twoDayRate == null ? '-' : `${twoDayRate > 0 ? '+' : ''}${twoDayRate.toFixed(2)}%`}</b>
     </div>
-    <svg className={`daily-issues-big-chart ${lineClass}`} viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" role="img" aria-label="전일과 오늘 2거래일 장중 주가 흐름">
+    <svg className={`daily-issues-big-chart ${lineClass}`} viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" role="img" aria-label="전일과 오늘 실제 1분 주가 흐름">
       {gridValues.map((value) => {
         const gridY = y(value)
         return <g key={value.toFixed(6)}>
@@ -178,7 +194,7 @@ function TwoDayIntradayChart({ intraday, changeRate }: { intraday?: IntradayValu
       })}
     </svg>
     <div className="daily-issues-chart-legend">
-      {days.map((day, index) => <span key={day.date}><b>{index === days.length - 1 ? '오늘' : '전일'}</b>{shortDate(day.date)} · {day.points.length}개 5분 포인트</span>)}
+      {days.map((day, index) => <span key={day.date}><b>{index === days.length - 1 ? '오늘' : '전일'}</b>{shortDate(day.date)} · 실제 1분 포인트 {day.points.length}개</span>)}
     </div>
   </div>
 }
@@ -213,7 +229,7 @@ export default function DailyIssues() {
       <div>
         <p>DAILY MARKET ISSUE DIGEST / 15:20 KST</p>
         <h1>금일 이슈 정리</h1>
-        <small>매일 15:20 기준 거래대금 상위 개별주 100개를 고정해 종목별 당일 이슈를 종합합니다. 왼쪽 종목을 선택하면 오른쪽에서 전일과 오늘 2거래일의 실제 장중 흐름을 크게 확인할 수 있습니다.</small>
+        <small>거래대금 상위 개별주를 등락률 순으로 정리합니다. 종목별 실제 기업개요와 테마를 함께 표시하고, 직접 종목 기사가 없으면 같은 테마에서 상승한 종목의 기사만 근거로 테마 동반 강세 가능성을 추정해 구분 표시합니다. 오른쪽은 전일+오늘 실제 1분봉입니다.</small>
       </div>
       <aside>
         <b className={payload.ok ? 'ready' : 'waiting'}>{payload.ok ? '● 정리 완료' : payload.status === 'generating' ? '● 생성 중' : '● 15:20 대기'}</b>
@@ -222,27 +238,35 @@ export default function DailyIssues() {
     </section>
 
     {!payload.ok && <section className="daily-issues-wait panel">
-      <strong>{payload.status === 'generating' ? '금일 거래대금 TOP100과 2거래일 실제 차트를 종합하고 있습니다.' : '15:20이 되면 오늘의 거래대금 TOP100을 확정합니다.'}</strong>
-      <span>확정 후 왼쪽에는 종목별 금일 이슈, 오른쪽에는 선택 종목의 전일+오늘 실제 장중 차트가 저장됩니다.</span>
+      <strong>{payload.status === 'generating' ? '금일 TOP100 · 기업 분류 · 뉴스 · 전일+오늘 실제 1분봉을 종합하고 있습니다.' : '15:20이 되면 오늘의 거래대금 TOP100을 확정합니다.'}</strong>
+      <span>확정 후 왼쪽에는 종목 성격·테마·상승 이유, 오른쪽에는 선택 종목의 2거래일 실제 1분 흐름이 저장됩니다.</span>
       {payload.error && <small>{payload.error}</small>}
     </section>}
 
     {payload.ok && <section className="daily-issues-layout" data-testid="daily-issues-split-layout">
       <section className="daily-issues-list panel">
         <div className="daily-issues-list-title">
-          <div><b>TOP100 ISSUE LIST</b><span>등락률 높은 순 · 행을 눌러 차트 변경</span></div>
+          <div><b>TOP100 ISSUE LIST</b><span>등락률 높은 순 · 종목을 눌러 우측 차트 변경</span></div>
           <strong>{rows.length}종목</strong>
         </div>
         <div className="daily-issues-list-head">
-          <span>순위</span><span>종목</span><span>등락률</span><span>거래대금</span><span>금일 이슈</span>
+          <span>순위</span><span>종목 · 기업 · 테마</span><span>등락률</span><span>거래대금</span><span>금일 상승 이유</span>
         </div>
         <div className="daily-issues-list-body">
           {rows.map((row, index) => <button type="button" className={`daily-issues-list-row ${selectedRow?.symbol === row.symbol ? 'active' : ''}`} key={row.symbol} onClick={() => setSelectedSymbol(row.symbol)} aria-pressed={selectedRow?.symbol === row.symbol}>
             <b className="daily-issues-rank">{index + 1}</b>
-            <div className="daily-issues-stock"><strong>{row.name}</strong><small>{row.symbol}{row.theme ? ` · ${row.theme}` : ''}</small></div>
+            <div className="daily-issues-stock">
+              <div className="daily-issues-stock-title"><strong>{row.name}</strong><span>{row.theme || '기타·개별주'}</span></div>
+              <p>{companyText(row)}</p>
+              <small>{row.symbol}{row.market ? ` · ${row.market}` : ''}</small>
+            </div>
             <strong className={`daily-issues-rate ${(row.changeRate ?? 0) >= 0 ? 'up' : 'down'}`}>{fmtRate(row.changeRate)}</strong>
             <strong className="daily-issues-amount">{fmtAmount(row.tradingAmount)}</strong>
-            <div className="daily-issues-summary compact"><strong>{row.issueSummary || '직접적인 당일 뉴스 재료 확인 안 됨'}</strong><small>{(row.articleCount ?? 0) > 0 ? `${row.articleCount}건 종합` : '확인된 직접 뉴스 없음'}</small></div>
+            <div className="daily-issues-summary compact">
+              <div className="daily-issues-reason-line"><span className={`daily-issues-reason-badge ${row.reasonType ?? 'unconfirmed'}`}>{reasonLabel(row)}</span>{row.reasonTheme && <b>{row.reasonTheme}</b>}</div>
+              <strong>{row.issueSummary || '상승 이유 확인 안 됨'}</strong>
+              <small>{row.reasonType === 'theme-news' ? `직접 종목 기사 없음 · 동종 테마 기사 ${(row.articleCount ?? 0)}건 근거` : (row.articleCount ?? 0) > 0 ? `${row.articleCount}건 종합` : '확인 가능한 상승 근거 없음'}</small>
+            </div>
           </button>)}
         </div>
       </section>
@@ -250,17 +274,27 @@ export default function DailyIssues() {
       <aside className="daily-issues-detail panel" data-testid="daily-issues-chart-panel">
         {selectedRow ? <>
           <div className="daily-issues-detail-head">
-            <div><p>2-DAY INTRADAY FLOW</p><h2>{selectedRow.name}</h2><small>{selectedRow.symbol}{selectedRow.market ? ` · ${selectedRow.market}` : ''}{selectedRow.theme ? ` · ${selectedRow.theme}` : ''}</small></div>
-            <div className="daily-issues-detail-price"><strong>{selectedRow.price?.toLocaleString() ?? '-'}</strong><b className={(selectedRow.changeRate ?? 0) >= 0 ? 'up' : 'down'}>{fmtRate(selectedRow.changeRate)}</b><span>{fmtAmount(selectedRow.tradingAmount)}</span></div>
+            <div>
+              <p>2-DAY REAL 1M FLOW</p>
+              <div className="daily-issues-detail-title"><h2>{selectedRow.name}</h2><span>{selectedRow.theme || '기타·개별주'}</span></div>
+              <strong className="daily-issues-company-summary">{companyText(selectedRow)}</strong>
+              <small>{selectedRow.symbol}{selectedRow.market ? ` · ${selectedRow.market}` : ''}</small>
+            </div>
+            <div className="daily-issues-detail-price"><strong>{selectedRow.price?.toLocaleString() ?? '-'}</strong><b className={(selectedRow.changeRate ?? 0) >= 0 ? 'up' : 'down'}>{fmtRate(selectedRow.changeRate)}</b><span>거래대금 {fmtAmount(selectedRow.tradingAmount)}</span></div>
           </div>
           <TwoDayIntradayChart intraday={selectedRow.intraday} changeRate={selectedRow.changeRate} />
           <div className="daily-issues-detail-issue">
-            <span>금일 이슈</span>
-            <strong>{selectedRow.issueSummary || '직접적인 당일 뉴스 재료 확인 안 됨'}</strong>
-            <small>{(selectedRow.articleCount ?? 0) > 0 ? `${selectedRow.articleCount}건 종합${selectedRow.sources?.length ? ` · ${selectedRow.sources.join(' · ')}` : ''}` : '확인된 직접 뉴스 없음'}</small>
-            {!!selectedRow.links?.length && <div>{selectedRow.links.slice(0, 3).map((link, linkIndex) => link.link ? <a key={`${selectedRow.symbol}-${linkIndex}`} href={link.link} target="_blank" rel="noreferrer">원문 {linkIndex + 1}</a> : null)}</div>}
+            <div className="daily-issues-reason-line"><span className={`daily-issues-reason-badge ${selectedRow.reasonType ?? 'unconfirmed'}`}>{reasonLabel(selectedRow)}</span>{selectedRow.reasonTheme && <b>{selectedRow.reasonTheme}</b>}</div>
+            <span>금일 상승 이유</span>
+            <strong>{selectedRow.issueSummary || '상승 이유 확인 안 됨'}</strong>
+            <small>{selectedRow.reasonType === 'theme-news'
+              ? `확인된 직접 종목 기사가 없어 같은 테마 상승 종목 기사로 보조 추정한 내용입니다. 인과관계가 확정된 것은 아닙니다.${selectedRow.sources?.length ? ` · ${selectedRow.sources.join(' · ')}` : ''}`
+              : (selectedRow.articleCount ?? 0) > 0
+                ? `종목명이 직접 포함된 기사 ${selectedRow.articleCount}건 종합${selectedRow.sources?.length ? ` · ${selectedRow.sources.join(' · ')}` : ''}`
+                : '확인 가능한 직접 기사 또는 같은 테마 상승 기사 근거가 없습니다.'}</small>
+            {!!selectedRow.links?.length && <div>{selectedRow.links.slice(0, 3).map((link, linkIndex) => link.link ? <a key={`${selectedRow.symbol}-${linkIndex}`} href={link.link} target="_blank" rel="noreferrer">근거 기사 {linkIndex + 1}</a> : null)}</div>}
           </div>
-          <small className="daily-issues-detail-source">{payload.source || '실제 시장 데이터만 표시'} · 거래일 사이와 15분 초과 데이터 공백은 선으로 연결하지 않음</small>
+          <small className="daily-issues-detail-source">{payload.source || '실제 시장 데이터만 표시'} · 실제 데이터가 없는 구간은 보간하지 않으며 15분 초과 공백은 선으로 연결하지 않음</small>
         </> : <div className="daily-issues-chart-empty large">종목을 선택하면 차트가 표시됩니다.</div>}
       </aside>
     </section>}
