@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { KRX_INDEX_CONSTITUENTS_BLD, capIndexMembers, filterStockRows, parseTossEtfComposition, splitIndexCode } from './quizUniverseService.mjs'
+import { KRX_INDEX_CONSTITUENTS_BLD, capIndexMembers, filterStockRows, parseNaverIndexMembers, parseRiseEtfHoldings, parseTossEtfComposition, splitIndexCode } from './quizUniverseService.mjs'
 
 test('uses the KRX index-constituents endpoint instead of the all-index quote endpoint', () => {
   assert.equal(KRX_INDEX_CONSTITUENTS_BLD, 'dbms/MDC/STAT/standard/MDCSTAT00701')
@@ -20,6 +20,32 @@ test('quiz universe keeps six-digit stocks and excludes ETF/ETN products', () =>
     { ISU_SRT_CD: '000660', ISU_ABBRV: 'SK하이닉스' },
   ])
   assert.deepEqual(rows, [
+    { code: '005930', name: '삼성전자' },
+    { code: '000660', name: 'SK하이닉스' },
+  ])
+})
+
+test('RISE ETF holdings parser converts Korean ISINs into six-digit stock codes', () => {
+  const html = `
+    <table><tbody>
+      <tr><td>1</td><td><a>삼성전자</a></td><td>KR7005930003</td><td>100</td><td>30.0%</td></tr>
+      <tr><td>2</td><td>SK하이닉스</td><td>KR7000660001</td><td>50</td><td>20.0%</td></tr>
+      <tr><td>3</td><td>원화예금</td><td>KRD010010001</td><td>1</td><td>1.0%</td></tr>
+      <tr><td>4</td><td>RISE 200</td><td>KR7148020001</td><td>1</td><td>1.0%</td></tr>
+    </tbody></table>`
+  assert.deepEqual(parseRiseEtfHoldings(html, 200), [
+    { code: '005930', name: '삼성전자' },
+    { code: '000660', name: 'SK하이닉스' },
+  ])
+})
+
+test('Npay index page parser reads stock links and removes duplicate or ETF rows', () => {
+  const html = `
+    <a href="/item/main.naver?code=005930" target="_parent">삼성전자</a>
+    <a href="/item/main.naver?code=000660" target="_parent">SK하이닉스</a>
+    <a href="/item/main.naver?code=069500" target="_parent">KODEX 200</a>
+    <a href="/item/main.naver?code=005930" target="_parent">삼성전자</a>`
+  assert.deepEqual(parseNaverIndexMembers(html, 200), [
     { code: '005930', name: '삼성전자' },
     { code: '000660', name: 'SK하이닉스' },
   ])
