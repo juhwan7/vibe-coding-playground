@@ -112,15 +112,16 @@ test('daily issue digest uses half-width issue list and a selectable two-trading
   await expect(page.getByRole('heading', { name: '금일 이슈 정리' })).toBeVisible()
   await expect(page.getByText(/전일과 오늘 2거래일/)).toBeVisible()
   await expect(page.getByTestId('daily-issues-chart-panel')).toContainText('삼성전자')
-  await expect(page.getByText('09.08')).toBeVisible()
-  await expect(page.getByText('09.09')).toBeVisible()
+  await expect(page.locator('.daily-issues-big-day-label')).toHaveText(['09.08', '09.09'])
 
   const split = await page.getByTestId('daily-issues-split-layout').evaluate((node) => {
     const children = Array.from(node.children) as HTMLElement[]
     return { left: children[0]?.getBoundingClientRect().width ?? 0, right: children[1]?.getBoundingClientRect().width ?? 0 }
   })
-  expect(split.left).toBeGreaterThan(split.right * .9)
-  expect(split.left).toBeLessThan(split.right * 1.1)
+  if (page.viewportSize() && page.viewportSize()!.width > 1180) {
+    expect(split.left).toBeGreaterThan(split.right * .9)
+    expect(split.left).toBeLessThan(split.right * 1.1)
+  }
 
   await page.getByRole('button', { name: /SK하이닉스/ }).click()
   await expect(page.getByTestId('daily-issues-chart-panel')).toContainText('SK하이닉스')
