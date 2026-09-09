@@ -4,6 +4,11 @@ import { buildThemeGroups } from './themeCatalog.mjs'
 import { sleep } from './tossClient.mjs'
 
 const EXCHANGE_TRADED_NAME = /(ETF|ETN|KODEX|TIGER|RISE|ACE|PLUS|SOL|HANARO|KOSEF|TIMEFOLIO|ARIRANG|FOCUS|KBSTAR)/i
+const REGULAR_SESSION_START_MINUTE = 9 * 60
+const REGULAR_SESSION_END_MINUTE = 15 * 60 + 30
+const GAP_REPAIR_THRESHOLD_MS = 15 * 60 * 1000
+const GAP_REPAIR_MAX_PAGES = 5
+const GAP_REPAIR_COOLDOWN_MS = 5 * 60 * 1000
 
 function number(value) {
   const parsed = Number(value)
@@ -107,6 +112,44 @@ function hasFullPreviousTradingDay(candles) {
   const previous = candles.filter((candle) => dateKey(candle.timestamp) === previousDay)
   if (!previous.length) return false
   return Math.min(...previous.map((candle) => minuteOfDay(candle.timestamp))) <= 545
+}
+
+export function findIntradayCandleGaps(candles = [], {
+  dayCount = 2,
+  minGapMs = GAP_REPAIR_THRESHOLD_MS,
+  sessionStartMinute = REGULAR_SESSION_START_MINUTE,
+  sessionEndMinute = REGULAR_SESSION_END_MINUTE,
+} = {}) {
+  const ordered = [...candles]
+    .filter((candle) => candle?.timestamp && candle?.closePrice != null && Number.isFinite(Date.parse(candle.timestamp)))
+    .sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp))
+  if (ordered.length < 2) return []
+
+  const days = [...new Set(ordered.map((candle) => dateKey(candle.timestamp)))].sort().slice(-Math.max(1, dayCount))
+  const gaps = []
+
+  for (const day of days) {
+    const session = ordered.filter((candle) => {
+      if (dateKey(candle.timestamp) !== day) return false
+      const minute = minuteOfDay(candle.timestamp)
+      return minute >= sessionStartMinute && minute <= sessionEndMinute
+    })
+    for (let index = 1; index < session.length; index += 1) {
+      const previous = session[index - 1]
+      const current = session[index]
+      const gapMs = Date.parse(current.timestamp) - Date.parse(previous.timestamp)
+      if (gapMs > minGapMs) {
+        gaps.push({
+          day,
+          from: previous.timestamp,
+          to: current.timestamp,
+          gapMs,
+        })
+      }
+    }
+  }
+
+  return gaps
 }
 
 function recentTradingDayFilter(memberSeries, count = 2) {
@@ -319,6 +362,7 @@ export class ThemeFlowService {
     this.metaUpdatedAt = 0
     this.candleCache = new Map()
     this.cacheLoaded = false
+    this.gapRepairAttemptAt = new Map()
     this.payload = { ok: false, updatedAt: null, topRankings: [], themes: [], error: '초기화 중' }
     this.timer = null
     this.running = false
@@ -418,12 +462,48 @@ export class ThemeFlowService {
     this.candleCache.set(symbol, merged)
   }
 
+  async repairIntradayCandleGaps(symbol, existing, initialBefore = null) {
+    let merged = existing
+    let gaps = findIntradayCandleGaps(merged)
+    if (!gaps.length) return merged
+
+    const now = Date.now()
+    const lastAttempt = this.gapRepairAttemptAt.get(symbol) ?? 0
+    if (lastAttempt && now - lastAttempt < GAP_REPAIR_COOLDOWN_MS) return merged
+    this.gapRepairAttemptAt.set(symbol, now)
+
+    let before = initialBefore
+    for (let page = 0; page < GAP_REPAIR_MAX_PAGES && gaps.length; page += 1) {
+      const query = new URLSearchParams({ symbol, interval: '1m', count: '200', adjusted: 'true' })
+      if (before) query.set('before', before)
+      const payload = await this.client.request(`/api/v1/candles?${query.toString()}`)
+      const candles = candleRecords(payload)
+      if (!candles.length) break
+
+      merged = mergeCandles(merged, candles)
+      gaps = findIntradayCandleGaps(merged)
+      const next = payload?.result?.nextBefore ?? null
+      if (!gaps.length || !next || next === before) break
+      before = next
+      await sleep(80)
+    }
+
+    return merged
+  }
+
   async refreshSymbol(symbol) {
     const existing = this.candleCache.get(symbol) ?? []
     if (!existing.length || !hasFullPreviousTradingDay(existing)) return this.backfillTwoTradingDays(symbol)
+
     const query = new URLSearchParams({ symbol, interval: '1m', count: '20', adjusted: 'true' })
     const payload = await this.client.request(`/api/v1/candles?${query.toString()}`)
-    this.candleCache.set(symbol, mergeCandles(existing, candleRecords(payload)))
+    let merged = mergeCandles(existing, candleRecords(payload))
+
+    if (findIntradayCandleGaps(merged).length) {
+      merged = await this.repairIntradayCandleGaps(symbol, merged, payload?.result?.nextBefore ?? null)
+    }
+
+    this.candleCache.set(symbol, merged)
   }
 
   stockChart(symbol) {
@@ -505,6 +585,7 @@ export class ThemeFlowService {
           chart: 'averaged-OHLC-candles',
           tradingAmount: 'market-ranking-1d',
           historyTradingDays: 2,
+          gapRepair: '15m+ regular-session gap -> historical 1m candle backfill',
           persisted: true,
         },
         error: null,
