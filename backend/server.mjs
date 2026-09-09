@@ -64,7 +64,7 @@ async function publishPreparedFast() {
   if (collector.snapshot) writes.push(prepared.write('market-snapshot.json', collector.snapshot))
   if (themeFlow.payload?.ok) writes.push(prepared.write('kr-theme-flow.json', themeFlow.payload))
   if (usThemeFlow.payload?.ok) writes.push(prepared.write('us-theme-flow.json', usThemeFlow.payload))
-  if (featureNews.payload?.items?.length) writes.push(prepared.write('feature-news.json', featureNews.payload))
+  if (featureNews.payload?.ok) writes.push(prepared.write('feature-news.json', featureNews.payload))
   if (writes.length) await Promise.allSettled(writes)
 }
 
@@ -75,7 +75,7 @@ async function publishPreparedHistory() {
 
 async function refreshPreparedNews() {
   const payload = await featureNews.get()
-  if (payload?.items?.length) await prepared.write('feature-news.json', payload)
+  if (payload?.ok) await prepared.write('feature-news.json', payload)
 }
 
 async function refreshPrimaryMarket() {
@@ -159,13 +159,19 @@ const server = http.createServer(async (request, response) => {
     return send(response, themeFlow.payload?.ok ? 200 : 503, themeFlow.payload)
   }
 
+  if (url.pathname === '/api/market/theme-stock-chart') {
+    const symbol = String(url.searchParams.get('symbol') || '').trim()
+    const payload = themeFlow.stockChart(symbol)
+    return send(response, payload.ok ? 200 : 404, payload)
+  }
+
   if (url.pathname === '/api/market/us-theme-flow') {
     return send(response, usThemeFlow.payload?.ok ? 200 : 503, usThemeFlow.payload)
   }
 
   if (url.pathname === '/api/market/feature-news') {
     const payload = await featureNews.get()
-    if (payload?.items?.length) await prepared.write('feature-news.json', payload).catch(() => {})
+    if (payload?.ok) await prepared.write('feature-news.json', payload).catch(() => {})
     return send(response, payload.ok ? 200 : 503, payload)
   }
 
