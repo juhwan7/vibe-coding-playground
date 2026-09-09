@@ -9,8 +9,16 @@ import {
 } from './featureNewsService.mjs'
 
 const NEWS_URL = 'https://news.google.com/rss/search'
+const DIRECT_FEEDS = [
+  { name: '매일경제 증권', url: 'https://www.mk.co.kr/rss/50200011/' },
+  { name: '매일경제 경제', url: 'https://www.mk.co.kr/rss/30100041/' },
+  { name: '매일경제 국제', url: 'https://www.mk.co.kr/rss/30300018/' },
+  { name: 'MBN머니 증권', url: 'https://mbnmoney.mbn.co.kr/rss/news/stock' },
+]
 const THEME_CATALYST = /(반도체|HBM|AI|인공지능|데이터센터|광통신|광섬유|광케이블|광모듈|원전|SMR|전력기기|변압기|전선|방산|조선|바이오|제약|로봇|2차전지|배터리)/i
 const CATALYST_ACTION = /(수주|계약|공급|납품|투자|증설|정책|정부|승인|허가|임상|발표|협력|MOU|인수|합병|실적|급등|강세|관세|규제|지원|수출)/i
+const REPORT_SIGNAL = /(리포트|증권사|투자의견|목표가|목표주가|실적\s*전망|산업\s*전망|시장\s*전망|전망치|컨센서스)/i
+const MARKET_REPORT_SCOPE = /(증시|코스피|코스닥|시장|반도체|HBM|원전|전력|방산|조선|바이오|2차전지|배터리|자동차|금융|환율|유가|금리)/i
 const MAX_PER_HOUR = 8
 
 function kstDateKey(value = Date.now()) {
@@ -39,6 +47,13 @@ function issueKey(item = {}) {
   return normalized || String(item.link ?? '')
 }
 
+function validName(name, symbol) {
+  const value = String(name ?? '').trim()
+  const code = String(symbol ?? '').trim()
+  if (!value || value === code || /^\d{6}$/.test(value)) return null
+  return value
+}
+
 export function filterNewsToday(items = [], now = Date.now()) {
   return filterNewsSinceKstSix(items, now)
 }
@@ -55,7 +70,7 @@ export function mergeDailyNews(existing = [], incoming = [], now = Date.now()) {
     const previous = map.get(key)
     if (!previous || timeValue(item.publishedAt) >= timeValue(previous.publishedAt)) map.set(key, item)
   }
-  return [...map.values()].sort((a, b) => timeValue(a.publishedAt) - timeValue(b.publishedAt)).slice(-500)
+  return [...map.values()].sort((a, b) => timeValue(a.publishedAt) - timeValue(b.publishedAt)).slice(-800)
 }
 
 async function fetchQuery(query) {
@@ -64,12 +79,29 @@ async function fetchQuery(query) {
     headers: { 'User-Agent': 'Mozilla/5.0 market-flow/1.0', Accept: 'application/rss+xml, application/xml, text/xml' },
     signal: AbortSignal.timeout(8000),
   })
-  if (!response.ok) throw new Error(`뉴스 RSS 조회 실패 (${response.status})`)
+  if (!response.ok) throw new Error(`Google News RSS 조회 실패 (${response.status})`)
   return parseNewsRss(await response.text())
 }
 
+async function fetchDirectFeed(feed) {
+  const response = await fetch(feed.url, {
+    headers: { 'User-Agent': 'Mozilla/5.0 market-flow/1.0', Accept: 'application/rss+xml, application/xml, text/xml' },
+    signal: AbortSignal.timeout(8000),
+  })
+  if (!response.ok) throw new Error(`${feed.name} RSS 조회 실패 (${response.status})`)
+  return parseNewsRss(await response.text()).map((item) => ({ ...item, source: item.source && item.source !== '뉴스' ? item.source : feed.name }))
+}
+
+async function captureSource(name, loader) {
+  try {
+    return { name, ok: true, items: await loader(), error: null }
+  } catch (error) {
+    return { name, ok: false, items: [], error: error instanceof Error ? error.message : String(error) }
+  }
+}
+
 function focusNames(snapshot) {
-  const rows = (snapshot?.topRankings ?? []).filter((item) => item?.name && item.name !== item.symbol).slice(0, 50)
+  const rows = (snapshot?.topRankings ?? []).filter((item) => validName(item?.name, item?.symbol)).slice(0, 50)
   return [...rows].sort((a, b) => {
     const aScore = (50 - rows.indexOf(a)) + Math.min(30, Math.abs(Number(a.changeRate) || 0) * 4)
     const bScore = (50 - rows.indexOf(b)) + Math.min(30, Math.abs(Number(b.changeRate) || 0) * 4)
@@ -79,13 +111,13 @@ function focusNames(snapshot) {
 
 function focusQuery(snapshot) {
   const names = focusNames(snapshot)
-  return names.length ? `(${names.join(' OR ')}) (급등 OR 수주 OR 계약 OR 공시 OR 실적 OR 투자 OR 승인 OR 정책) when:1d` : null
+  return names.length ? `(${names.join(' OR ')}) (급등 OR 수주 OR 계약 OR 공시 OR 실적 OR 투자 OR 승인 OR 정책 OR 리포트 OR 목표주가) when:1d` : null
 }
 
 function themeFocusQuery(themes = []) {
   const names = [...new Set(themes.map((theme) => String(theme?.name ?? '').trim()).filter(Boolean))].slice(0, 5)
   if (!names.length) return null
-  return `(${names.map((name) => `"${name}"`).join(' OR ')}) (수주 OR 계약 OR 공급 OR 투자 OR 정책 OR 승인 OR 실적 OR 급등 OR 규제 OR 지원) when:1d`
+  return `(${names.map((name) => `"${name}"`).join(' OR ')}) (수주 OR 계약 OR 공급 OR 투자 OR 정책 OR 승인 OR 실적 OR 급등 OR 규제 OR 지원 OR 전망) when:1d`
 }
 
 function mergeThemeCatalysts(primary = [], collapsed = []) {
@@ -102,15 +134,45 @@ function mergeThemeCatalysts(primary = [], collapsed = []) {
       matches: item.matches ?? [],
     })
   }
+  return [...selected.values()]
+}
 
+function reportItems(rawItems = [], snapshot = null) {
+  const stocks = (snapshot?.topRankings ?? []).slice(0, 100).flatMap((item, index) => {
+    const name = validName(item?.name, item?.symbol)
+    return name ? [{ symbol: item.symbol, name, changeRate: Number(item.changeRate) || null, tradingAmount: Number(item.tradingAmount) || null, rank: index + 1 }] : []
+  })
+  return rawItems.filter((item) => REPORT_SIGNAL.test(`${item.title ?? ''} ${item.summary ?? ''}`)).flatMap((item) => {
+    const text = `${item.title ?? ''} ${item.summary ?? ''}`
+    const matches = stocks.filter((stock) => text.toLowerCase().includes(stock.name.toLowerCase())).slice(0, 4)
+    if (!matches.length && !MARKET_REPORT_SCOPE.test(text)) return []
+    return [{
+      ...item,
+      summary: summarizeIssueTitle(item.summary || item.title),
+      category: '리포트·전망',
+      importance: matches.length ? 6 : 5,
+      duplicateCount: item.duplicateCount ?? 1,
+      sourceCount: item.sourceCount ?? 1,
+      matches,
+    }]
+  })
+}
+
+function capAndDedupe(items = []) {
+  const exact = new Map()
+  for (const item of items) {
+    const key = issueKey(item)
+    if (!key) continue
+    const previous = exact.get(key)
+    if (!previous || Number(item.importance ?? 0) >= Number(previous.importance ?? 0)) exact.set(key, item)
+  }
   const byHour = new Map()
-  for (const item of [...selected.values()].sort((a, b) => timeValue(a.publishedAt) - timeValue(b.publishedAt))) {
+  for (const item of [...exact.values()].sort((a, b) => timeValue(a.publishedAt) - timeValue(b.publishedAt))) {
     const key = hourKey(item.publishedAt)
     const bucket = byHour.get(key) ?? []
     bucket.push(item)
     byHour.set(key, bucket)
   }
-
   return [...byHour.values()].flatMap((bucket) => bucket
     .sort((a, b) => Number(b.importance ?? 0) - Number(a.importance ?? 0) || timeValue(a.publishedAt) - timeValue(b.publishedAt))
     .slice(0, MAX_PER_HOUR))
@@ -137,8 +199,9 @@ export class FeatureNewsTodayService extends FeatureNewsService {
       const snapshot = this.getSnapshot?.() ?? null
       const themes = this.getThemes?.() ?? []
       const queries = [
-        '국내 증시 급등 거래대금 특징주 코스피 코스닥 when:1d',
-        '주식 상한가 수주 계약 공시 실적 승인 투자 정책 when:1d',
+        '국내 증시 시황 특징주 거래대금 코스피 코스닥 when:1d',
+        '주식 상한가 급등 수주 계약 공시 실적 승인 투자 정책 when:1d',
+        '증권사 리포트 목표주가 투자의견 실적 전망 국내주식 when:1d',
         '반도체 HBM AI 데이터센터 광통신 광섬유 광모듈 증시 when:1d',
         '원전 SMR 전력기기 변압기 전선 방산 조선 바이오 로봇 2차전지 증시 when:1d',
         '미국 증시 CPI PCE FOMC 연준 금리 고용 물가 관세 when:1d',
@@ -149,31 +212,44 @@ export class FeatureNewsTodayService extends FeatureNewsService {
       if (stockDynamic) queries.push(stockDynamic)
       if (themeDynamic) queries.push(themeDynamic)
 
-      const batches = await Promise.all(queries.map((query) => fetchQuery(query).catch(() => [])))
-      const incoming = filterNewsSinceKstSix(batches.flat(), now)
+      const sourceJobs = [
+        ...queries.map((query, index) => captureSource(`Google News ${index + 1}`, () => fetchQuery(query))),
+        ...DIRECT_FEEDS.map((feed) => captureSource(feed.name, () => fetchDirectFeed(feed))),
+      ]
+      const results = await Promise.all(sourceJobs)
+      const successful = results.filter((result) => result.ok)
+      const failed = results.filter((result) => !result.ok)
+      if (!successful.length) throw new Error(`뉴스 소스 전체 조회 실패: ${failed.map((result) => result.error).filter(Boolean).slice(0, 3).join(' / ')}`)
+
+      const incoming = filterNewsSinceKstSix(successful.flatMap((result) => result.items), now)
       this.dailyRawItems = mergeDailyNews(this.dailyRawItems, incoming, now)
 
       const collapsed = collapseNewsIssues(this.dailyRawItems)
       const primary = selectHighSignalIssues(collapsed, snapshot)
-      const items = mergeThemeCatalysts(primary, collapsed)
+      const themeCatalysts = mergeThemeCatalysts(primary, collapsed)
+      const reports = reportItems(this.dailyRawItems, snapshot)
+      const items = capAndDedupe([...themeCatalysts, ...reports])
 
       this.payload = {
         ok: true,
         updatedAt: new Date(now).toISOString(),
         windowStart: new Date(kstSixStart(now)).toISOString(),
-        source: 'Google News RSS · 당일 06:00 이후 재검색/누적 · 거래대금 집중 종목 + 테마 촉매 + 글로벌 매크로/지정학 · 중복/광고/저가치 필터',
+        source: 'Google News RSS + 직접 언론 RSS · 당일 06:00 이후 재검색/누적 · 특징주/테마 촉매/리포트/글로벌 매크로 · 중복/광고 필터',
         policy: {
           maxPerHour: MAX_PER_HOUR,
           targetPerHour: 4,
           importanceFiltered: true,
           themeCatalystIncluded: true,
+          reportsIncluded: true,
           deduplicated: true,
           rescanFromSix: true,
           keepAcceptedToday: true,
           rawCandidateCount: this.dailyRawItems.length,
+          successfulSources: successful.length,
+          failedSources: failed.map((result) => result.name),
         },
         items,
-        error: null,
+        error: failed.length ? `${failed.length}개 뉴스 소스 일시 실패 · 나머지 ${successful.length}개 소스로 계속 수집 중` : null,
       }
       return this.payload
     } catch (error) {
@@ -182,7 +258,7 @@ export class FeatureNewsTodayService extends FeatureNewsService {
         ok: false,
         updatedAt: new Date().toISOString(),
         windowStart: new Date(kstSixStart()).toISOString(),
-        source: 'Google News RSS · 당일 06:00 이후 고신호 시황 요약',
+        source: '복수 RSS · 당일 06:00 이후 고신호 시황 요약',
         items: [],
         error: error instanceof Error ? error.message : String(error),
       }
