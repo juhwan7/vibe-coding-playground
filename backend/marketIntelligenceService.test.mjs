@@ -41,6 +41,45 @@ test('theme intelligence exposes five stabilized themes', () => {
   assert.ok(result.every((item) => Number.isFinite(item.strengthScore)))
 })
 
+test('theme rank keeps the incumbent when the challenger lead is ambiguous', () => {
+  const service = new MarketIntelligenceService({ themeCount: 2, rankPromotionMargin: 0.02, rankImmediateMargin: 0.08, rankConfirmations: 3 })
+  service.selectedNames = ['조선', '2차전지']
+
+  for (let index = 0; index < 6; index += 1) {
+    const themes = service.stabilizeThemeOrder([
+      { name: '조선', strengthScore: index % 2 ? 100.4 : 100 },
+      { name: '2차전지', strengthScore: index % 2 ? 100 : 101 },
+    ])
+    service.selectedNames = themes.map((theme) => theme.name)
+    assert.deepEqual(service.selectedNames, ['조선', '2차전지'])
+  }
+})
+
+test('theme rank promotes only after a meaningful lead is confirmed three times', () => {
+  const service = new MarketIntelligenceService({ themeCount: 2, rankPromotionMargin: 0.02, rankImmediateMargin: 0.08, rankConfirmations: 3 })
+  service.selectedNames = ['조선', '2차전지']
+
+  for (let confirmation = 1; confirmation <= 3; confirmation += 1) {
+    const themes = service.stabilizeThemeOrder([
+      { name: '조선', strengthScore: 100 },
+      { name: '2차전지', strengthScore: 103 },
+    ])
+    service.selectedNames = themes.map((theme) => theme.name)
+    if (confirmation < 3) assert.deepEqual(service.selectedNames, ['조선', '2차전지'])
+    else assert.deepEqual(service.selectedNames, ['2차전지', '조선'])
+  }
+})
+
+test('theme rank promotes immediately when the challenger is decisively stronger', () => {
+  const service = new MarketIntelligenceService({ themeCount: 2, rankPromotionMargin: 0.02, rankImmediateMargin: 0.08, rankConfirmations: 3 })
+  service.selectedNames = ['조선', '2차전지']
+  const themes = service.stabilizeThemeOrder([
+    { name: '조선', strengthScore: 100 },
+    { name: '2차전지', strengthScore: 109 },
+  ])
+  assert.deepEqual(themes.map((theme) => theme.name), ['2차전지', '조선'])
+})
+
 test('data quality flags a severely incomplete turnover ranking', () => {
   const service = new MarketIntelligenceService()
   const snapshot = {
