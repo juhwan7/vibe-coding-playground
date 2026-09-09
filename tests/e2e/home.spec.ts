@@ -19,7 +19,7 @@ test('domestic theme flow keeps the brief hidden in a side drawer and shows five
 
   await expect(page.getByTestId('market-intelligence')).toHaveCount(0)
   await expect(page.getByTestId('intraday-brief')).toHaveCount(0)
-  const briefTrigger = page.getByRole('button', { name: '장중 시황 브리핑' })
+  const briefTrigger = page.getByRole('button', { name: '장중 시황 브리핑', exact: true })
   await expect(briefTrigger).toBeVisible()
   await expect(briefTrigger).toHaveAttribute('aria-expanded', 'false')
   await briefTrigger.click()
