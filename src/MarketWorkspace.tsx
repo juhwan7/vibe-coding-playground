@@ -35,6 +35,7 @@ type ThemePoint = {
   volume: number
   tradingAmount?: number
   memberCount: number
+  dominantWeightPercent?: number | null
   day: string
 }
 
@@ -47,6 +48,7 @@ type ThemeGroup = {
   currentValue: number | null
   change1h: number | null
   change3h: number | null
+  dominantWeightPercent?: number | null
   selectionBasis?: string | null
 }
 
@@ -115,6 +117,13 @@ function timeParts(iso: string) {
   return { total: hour * 60 + minute }
 }
 
+function validStockName(name: string | null | undefined, symbol: string | null | undefined) {
+  const value = String(name ?? '').trim()
+  const code = String(symbol ?? '').trim()
+  if (!value || value === code || /^\d{6}$/.test(value)) return null
+  return value
+}
+
 function isIndividualStock(item: RankingItem) {
   const type = String(item.securityType ?? '').toUpperCase()
   if (type) return type === 'STOCK'
@@ -128,6 +137,7 @@ function themeIcon(name: string) {
   if (name === '방산') return '✦'
   if (name === '조선') return '◈'
   if (name === '바이오') return '◆'
+  if (name === '광통신') return '◎'
   return '●'
 }
 
@@ -146,15 +156,15 @@ function StockLineChart({ payload, accent }: { payload: StockChartPayload; accen
   if (!points.length) return <div className="theme-stock-preview-loading"><strong>{payload.name ?? payload.symbol} 3분 선차트 없음</strong><span>{payload.error ?? '장중 데이터를 준비하지 못했습니다.'}</span></div>
 
   const width = 900
-  const height = 190
-  const top = 24
-  const bottom = 146
+  const height = 230
+  const top = 20
+  const bottom = 188
   const prices = points.map((point) => point.closePrice)
   const rawMin = Math.min(...prices)
   const rawMax = Math.max(...prices)
   const center = (rawMin + rawMax) / 2
-  const visibleRange = Math.max(rawMax - rawMin, Math.max(1, Math.abs(center) * .0015))
-  const pad = visibleRange * .1
+  const visibleRange = Math.max(rawMax - rawMin, Math.max(1, Math.abs(center) * .0008))
+  const pad = visibleRange * .04
   const lo = center - visibleRange / 2 - pad
   const hi = center + visibleRange / 2 + pad
   const range = Math.max(1, hi - lo)
@@ -170,16 +180,16 @@ function StockLineChart({ payload, accent }: { payload: StockChartPayload; accen
       <span className="theme-chart-name">{payload.name ?? payload.symbol} 3분 선차트 <span className="theme-stock-preview-badge">5초 미리보기</span></span>
       <div className="theme-chart-metrics"><span>현재가 <b>{last.closePrice.toLocaleString()}</b></span><span>구간 변화 <b>{fmtRate(change)}</b></span></div>
     </div>
-    <svg className="theme-chart" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" role="img" aria-label={`${payload.name ?? payload.symbol} 3분 선차트`}>
+    <svg className="theme-chart theme-chart-expanded" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" role="img" aria-label={`${payload.name ?? payload.symbol} 3분 선차트`}>
       {[.25, .5, .75].map((ratio) => <line key={ratio} x1="0" x2={width} y1={top + (bottom - top) * ratio} y2={top + (bottom - top) * ratio} className="theme-chart-grid" />)}
       {[8, 10, 12, 14, 16, 18, 20].map((hour) => {
         const tx = (hour - 8) / 12 * width
-        return <g key={hour}><line x1={tx} x2={tx} y1={top} y2={bottom} className="theme-hour-line" /><text x={Math.min(width - 34, tx + 3)} y="182" className="theme-hour-label">{String(hour).padStart(2, '0')}:00</text></g>
+        return <g key={hour}><line x1={tx} x2={tx} y1={top} y2={bottom} className="theme-hour-line" /><text x={Math.min(width - 34, tx + 3)} y="222" className="theme-hour-label">{String(hour).padStart(2, '0')}:00</text></g>
       })}
       <text x={width - 5} y={top + 8} textAnchor="end" className="theme-candle-price-label">{Math.round(hi).toLocaleString()}</text>
       <text x={width - 5} y={bottom - 3} textAnchor="end" className="theme-candle-price-label">{Math.round(lo).toLocaleString()}</text>
       <polyline points={polyline} className="theme-stock-line" fill="none" />
-      <circle cx={x(last.timestamp)} cy={y(last.closePrice)} r="3.2" className="theme-average-current-dot" />
+      <circle cx={x(last.timestamp)} cy={y(last.closePrice)} r="3.8" className="theme-average-current-dot" />
     </svg>
   </div>
 }
@@ -197,16 +207,18 @@ function ThemeRow({ theme, rank }: { theme: ThemeGroup; rank: number }) {
   const showStockChart = async (member: RankingItem) => {
     if (!member.symbol) return
     if (timer.current) window.clearTimeout(timer.current)
-    setLoadingName(member.name ?? member.symbol)
+    setLoadingName(validStockName(member.name, member.symbol) ?? member.symbol)
     setStockPreview(null)
     setPreviewError(null)
     try {
       const params = new URLSearchParams({ symbol: member.symbol })
-      if (member.name) params.set('name', member.name)
+      const memberName = validStockName(member.name, member.symbol)
+      if (memberName) params.set('name', memberName)
       const response = await fetch(`/api/market/theme-stock-chart?${params.toString()}`, { headers: { Accept: 'application/json' } })
       const payload = await response.json().catch(() => null) as StockChartPayload | null
       if (!payload?.ok || !payload.points?.length) throw new Error(payload?.error ?? '3분 선차트 데이터를 불러오지 못했습니다.')
-      setStockPreview({ ...payload, name: payload.name && payload.name !== payload.symbol ? payload.name : member.name ?? payload.name })
+      const resolvedName = validStockName(payload.name, payload.symbol) ?? memberName ?? payload.symbol ?? member.symbol
+      setStockPreview({ ...payload, name: resolvedName })
       timer.current = window.setTimeout(() => setStockPreview(null), 5000)
     } catch (error) {
       setPreviewError(error instanceof Error ? error.message : String(error))
@@ -222,13 +234,14 @@ function ThemeRow({ theme, rank }: { theme: ThemeGroup; rank: number }) {
       <p>{theme.memberCount}개 개별주 · {theme.selectionBasis ?? 'TOP50 3종+'}</p>
       <strong className={(theme.currentValue ?? 0) >= 0 ? 'up' : 'down'}><FlashValue value={theme.currentValue}>{fmtRate(theme.currentValue)}</FlashValue></strong>
       <div><span>1일 누적 거래대금 합계</span><b><FlashValue value={theme.tradingAmount}>{fmtAmount(theme.tradingAmount)}</FlashValue></b></div>
+      {theme.dominantWeightPercent != null && <div><span>최대 종목 거래대금 비중</span><b>{theme.dominantWeightPercent.toFixed(0)}%</b></div>}
     </div>
 
     <div className="theme-members-cell">
       <div className="theme-cell-title">포함 개별주 <span>({theme.memberCount}) · 클릭 시 3분 선차트</span></div>
       <div className="theme-member-list">
         {members.map((member, index) => <button key={member.symbol ?? index} type="button" onClick={() => void showStockChart(member)}>
-          <b>{index + 1}</b><span>{member.name ?? member.symbol}</span><strong><FlashValue value={member.tradingAmount}>{fmtAmount(member.tradingAmount)}</FlashValue></strong>
+          <b>{index + 1}</b><span>{validStockName(member.name, member.symbol) ?? member.symbol}</span><strong><FlashValue value={member.tradingAmount}>{fmtAmount(member.tradingAmount)}</FlashValue></strong>
         </button>)}
       </div>
     </div>
@@ -242,7 +255,7 @@ function ThemeRow({ theme, rank }: { theme: ThemeGroup; rank: number }) {
           : <ThemeAverageCandleChart theme={theme} accent={accent} />}
 
     <div className="theme-window-stats">
-      <div><span>현재 평균</span><strong className={(theme.currentValue ?? 0) >= 0 ? 'up' : 'down'}><FlashValue value={theme.currentValue}>{fmtRate(theme.currentValue)}</FlashValue></strong></div>
+      <div><span>현재 가중평균</span><strong className={(theme.currentValue ?? 0) >= 0 ? 'up' : 'down'}><FlashValue value={theme.currentValue}>{fmtRate(theme.currentValue)}</FlashValue></strong></div>
       <div><span>최근 3시간</span><strong className={(theme.change3h ?? 0) >= 0 ? 'up' : 'down'}><FlashValue value={theme.change3h}>{fmtRate(theme.change3h)}</FlashValue></strong></div>
       <div><span>최근 1시간</span><strong className={(theme.change1h ?? 0) >= 0 ? 'up' : 'down'}><FlashValue value={theme.change1h}>{fmtRate(theme.change1h)}</FlashValue></strong></div>
     </div>
@@ -281,21 +294,32 @@ export default function MarketWorkspace() {
       ...(themeFlow.themes ?? []).flatMap((theme) => theme.members ?? []),
       ...Object.values(snapshot?.stocks ?? {}),
     ]
-    const metadata = new Map(metaItems.filter((item) => item.symbol).map((item) => [item.symbol, item]))
+    const metadata = new Map<string, RankingItem[]>()
+    for (const item of metaItems) {
+      if (!item.symbol) continue
+      const bucket = metadata.get(item.symbol) ?? []
+      bucket.push(item)
+      metadata.set(item.symbol, bucket)
+    }
+
     const live = snapshot?.topRankings?.length ? snapshot.topRankings : themeFlow.topRankings ?? []
     return live.map((item) => {
-      const meta = item.symbol ? metadata.get(item.symbol) : null
+      const candidates = item.symbol ? metadata.get(item.symbol) ?? [] : []
+      const meta = candidates.find((candidate) => validStockName(candidate.name, candidate.symbol)) ?? candidates[0] ?? null
+      const name = validStockName(item.name, item.symbol)
+        ?? candidates.map((candidate) => validStockName(candidate.name, candidate.symbol)).find(Boolean)
+        ?? null
       return {
         ...meta,
         ...item,
-        name: item.name ?? meta?.name ?? item.symbol,
+        name,
         market: item.market ?? meta?.market ?? null,
         securityType: item.securityType ?? meta?.securityType ?? null,
       } as RankingItem
     }).filter((item): item is RankingItem & { symbol: string } => Boolean(item.symbol) && isIndividualStock(item)).slice(0, 100)
   }, [themeFlow.topRankings, themeFlow.themes, snapshot?.topRankings, snapshot?.stocks])
 
-  const themes = (themeFlow.themes ?? []).slice(0, 4)
+  const themes = (themeFlow.themes ?? []).slice(0, 5)
   const topAmount = Math.max(1, rankings[0]?.tradingAmount ?? 1)
   const totalAmount = rankings.reduce((sum, item) => sum + (item.tradingAmount ?? 0), 0)
   const investors = snapshot?.marketInvestors?.total
@@ -306,14 +330,14 @@ export default function MarketWorkspace() {
     <section className="workspace-main">
       <section className="theme-strength-board panel" data-testid="theme-strength-board">
         <header className="theme-board-head">
-          <div><p>THEME ROTATION / INDIVIDUAL STOCKS</p><h1>테마 강도 비교 <span>(개별주식 거래대금 기준 · 4개 유지)</span></h1><small>거래대금·현재가·등락률은 10초마다 갱신합니다. 테마는 항상 4개를 유지하며 더 강한 후보가 교체 문턱을 충족할 때만 약한 테마와 교체됩니다.</small></div>
+          <div><p>THEME ROTATION / INDIVIDUAL STOCKS</p><h1>테마 강도 비교 <span>(개별주식 거래대금 기준 · 5개 유지)</span></h1><small>거래대금·현재가·등락률은 10초마다 갱신합니다. 테마는 5개를 유지하며 거래대금이 큰 종목의 등락이 테마선에 더 크게 반영됩니다.</small></div>
           <div className="theme-board-controls"><span className={themeFlow.ok ? 'flow-live' : 'flow-loading'}>{themeFlow.ok ? '● 거래대금 10초 최신화' : '● 데이터 준비 중'}</span></div>
         </header>
 
-        <div className="theme-method-strip"><span>대상 <b>개별주(STOCK)만</b></span><span>테마 <b>4개 · 8% 또는 3회 확인 후 교체</b></span><span>차트 <b>평균 3분 선차트 · 자동 확대축</b></span><span>최신화 <b>10초 · {displayTime(themeFlow.updatedAt)}</b></span></div>
+        <div className="theme-method-strip"><span>대상 <b>개별주(STOCK)만</b></span><span>테마 <b>5개 · 8% 또는 3회 확인 후 교체</b></span><span>차트 <b>거래대금 가중 3분 선차트 · 강한 자동 확대축</b></span><span>최신화 <b>10초 · {displayTime(themeFlow.updatedAt)}</b></span></div>
         <div className="theme-strength-list">
           {themes.map((theme, index) => <ThemeRow key={theme.name} theme={theme} rank={index + 1} />)}
-          {Array.from({ length: Math.max(0, 4 - themes.length) }, (_, index) => <div className="theme-strength-placeholder" key={index}>테마 {themes.length + index + 1} 후보 계산 중</div>)}
+          {Array.from({ length: Math.max(0, 5 - themes.length) }, (_, index) => <div className="theme-strength-placeholder" key={index}>테마 {themes.length + index + 1} 후보 계산 중</div>)}
         </div>
       </section>
 
@@ -338,9 +362,10 @@ export default function MarketWorkspace() {
         {rankings.map((item, index) => {
           const amount = item.tradingAmount ?? 0
           const width = amount / topAmount * 100
+          const displayName = validStockName(item.name, item.symbol)
           return <div className="top100-row" key={`${item.symbol}-${index}`}>
             <b>{index + 1}</b>
-            <div className="top100-stock"><strong>{item.name ?? item.symbol}</strong><small>{item.symbol} · <FlashValue value={item.lastPrice}>{item.lastPrice?.toLocaleString() ?? '-'}</FlashValue></small><div className="top100-mini-track"><i style={{ width: `${width}%` }} /></div></div>
+            <div className="top100-stock"><strong>{displayName ?? '종목명 확인 중'}</strong><small>{item.symbol} · <FlashValue value={item.lastPrice}>{item.lastPrice?.toLocaleString() ?? '-'}</FlashValue></small><div className="top100-mini-track"><i style={{ width: `${width}%` }} /></div></div>
             <strong className={`top100-rate ${(item.changeRate ?? 0) >= 0 ? 'up' : 'down'}`}><FlashValue value={item.changeRate}>{fmtRate(item.changeRate)}</FlashValue></strong>
             <strong className="top100-amount"><FlashValue value={item.tradingAmount}>{fmtAmount(item.tradingAmount)}</FlashValue></strong>
           </div>
