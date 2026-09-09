@@ -1,102 +1,120 @@
 .daily-issues-page {
-  padding: 10px;
+  width: min(1880px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 16px 0 80px;
   display: grid;
-  gap: 10px;
+  gap: 16px;
+  font-family: "Segoe UI", "Malgun Gothic", Arial, sans-serif;
+  font-variant-numeric: tabular-nums;
 }
 
 .daily-issues-head {
   display: flex;
   justify-content: space-between;
-  gap: 20px;
+  gap: 28px;
   align-items: flex-start;
-  padding: 16px 18px;
+  padding: 28px 30px;
 }
 
 .daily-issues-head p {
-  margin: 0 0 5px;
-  font-size: 9px;
+  margin: 0 0 9px;
+  font-size: 17px;
   font-weight: 900;
   letter-spacing: .12em;
   color: #607b8e;
 }
 
-.daily-issues-head h1 { margin: 0 0 6px; font-size: 23px; }
-.daily-issues-head small { color: #728898; line-height: 1.55; }
-.daily-issues-head aside { display: grid; justify-items: end; gap: 4px; white-space: nowrap; }
-.daily-issues-head aside b { font-size: 11px; }
+.daily-issues-head h1 { margin: 0 0 12px; font-size: 46px; line-height: 1.08; letter-spacing: -.035em; }
+.daily-issues-head small { display: block; max-width: 1320px; color: #728898; font-size: 19px; line-height: 1.65; }
+.daily-issues-head aside { display: grid; justify-items: end; gap: 8px; white-space: nowrap; padding-top: 4px; }
+.daily-issues-head aside b { font-size: 20px; }
 .daily-issues-head aside b.ready { color: #1aa66f; }
 .daily-issues-head aside b.waiting { color: #6f8494; }
-.daily-issues-head aside span { font-size: 10px; color: #7b8f9e; }
+.daily-issues-head aside span { font-size: 17px; color: #7b8f9e; }
 
 .daily-issues-wait {
-  min-height: 240px;
+  min-height: 340px;
   display: grid;
   place-items: center;
   align-content: center;
-  gap: 8px;
+  gap: 14px;
+  padding: 32px;
   text-align: center;
   color: #708797;
+  font-size: 19px;
 }
-.daily-issues-wait strong { font-size: 16px; color: #d8e3e9; }
-.daily-issues-wait small { color: #d26b6b; }
+.daily-issues-wait strong { font-size: 28px; color: #d8e3e9; }
+.daily-issues-wait small { color: #d26b6b; font-size: 18px; }
 
 .daily-issues-table { overflow: hidden; }
 .daily-issues-table-head,
 .daily-issues-row {
   display: grid;
-  grid-template-columns: 44px minmax(130px, 1.05fr) minmax(105px, .8fr) 82px 78px 94px minmax(300px, 2.4fr) minmax(220px, 1.55fr);
+  grid-template-columns: 58px minmax(320px, 1.05fr) 190px minmax(450px, 1.45fr) minmax(390px, 1.15fr);
   align-items: center;
-  column-gap: 10px;
+  column-gap: 18px;
 }
 
 .daily-issues-table-head {
-  min-width: 1120px;
-  padding: 9px 12px;
+  padding: 15px 20px;
   background: rgba(11, 26, 36, .84);
   border-bottom: 1px solid #1e3240;
   color: #718696;
-  font-size: 9px;
+  font-size: 16px;
   font-weight: 900;
   letter-spacing: .04em;
 }
 
-.daily-issues-table-body { overflow-x: auto; }
+.daily-issues-table-body { min-width: 0; }
 .daily-issues-row {
-  min-width: 1120px;
-  min-height: 92px;
-  padding: 10px 12px;
+  min-height: 190px;
+  padding: 20px;
   border-bottom: 1px solid #172a36;
   background: rgba(8, 20, 29, .28);
 }
 .daily-issues-row:last-child { border-bottom: 0; }
 .daily-issues-row:hover { background: rgba(48, 111, 150, .06); }
 
-.daily-issues-rank { color: #6f8797; font-size: 12px; }
-.daily-issues-stock { display: grid; gap: 2px; }
-.daily-issues-stock strong { font-size: 13px; }
-.daily-issues-stock small { color: #708797; font-size: 9px; }
-.daily-issues-theme { color: #7e94a3; font-size: 10px; line-height: 1.35; }
-.daily-issues-price,
-.daily-issues-rate,
-.daily-issues-amount { font-size: 11px; text-align: right; }
+.daily-issues-rank { color: #6f8797; font-size: 23px; align-self: start; padding-top: 6px; }
+.daily-issues-stock { display: grid; gap: 8px; min-width: 0; align-self: start; }
+.daily-issues-stock-title { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-width: 0; }
+.daily-issues-stock-title > strong { color: #edf4f8; font-size: 27px; line-height: 1.22; }
+.daily-issues-stock-title > span { padding: 5px 9px; border: 1px solid #2a4354; border-radius: 999px; color: #9db4c2; background: #0a1822; font-size: 15px; font-weight: 900; }
+.daily-issues-stock p { margin: 0; color: #a6b7c1; font-size: 18px; line-height: 1.52; font-weight: 700; }
+.daily-issues-stock small { color: #708797; font-size: 15px; }
+
+.daily-issues-quote { display: grid; gap: 8px; align-content: center; text-align: right; }
+.daily-issues-rate { font-size: 30px; line-height: 1; }
 .daily-issues-rate.up { color: #ff5575; }
 .daily-issues-rate.down { color: #4d95ff; }
+.daily-issues-quote > span { color: #d4dee4; font-size: 19px; font-weight: 800; }
+.daily-issues-quote > b { color: #8ca1af; font-size: 17px; line-height: 1.35; }
 
-.daily-issues-summary { display: grid; gap: 4px; min-width: 0; }
-.daily-issues-summary > strong { font-size: 11px; line-height: 1.45; font-weight: 800; }
-.daily-issues-summary > small { color: #718796; font-size: 9px; }
-.daily-issues-summary > div { display: flex; gap: 8px; }
-.daily-issues-summary a { color: #5fa9e7; font-size: 9px; text-decoration: none; font-weight: 800; }
+.daily-issues-summary { display: grid; gap: 9px; min-width: 0; align-self: start; }
+.daily-issues-reason-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.daily-issues-reason-line > b { color: #a9bac5; font-size: 16px; }
+.daily-issues-reason-badge { display: inline-flex; width: fit-content; align-items: center; min-height: 28px; padding: 4px 9px; border-radius: 7px; border: 1px solid #304656; color: #9fb1bd; background: #0b1821; font-size: 14px; font-weight: 900; }
+.daily-issues-reason-badge.direct-news { color: #48d79a; border-color: rgba(72, 215, 154, .4); background: rgba(72, 215, 154, .08); }
+.daily-issues-reason-badge.theme-news { color: #f0bc55; border-color: rgba(240, 188, 85, .42); background: rgba(240, 188, 85, .08); }
+.daily-issues-reason-badge.unconfirmed { color: #8ea1ae; }
+.daily-issues-summary > strong { color: #edf4f8; font-size: 21px; line-height: 1.48; font-weight: 900; }
+.daily-issues-summary > small { color: #718796; font-size: 15px; line-height: 1.5; }
+.daily-issues-summary > div:last-child { display: flex; gap: 12px; flex-wrap: wrap; }
+.daily-issues-summary a { color: #5fa9e7; font-size: 15px; text-decoration: none; font-weight: 900; }
 .daily-issues-summary a:hover { text-decoration: underline; }
 
-.daily-issues-chart-cell { display: grid; gap: 2px; }
-.daily-issues-chart-cell > small { color: #687f90; font-size: 8px; text-align: right; }
-.daily-issues-chart { width: 100%; height: 60px; overflow: visible; }
+.daily-issues-chart-cell { min-width: 0; }
+.daily-issues-chart-stack { display: grid; gap: 7px; }
+.daily-issues-chart { display: block; width: 100%; height: 132px; overflow: visible; }
 .daily-issues-chart-grid { stroke: rgba(113, 136, 153, .18); stroke-width: 1; vector-effect: non-scaling-stroke; }
-.daily-issues-chart-line { stroke-width: 1.7; vector-effect: non-scaling-stroke; }
+.daily-issues-chart-day-divider { stroke: rgba(132, 155, 170, .36); stroke-width: 1.2; stroke-dasharray: 5 4; vector-effect: non-scaling-stroke; }
+.daily-issues-chart-line { stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
 .daily-issues-chart.up .daily-issues-chart-line { stroke: #ff5575; }
 .daily-issues-chart.down .daily-issues-chart-line { stroke: #4d95ff; }
-.daily-issues-chart-empty { height: 60px; display: grid; place-items: center; color: #718797; font-size: 9px; border: 1px dashed rgba(113, 135, 151, .2); border-radius: 5px; }
+.daily-issues-chart-labels { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; color: #687f90; font-size: 14px; font-weight: 800; }
+.daily-issues-chart-labels span:last-child { text-align: right; }
+.daily-issues-chart-labels span:only-child { grid-column: 1 / -1; text-align: right; }
+.daily-issues-chart-empty { height: 132px; display: grid; place-items: center; color: #718797; font-size: 16px; border: 1px dashed rgba(113, 135, 151, .24); border-radius: 7px; }
 
 :root[data-theme='light'] .daily-issues-wait strong,
 :root:not([data-theme='dark']) .daily-issues-wait strong { color: #162b3d; }
@@ -117,7 +135,60 @@
 :root[data-theme='light'] .daily-issues-row:hover,
 :root:not([data-theme='dark']) .daily-issues-row:hover { background: #f8fbfd; }
 
+:root[data-theme='light'] .daily-issues-stock-title > strong,
+:root:not([data-theme='dark']) .daily-issues-stock-title > strong,
+:root[data-theme='light'] .daily-issues-summary > strong,
+:root:not([data-theme='dark']) .daily-issues-summary > strong { color: #162b3d; }
+
+:root[data-theme='light'] .daily-issues-stock-title > span,
+:root:not([data-theme='dark']) .daily-issues-stock-title > span { background: #f3f7fa; border-color: #d9e3e9; color: #516b7c; }
+
+:root[data-theme='light'] .daily-issues-stock p,
+:root:not([data-theme='dark']) .daily-issues-stock p,
+:root[data-theme='light'] .daily-issues-quote > span,
+:root:not([data-theme='dark']) .daily-issues-quote > span { color: #425b6d; }
+
+:root[data-theme='light'] .daily-issues-reason-badge,
+:root:not([data-theme='dark']) .daily-issues-reason-badge { background: #f7fafc; }
+
+@media (max-width: 1400px) {
+  .daily-issues-page { width: min(1180px, calc(100% - 24px)); }
+  .daily-issues-table-head { display: none; }
+  .daily-issues-row {
+    grid-template-columns: 54px minmax(0, 1fr) 190px;
+    grid-template-areas:
+      "rank stock quote"
+      "rank summary summary"
+      "rank chart chart";
+    row-gap: 18px;
+    min-height: 0;
+  }
+  .daily-issues-rank { grid-area: rank; }
+  .daily-issues-stock { grid-area: stock; }
+  .daily-issues-quote { grid-area: quote; }
+  .daily-issues-summary { grid-area: summary; }
+  .daily-issues-chart-cell { grid-area: chart; }
+}
+
 @media (max-width: 760px) {
-  .daily-issues-head { flex-direction: column; }
+  .daily-issues-page { width: calc(100% - 16px); padding-top: 8px; }
+  .daily-issues-head { flex-direction: column; padding: 22px 20px; }
+  .daily-issues-head h1 { font-size: 38px; }
+  .daily-issues-head small { font-size: 17px; }
   .daily-issues-head aside { justify-items: start; }
+  .daily-issues-row {
+    grid-template-columns: 42px minmax(0, 1fr);
+    grid-template-areas:
+      "rank stock"
+      "rank quote"
+      "rank summary"
+      "rank chart";
+    padding: 17px 14px;
+    column-gap: 12px;
+  }
+  .daily-issues-quote { text-align: left; }
+  .daily-issues-chart { height: 118px; }
+  .daily-issues-chart-labels { grid-template-columns: 1fr; font-size: 12px; }
+  .daily-issues-chart-labels span,
+  .daily-issues-chart-labels span:last-child { text-align: left; }
 }
