@@ -94,12 +94,19 @@ async function mapLimit(items, limit, worker) {
 export class QuizDescriptionService {
   constructor({
     cachePath = '/app/data/quiz-descriptions.json',
+    universeCachePath = '/app/data/quiz-universe.json',
     refreshMs = 14 * 24 * 60 * 60 * 1000,
     fetchTimeoutMs = 6500,
+    bootstrapDelayMs = 5000,
+    bootstrapRetryMs = 15000,
+    bootstrapMaxAttempts = 20,
   } = {}) {
     this.cachePath = cachePath
+    this.universeCachePath = universeCachePath
     this.refreshMs = refreshMs
     this.fetchTimeoutMs = fetchTimeoutMs
+    this.bootstrapRetryMs = bootstrapRetryMs
+    this.bootstrapMaxAttempts = bootstrapMaxAttempts
     this.cache = new Map()
     this.loaded = false
     this.loading = null
@@ -114,6 +121,11 @@ export class QuizDescriptionService {
       startedAt: null,
       finishedAt: null,
     }
+
+    this.bootstrapTimer = setTimeout(() => {
+      void this.bootstrapPrewarm().catch(() => {})
+    }, Math.max(0, Number(bootstrapDelayMs) || 0))
+    this.bootstrapTimer.unref?.()
   }
 
   async load() {
@@ -167,6 +179,27 @@ export class QuizDescriptionService {
       cachePath: this.cachePath,
       refreshDays: Math.round(this.refreshMs / 86400000),
     }
+  }
+
+  async readUniverseCodes() {
+    try {
+      const payload = JSON.parse(await fs.readFile(this.universeCachePath, 'utf8'))
+      const kospi = (payload?.kospi200 ?? []).map((item) => String(item?.code ?? '')).filter(validCode)
+      const kosdaq = (payload?.kosdaq150 ?? []).map((item) => String(item?.code ?? '')).filter(validCode)
+      const priority = [...kospi.slice(0, 30), ...kosdaq.slice(0, 30), ...kospi.slice(30), ...kosdaq.slice(30)]
+      return [...new Set(priority)]
+    } catch {
+      return []
+    }
+  }
+
+  async bootstrapPrewarm() {
+    for (let attempt = 0; attempt < this.bootstrapMaxAttempts; attempt += 1) {
+      const codes = await this.readUniverseCodes()
+      if (codes.length >= 4) return this.prewarm(codes, { concurrency: 2, pauseMs: 180 })
+      if (attempt < this.bootstrapMaxAttempts - 1) await sleep(this.bootstrapRetryMs)
+    }
+    return this.status([])
   }
 
   async fetchOne(code) {
