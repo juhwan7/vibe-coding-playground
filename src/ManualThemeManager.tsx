@@ -343,7 +343,7 @@ export default function ManualThemeManager() {
 
     {(message || error) && <div className={`manual-theme-feedback${error ? ' is-error' : ''}`} role="status">
       {error ?? message}
-    </div>
+    </div>}
   </section>
 
   return createPortal(content, host)
