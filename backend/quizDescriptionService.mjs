@@ -59,6 +59,10 @@ function validCode(code) {
   return /^\d{6}$/.test(String(code ?? ''))
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
 async function decodeResponse(response) {
   const bytes = new Uint8Array(await response.arrayBuffer())
   const contentType = response.headers.get('content-type') ?? ''
@@ -88,12 +92,40 @@ async function mapLimit(items, limit, worker) {
 }
 
 export class QuizDescriptionService {
-  constructor({ cachePath = '/app/data/quiz-descriptions.json', refreshMs = 14 * 24 * 60 * 60 * 1000 } = {}) {
+  constructor({
+    cachePath = '/app/data/quiz-descriptions.json',
+    universeCachePath = '/app/data/quiz-universe.json',
+    refreshMs = 14 * 24 * 60 * 60 * 1000,
+    fetchTimeoutMs = 6500,
+    bootstrapDelayMs = 5000,
+    bootstrapRetryMs = 15000,
+    bootstrapMaxAttempts = 20,
+  } = {}) {
     this.cachePath = cachePath
+    this.universeCachePath = universeCachePath
     this.refreshMs = refreshMs
+    this.fetchTimeoutMs = fetchTimeoutMs
+    this.bootstrapRetryMs = bootstrapRetryMs
+    this.bootstrapMaxAttempts = bootstrapMaxAttempts
     this.cache = new Map()
     this.loaded = false
     this.loading = null
+    this.warming = null
+    this.warmState = {
+      running: false,
+      targetCount: 0,
+      readyCount: 0,
+      freshCount: 0,
+      attempted: 0,
+      failed: 0,
+      startedAt: null,
+      finishedAt: null,
+    }
+
+    this.bootstrapTimer = setTimeout(() => {
+      void this.bootstrapPrewarm().catch(() => {})
+    }, Math.max(0, Number(bootstrapDelayMs) || 0))
+    this.bootstrapTimer.unref?.()
   }
 
   async load() {
@@ -106,9 +138,10 @@ export class QuizDescriptionService {
           if (validCode(code) && item?.description) this.cache.set(code, item)
         }
       } catch {
-        // First run or damaged cache: rebuild lazily from Naver Finance.
+        // First run or damaged cache: the background prewarmer rebuilds it.
       }
       this.loaded = true
+      this.refreshWarmCounts()
     })().finally(() => { this.loading = null })
     return this.loading
   }
@@ -117,10 +150,62 @@ export class QuizDescriptionService {
     return Boolean(item?.description && Date.now() - Date.parse(item.fetchedAt ?? 0) < this.refreshMs)
   }
 
+  cachedCodes({ freshOnly = false } = {}) {
+    return [...this.cache.entries()]
+      .filter(([, item]) => item?.description && (!freshOnly || this.isFresh(item)))
+      .map(([code]) => code)
+  }
+
+  refreshWarmCounts(targetCodes = null) {
+    const targets = targetCodes ? new Set(targetCodes) : null
+    let readyCount = 0
+    let freshCount = 0
+    for (const [code, item] of this.cache.entries()) {
+      if (targets && !targets.has(code)) continue
+      if (!item?.description) continue
+      readyCount += 1
+      if (this.isFresh(item)) freshCount += 1
+    }
+    this.warmState.readyCount = readyCount
+    this.warmState.freshCount = freshCount
+  }
+
+  status(targetCodes = []) {
+    const unique = [...new Set(targetCodes.map(String).filter(validCode))]
+    this.refreshWarmCounts(unique.length ? unique : null)
+    return {
+      ...this.warmState,
+      targetCount: unique.length || this.warmState.targetCount || this.cache.size,
+      cachePath: this.cachePath,
+      refreshDays: Math.round(this.refreshMs / 86400000),
+    }
+  }
+
+  async readUniverseCodes() {
+    try {
+      const payload = JSON.parse(await fs.readFile(this.universeCachePath, 'utf8'))
+      const kospi = (payload?.kospi200 ?? []).map((item) => String(item?.code ?? '')).filter(validCode)
+      const kosdaq = (payload?.kosdaq150 ?? []).map((item) => String(item?.code ?? '')).filter(validCode)
+      const priority = [...kospi.slice(0, 30), ...kosdaq.slice(0, 30), ...kospi.slice(30), ...kosdaq.slice(30)]
+      return [...new Set(priority)]
+    } catch {
+      return []
+    }
+  }
+
+  async bootstrapPrewarm() {
+    for (let attempt = 0; attempt < this.bootstrapMaxAttempts; attempt += 1) {
+      const codes = await this.readUniverseCodes()
+      if (codes.length >= 4) return this.prewarm(codes, { concurrency: 2, pauseMs: 180 })
+      if (attempt < this.bootstrapMaxAttempts - 1) await sleep(this.bootstrapRetryMs)
+    }
+    return this.status([])
+  }
+
   async fetchOne(code) {
     const response = await fetch(`${NAVER_COMPANY_URL}${encodeURIComponent(code)}`, {
       headers: DEFAULT_HEADERS,
-      signal: AbortSignal.timeout(10000),
+      signal: AbortSignal.timeout(this.fetchTimeoutMs),
     })
     if (!response.ok) throw new Error(`기업개요 조회 실패 (${response.status})`)
     const html = await decodeResponse(response)
@@ -140,7 +225,7 @@ export class QuizDescriptionService {
   async persist() {
     await fs.mkdir(this.cachePath.split('/').slice(0, -1).join('/') || '.', { recursive: true })
     const payload = {
-      version: 1,
+      version: 2,
       savedAt: new Date().toISOString(),
       items: Object.fromEntries(this.cache.entries()),
     }
@@ -149,7 +234,34 @@ export class QuizDescriptionService {
     await fs.rename(temp, this.cachePath)
   }
 
-  async getMany(codes = []) {
+  async getCachedMany(codes = []) {
+    await this.load()
+    const unique = [...new Set(codes.map(String).filter(validCode))].slice(0, 12)
+    const items = unique.map((code) => {
+      const cached = this.cache.get(code)
+      if (cached?.description) return { ...cached, stale: !this.isFresh(cached) }
+      return {
+        code,
+        description: null,
+        source: 'Raspberry Pi 기업설명 캐시',
+        sourceUrl: `${NAVER_COMPANY_URL}${code}`,
+        stale: false,
+        error: '기업설명 캐시 준비 중',
+      }
+    })
+    return {
+      ok: items.every((item) => item.description),
+      cacheOnly: true,
+      source: 'Raspberry Pi 영속 기업설명 캐시',
+      updatedAt: new Date().toISOString(),
+      readyCodes: this.cachedCodes(),
+      cacheStatus: this.status(),
+      items,
+    }
+  }
+
+  async getMany(codes = [], { allowFetch = false } = {}) {
+    if (!allowFetch) return this.getCachedMany(codes)
     await this.load()
     const unique = [...new Set(codes.map(String).filter(validCode))].slice(0, 12)
     const results = new Map()
@@ -178,9 +290,60 @@ export class QuizDescriptionService {
     const items = unique.map((code) => results.get(code)).filter(Boolean)
     return {
       ok: items.some((item) => item.description),
+      cacheOnly: false,
       source: 'Npay 증권 기업개요 · FnGuide',
       updatedAt: new Date().toISOString(),
+      readyCodes: this.cachedCodes(),
+      cacheStatus: this.status(),
       items,
     }
+  }
+
+  async prewarm(codes = [], { concurrency = 2, pauseMs = 180 } = {}) {
+    await this.load()
+    const unique = [...new Set(codes.map(String).filter(validCode))]
+    if (!unique.length) return this.status([])
+    if (this.warming) return this.warming
+
+    this.warmState = {
+      running: true,
+      targetCount: unique.length,
+      readyCount: 0,
+      freshCount: 0,
+      attempted: 0,
+      failed: 0,
+      startedAt: new Date().toISOString(),
+      finishedAt: null,
+    }
+    this.refreshWarmCounts(unique)
+
+    this.warming = (async () => {
+      const pending = unique.filter((code) => !this.isFresh(this.cache.get(code)))
+      let changedSincePersist = 0
+
+      await mapLimit(pending, Math.max(1, Math.min(4, Number(concurrency) || 2)), async (code) => {
+        this.warmState.attempted += 1
+        try {
+          await this.fetchOne(code)
+          changedSincePersist += 1
+          if (changedSincePersist >= 20) {
+            changedSincePersist = 0
+            await this.persist().catch(() => {})
+          }
+        } catch {
+          this.warmState.failed += 1
+        }
+        this.refreshWarmCounts(unique)
+        if (pauseMs > 0) await sleep(pauseMs)
+      })
+
+      if (changedSincePersist > 0) await this.persist().catch(() => {})
+      this.refreshWarmCounts(unique)
+      this.warmState.running = false
+      this.warmState.finishedAt = new Date().toISOString()
+      return this.status(unique)
+    })().finally(() => { this.warming = null })
+
+    return this.warming
   }
 }
