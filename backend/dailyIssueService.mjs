@@ -6,12 +6,14 @@ import { collapseNewsIssues, parseNewsRss } from './featureNewsService.mjs'
 import { sleep } from './tossClient.mjs'
 
 const NEWS_URL = 'https://news.google.com/rss/search'
-const FINALIZE_MINUTE = 15 * 60 + 20
+const FINALIZE_MINUTE = 15 * 60 + 31
+const TARGET_CLOSE_TIME = '15:30'
 const REGULAR_SESSION_START_MINUTE = 9 * 60
 const REGULAR_SESSION_END_MINUTE = 15 * 60 + 30
 const TWO_DAY_BACKFILL_MAX_PAGES = 6
 const DAILY_CONTEXT_COUNT = 30
-const DAILY_ISSUE_SCHEMA_VERSION = 4
+const STOCK_META_CHUNK_SIZE = 25
+const DAILY_ISSUE_SCHEMA_VERSION = 5
 const EXCHANGE_TRADED_NAME = /(ETF|ETN|KODEX|TIGER|RISE|ACE|PLUS|SOL|HANARO|KOSEF|TIMEFOLIO|ARIRANG|FOCUS|KBSTAR|리츠|스팩|인프라)/i
 const POSITIVE_NEWS_CUE = /(상승|강세|급등|상한가|오름세|랠리|수혜|호재|기대감|부각|신고가)/i
 const BUSINESS_HINT = /(주력|주요|사업|영위|생산|제조|판매|개발|서비스|플랫폼|제품|매출|반도체|메모리|HBM|DRAM|NAND|배터리|이차전지|2차전지|자동차|바이오|의약|원전|조선|방산|전력|변압기|금융|은행|증권|보험|통신|게임|화학|철강|건설|로봇|콘텐츠|유통)/i
@@ -317,7 +319,7 @@ export class DailyIssueService {
     this.client = client
     this.cachePath = cachePath
     this.checkMs = Math.max(10000, Number(checkMs) || 30000)
-    this.payload = { ok: false, status: 'waiting', schemaVersion: DAILY_ISSUE_SCHEMA_VERSION, date: null, capturedAt: null, rows: [], error: null }
+    this.payload = { ok: false, status: 'waiting', schemaVersion: DAILY_ISSUE_SCHEMA_VERSION, date: null, capturedAt: null, targetTime: TARGET_CLOSE_TIME, rows: [], error: null }
     this.timer = null
     this.running = false
     this.generating = null
@@ -364,32 +366,68 @@ export class DailyIssueService {
     return this.currentPayload()
   }
 
+  isFinalForDay(day) {
+    return Boolean(
+      this.payload?.ok
+      && this.payload.date === day
+      && this.payload.schemaVersion === DAILY_ISSUE_SCHEMA_VERSION
+      && this.payload.status === 'finalized'
+      && this.payload.targetTime === TARGET_CLOSE_TIME
+      && Array.isArray(this.payload.rows)
+      && this.payload.rows.length,
+    )
+  }
+
   currentPayload() {
     const now = kstParts()
     const currentDay = now.day
-    const marketMinute = now.hour * 60 + now.minute
-    if (this.payload?.ok && this.payload.date === currentDay && this.payload.schemaVersion === DAILY_ISSUE_SCHEMA_VERSION) return this.payload
+    const currentMinute = now.hour * 60 + now.minute
+    if (this.isFinalForDay(currentDay)) return this.payload
+
+    const sameDay = this.payload?.date === currentDay
+    const fallbackRows = sameDay && Array.isArray(this.payload?.rows) ? this.payload.rows : []
+    const status = currentMinute < FINALIZE_MINUTE
+      ? 'waiting'
+      : this.generating ? 'generating' : 'pending'
+
     return {
-      ok: false,
-      status: marketMinute < FINALIZE_MINUTE ? 'waiting' : this.generating ? 'generating' : 'pending',
+      ...(sameDay ? this.payload : {}),
+      ok: fallbackRows.length > 0,
+      status,
       schemaVersion: DAILY_ISSUE_SCHEMA_VERSION,
       date: currentDay,
-      capturedAt: null,
-      targetTime: '15:20',
-      rows: [],
+      capturedAt: sameDay ? this.payload?.capturedAt ?? null : null,
+      targetTime: TARGET_CLOSE_TIME,
+      rows: fallbackRows,
+      stale: fallbackRows.length > 0,
       error: this.payload?.error ?? null,
     }
   }
 
   async check() {
     const now = kstParts()
-    const marketMinute = now.hour * 60 + now.minute
-    if (marketMinute < FINALIZE_MINUTE) return this.currentPayload()
-    if (this.payload?.ok && this.payload.date === now.day && this.payload.schemaVersion === DAILY_ISSUE_SCHEMA_VERSION) return this.payload
+    const currentMinute = now.hour * 60 + now.minute
+    if (currentMinute < FINALIZE_MINUTE) return this.currentPayload()
+    if (this.isFinalForDay(now.day)) return this.payload
     if (!this.client.configured) return this.currentPayload()
-    if (this.generating) return this.generating
+    if (this.generating) return this.currentPayload()
     this.generating = this.generate(now.day).finally(() => { this.generating = null })
-    return this.generating
+    return this.currentPayload()
+  }
+
+  async fetchStockMetadata(symbols = []) {
+    const metaMap = new Map()
+    const unique = [...new Set(symbols.filter(Boolean))]
+    for (let index = 0; index < unique.length; index += STOCK_META_CHUNK_SIZE) {
+      const chunk = unique.slice(index, index + STOCK_META_CHUNK_SIZE)
+      const payload = await this.client.request(`/api/v1/stocks?symbols=${encodeURIComponent(chunk.join(','))}`, { priority: 'background', dedupe: false }).catch(() => null)
+      for (const item of stockRecords(payload)) {
+        const meta = metaOf(item)
+        if (meta.symbol) metaMap.set(meta.symbol, meta)
+      }
+      await sleep(20)
+    }
+    return metaMap
   }
 
   async fetchTwoTradingDayCandles(symbol) {
@@ -419,19 +457,19 @@ export class DailyIssueService {
 
   async generate(day) {
     try {
+      const previousRows = this.payload?.date === day && Array.isArray(this.payload?.rows) ? this.payload.rows : []
+      const previousBySymbol = new Map(previousRows.map((row) => [row.symbol, row]))
       const rankingPayload = await this.client.request('/api/v1/rankings?type=MARKET_TRADING_AMOUNT&marketCountry=KR&duration=1d&count=100', { priority: 'critical', dedupe: false })
       const rawRankings = rankingRecords(rankingPayload)
+      if (!rawRankings.length) throw new Error('금일 거래대금 랭킹을 받지 못했습니다. 잠시 후 자동 재시도합니다.')
+
       const symbols = rawRankings.map((item) => item?.symbol ?? item?.stock?.symbol).filter(Boolean)
-      const metaPayload = symbols.length ? await this.client.request(`/api/v1/stocks?symbols=${encodeURIComponent(symbols.join(','))}`, { priority: 'background' }).catch(() => null) : null
-      const metaMap = new Map(stockRecords(metaPayload).map((item) => {
-        const meta = metaOf(item)
-        return [meta.symbol, meta]
-      }).filter(([symbol]) => symbol))
+      const metaMap = await this.fetchStockMetadata(symbols)
 
       const stocks = rawRankings
         .map((item) => {
           const symbol = item?.symbol ?? item?.stock?.symbol ?? null
-          return rankingItem(item, metaMap.get(symbol))
+          return rankingItem(item, metaMap.get(symbol) ?? previousBySymbol.get(symbol))
         })
         .filter((item) => item.symbol && item.name && isIndividualStock(item))
         .slice(0, 100)
@@ -452,29 +490,18 @@ export class DailyIssueService {
           }
         })
 
+      if (!stocks.length) throw new Error('TOP100 종목 메타데이터를 확인하지 못했습니다. 기존 데이터를 유지하고 자동 재시도합니다.')
+
       const newsBatches = await Promise.all(articleQueries(stocks).map((query) => fetchNewsQuery(query).catch(() => [])))
       const articles = newsBatches.flat()
       const themeEvidence = buildThemeNewsEvidence(stocks, articles)
-      const chartMap = new Map()
 
-      await mapLimit(stocks, 4, async (stock) => {
-        const [minuteCandles, dailyCandles] = await Promise.all([
-          this.fetchTwoTradingDayCandles(stock.symbol),
-          this.fetchDailyCandles(stock.symbol),
-        ])
-        chartMap.set(stock.symbol, {
-          intraday: buildTwoDayIntraday(minuteCandles, 2),
-          daily: buildDailyBars(dailyCandles, DAILY_CONTEXT_COUNT),
-        })
-        await sleep(40)
-      })
-
-      const rows = sortDailyIssueRows(stocks.map((stock) => {
+      const baseRows = sortDailyIssueRows(stocks.map((stock) => {
         const directIssue = summarizeStockIssues(stock, articles)
         const issue = directIssue.reasonType === 'direct-news'
           ? directIssue
           : (summarizeThemeFallback(stock, stock.themeLabels, themeEvidence) ?? directIssue)
-        const chart = chartMap.get(stock.symbol)
+        const previous = previousBySymbol.get(stock.symbol)
         return {
           symbol: stock.symbol,
           name: stock.name,
@@ -491,27 +518,67 @@ export class DailyIssueService {
           articleCount: issue.articleCount,
           sources: issue.sources,
           links: issue.links,
-          intraday: chart?.intraday ?? [],
-          daily: chart?.daily ?? [],
+          intraday: previous?.intraday ?? [],
+          daily: previous?.daily ?? [],
         }
       }))
 
       this.payload = {
         ok: true,
-        status: 'finalized',
+        status: 'generating',
         schemaVersion: DAILY_ISSUE_SCHEMA_VERSION,
         date: day,
-        targetTime: '15:20',
+        targetTime: TARGET_CLOSE_TIME,
         capturedAt: new Date().toISOString(),
-        source: '토스증권 Open API 거래대금 랭킹/전일+오늘 실제 1분 OHLC/최근 30거래일 일봉 OHLC + Google News RSS + Npay/FnGuide 기업개요 캐시',
+        source: '15:30 종가 기준 TOP100·뉴스 정리 완료 · OHLC 차트 갱신 중',
         sort: 'changeRate-desc',
-        rows,
+        rows: baseRows,
+        stale: true,
+        error: null,
+      }
+      await this.persist().catch(() => {})
+
+      let completed = 0
+      const chartStocks = sortDailyIssueRows(stocks)
+      await mapLimit(chartStocks, 4, async (stock) => {
+        const [minuteCandles, dailyCandles] = await Promise.all([
+          this.fetchTwoTradingDayCandles(stock.symbol),
+          this.fetchDailyCandles(stock.symbol),
+        ])
+        const chart = {
+          intraday: buildTwoDayIntraday(minuteCandles, 2),
+          daily: buildDailyBars(dailyCandles, DAILY_CONTEXT_COUNT),
+        }
+        this.payload = {
+          ...this.payload,
+          rows: (this.payload.rows ?? []).map((row) => row.symbol === stock.symbol ? { ...row, ...chart } : row),
+        }
+        completed += 1
+        if (completed % 10 === 0) await this.persist().catch(() => {})
+        await sleep(40)
+      })
+
+      this.payload = {
+        ...this.payload,
+        ok: true,
+        status: 'finalized',
+        targetTime: TARGET_CLOSE_TIME,
+        capturedAt: new Date().toISOString(),
+        source: '토스증권 Open API 15:30 종가 거래대금 랭킹/전일+오늘 실제 1분 OHLC/최근 30거래일 일봉 OHLC + Google News RSS + Npay/FnGuide 기업개요 캐시',
+        stale: false,
         error: null,
       }
       await this.persist().catch(() => {})
       return this.payload
     } catch (error) {
-      this.payload = { ...this.payload, error: error instanceof Error ? error.message : String(error) }
+      this.payload = {
+        ...this.payload,
+        status: 'pending',
+        targetTime: TARGET_CLOSE_TIME,
+        stale: Array.isArray(this.payload?.rows) && this.payload.rows.length > 0,
+        error: error instanceof Error ? error.message : String(error),
+      }
+      await this.persist().catch(() => {})
       return this.currentPayload()
     }
   }
