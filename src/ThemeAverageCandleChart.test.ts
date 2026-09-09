@@ -1,8 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { appendTenSecondPoint, mergeThemeSeries, splitThemeLineSegments } from './ThemeAverageCandleChart'
+import {
+  appendTenSecondPoint,
+  mergeThemeSeries,
+  resampleThemeSeries30s,
+  splitThemeLineSegments,
+} from './ThemeAverageCandleChart'
 
 describe('appendTenSecondPoint', () => {
-  it('실시간 값을 10초 버킷으로 맞춰 누적한다', () => {
+  it('실시간 원천 값을 10초 버킷으로 맞춰 누적한다', () => {
     const first = appendTenSecondPoint([], '2026-09-09T09:00:17+09:00', 1.23)
     const second = appendTenSecondPoint(first, '2026-09-09T09:00:28+09:00', 1.41)
 
@@ -13,7 +18,7 @@ describe('appendTenSecondPoint', () => {
     expect(second[1].intervalSeconds).toBe(10)
   })
 
-  it('같은 10초 버킷은 최신 값으로 교체하고 날짜가 바뀌면 이전 장 데이터는 버린다', () => {
+  it('같은 10초 버킷은 최신 값으로 교체하고 날짜가 바뀌면 이전 장 실시간 데이터는 버린다', () => {
     const first = appendTenSecondPoint([], '2026-09-09T09:00:11+09:00', 1)
     const replaced = appendTenSecondPoint(first, '2026-09-09T09:00:19+09:00', 2)
     const nextDay = appendTenSecondPoint(replaced, '2026-09-10T09:00:11+09:00', 3)
@@ -27,7 +32,7 @@ describe('appendTenSecondPoint', () => {
 })
 
 describe('mergeThemeSeries', () => {
-  it('기존 3분 이력을 유지하면서 첫 실시간 포인트부터 10초 데이터로 이어 붙인다', () => {
+  it('기존 이력을 유지하면서 첫 실시간 원천 포인트부터 이어 붙인다', () => {
     const merged = mergeThemeSeries([
       { timestamp: '2026-09-09T09:00:00+09:00', day: '2026-09-09', value: 1 },
       { timestamp: '2026-09-09T09:03:00+09:00', day: '2026-09-09', value: 1.2 },
@@ -45,7 +50,6 @@ describe('mergeThemeSeries', () => {
     ])
     expect(merged.at(-1)?.value).toBe(1.25)
     expect(merged.at(-1)?.live).toBe(true)
-    expect(splitThemeLineSegments(merged)).toHaveLength(1)
   })
 
   it('실시간 포인트가 아직 없어도 기존 이력은 그대로 반환한다', () => {
@@ -57,46 +61,83 @@ describe('mergeThemeSeries', () => {
   })
 })
 
+describe('resampleThemeSeries30s', () => {
+  it('기존 3분 간격 두 값 사이를 30초 간격으로 만들고 비어 있는 값은 직전 값으로 채운다', () => {
+    const points = resampleThemeSeries30s([
+      { timestamp: '2026-09-09T09:00:00+09:00', day: '2026-09-09', value: 1 },
+      { timestamp: '2026-09-09T09:03:00+09:00', day: '2026-09-09', value: 1.3 },
+    ])
+
+    expect(points).toHaveLength(7)
+    expect(points.map((point) => point.timestamp)).toEqual([
+      '2026-09-09T00:00:00.000Z',
+      '2026-09-09T00:00:30.000Z',
+      '2026-09-09T00:01:00.000Z',
+      '2026-09-09T00:01:30.000Z',
+      '2026-09-09T00:02:00.000Z',
+      '2026-09-09T00:02:30.000Z',
+      '2026-09-09T00:03:00.000Z',
+    ])
+    expect(points.slice(0, -1).map((point) => point.value)).toEqual([1, 1, 1, 1, 1, 1])
+    expect(points[1].filled).toBe(true)
+    expect(points.at(-1)?.value).toBe(1.3)
+    expect(points.at(-1)?.filled).toBe(false)
+    expect(points.every((point) => point.intervalSeconds === 30)).toBe(true)
+  })
+
+  it('같은 30초 구간에 실제 원천 값이 여러 개면 가장 마지막 값을 사용한다', () => {
+    const points = resampleThemeSeries30s([
+      { timestamp: '2026-09-09T09:00:05+09:00', day: '2026-09-09', value: 1 },
+      { timestamp: '2026-09-09T09:00:24+09:00', day: '2026-09-09', value: 1.2 },
+      { timestamp: '2026-09-09T09:00:41+09:00', day: '2026-09-09', value: 1.4 },
+    ])
+
+    expect(points).toHaveLength(2)
+    expect(points[0].timestamp).toBe('2026-09-09T00:00:00.000Z')
+    expect(points[0].value).toBe(1.2)
+    expect(points[1].timestamp).toBe('2026-09-09T00:00:30.000Z')
+    expect(points[1].value).toBe(1.4)
+  })
+
+  it('긴 장중 공백도 30초마다 이전 값으로 채워 선이 끊기지 않게 한다', () => {
+    const points = resampleThemeSeries30s([
+      { timestamp: '2026-09-09T09:00:00+09:00', day: '2026-09-09', value: 2 },
+      { timestamp: '2026-09-09T09:02:00+09:00', day: '2026-09-09', value: 2.5 },
+    ])
+
+    expect(points).toHaveLength(5)
+    expect(points.map((point) => point.value)).toEqual([2, 2, 2, 2, 2.5])
+    expect(splitThemeLineSegments(points)).toHaveLength(1)
+  })
+
+  it('날짜가 바뀌는 구간은 이전 값으로 채워서 연결하지 않는다', () => {
+    const points = resampleThemeSeries30s([
+      { timestamp: '2026-09-08T15:29:30+09:00', day: '2026-09-08', value: 1 },
+      { timestamp: '2026-09-09T09:00:00+09:00', day: '2026-09-09', value: 2 },
+    ])
+
+    expect(points).toHaveLength(2)
+    expect(splitThemeLineSegments(points)).toHaveLength(2)
+  })
+})
+
 describe('splitThemeLineSegments', () => {
-  it('같은 날 45초를 초과하는 10초 실시간 데이터 공백은 서로 다른 선분으로 나눈다', () => {
-    const segments = splitThemeLineSegments([
-      { timestamp: '2026-09-09T09:00:00+09:00', day: '2026-09-09', live: true },
-      { timestamp: '2026-09-09T09:00:10+09:00', day: '2026-09-09', live: true },
-      { timestamp: '2026-09-09T09:01:10+09:00', day: '2026-09-09', live: true },
-      { timestamp: '2026-09-09T09:01:20+09:00', day: '2026-09-09', live: true },
+  it('30초 표시 데이터는 정상적으로 하나의 선으로 유지한다', () => {
+    const points = resampleThemeSeries30s([
+      { timestamp: '2026-09-09T09:00:00+09:00', day: '2026-09-09', value: 1 },
+      { timestamp: '2026-09-09T09:03:00+09:00', day: '2026-09-09', value: 1.2 },
+      { timestamp: '2026-09-09T09:06:00+09:00', day: '2026-09-09', value: 1.3 },
     ])
 
-    expect(segments).toHaveLength(2)
-    expect(segments[0]).toHaveLength(2)
-    expect(segments[1]).toHaveLength(2)
-  })
-
-  it('정상적인 10초 간격과 40초 이내의 짧은 실시간 누락은 한 선분으로 유지한다', () => {
-    const segments = splitThemeLineSegments([
-      { timestamp: '2026-09-09T09:00:00+09:00', day: '2026-09-09', live: true },
-      { timestamp: '2026-09-09T09:00:10+09:00', day: '2026-09-09', live: true },
-      { timestamp: '2026-09-09T09:00:40+09:00', day: '2026-09-09', live: true },
-    ])
-
+    const segments = splitThemeLineSegments(points)
     expect(segments).toHaveLength(1)
-    expect(segments[0]).toHaveLength(3)
+    expect(segments[0].length).toBeGreaterThan(3)
   })
 
-  it('기존 3분 이력은 45초 기준으로 잘리지 않고 선으로 계속 표시한다', () => {
+  it('날짜가 바뀌면 시간 차이와 무관하게 선을 연결하지 않는다', () => {
     const segments = splitThemeLineSegments([
-      { timestamp: '2026-09-09T09:00:00+09:00', day: '2026-09-09' },
-      { timestamp: '2026-09-09T09:03:00+09:00', day: '2026-09-09' },
-      { timestamp: '2026-09-09T09:06:00+09:00', day: '2026-09-09' },
-    ])
-
-    expect(segments).toHaveLength(1)
-    expect(segments[0]).toHaveLength(3)
-  })
-
-  it('날짜가 바뀌면 시간 차이가 짧아도 선을 연결하지 않는다', () => {
-    const segments = splitThemeLineSegments([
-      { timestamp: '2026-09-08T19:59:50+09:00', day: '2026-09-08', live: true },
-      { timestamp: '2026-09-09T08:00:00+09:00', day: '2026-09-09', live: true },
+      { timestamp: '2026-09-08T06:29:30.000Z', day: '2026-09-08' },
+      { timestamp: '2026-09-09T00:00:00.000Z', day: '2026-09-09' },
     ])
 
     expect(segments).toHaveLength(2)
