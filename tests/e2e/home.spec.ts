@@ -9,9 +9,13 @@ test('domestic liquidity dashboard is the first page and light theme is default'
   await page.screenshot({ path: testInfo.outputPath('liquidity-dashboard.png'), fullPage: true })
 })
 
-test('domestic theme flow uses five themes, line charts and an always-open simplified detail dashboard', async ({ page }, testInfo) => {
+test('domestic theme flow uses four stabilized themes, market intelligence and an always-open detail dashboard', async ({ page }, testInfo) => {
   await page.goto('/')
   await page.getByRole('button', { name: '국내 테마 흐름' }).click()
+
+  await expect(page.getByTestId('market-intelligence')).toBeVisible()
+  await expect(page.getByRole('heading', { name: /시장 상태 엔진/ })).toBeVisible()
+  await expect(page.getByText(/원시값 기반/).first()).toBeVisible()
 
   await expect(page.getByTestId('feature-news')).toBeVisible()
   await expect(page.getByRole('heading', { name: '시황 요약' })).toBeVisible()
@@ -27,7 +31,7 @@ test('domestic theme flow uses five themes, line charts and an always-open simpl
   await expect(page.getByTestId('theme-strength-board')).toBeVisible()
   await expect(page.getByRole('heading', { name: /테마 강도 비교/ })).toBeVisible()
   await expect(page.getByText('개별주(STOCK)만')).toBeVisible()
-  await expect(page.getByText(/5개 · 강도순 자동교체/)).toBeVisible()
+  await expect(page.getByText(/4개 · 8% 또는 3회 확인 후 교체/)).toBeVisible()
   await expect(page.getByText(/평균 3분 선차트 · 자동 확대축/)).toBeVisible()
   await expect(page.getByText(/10초/).first()).toBeVisible()
   await expect(page.getByTestId('top100-ranking')).toBeVisible()

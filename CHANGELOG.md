@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.6.0
+- 국내 테마 흐름을 단순 거래대금 순위에서 규칙 기반 `Market Intelligence` 구조로 확장
+- 테마는 사용자 화면에 항상 최대 4개를 유지하고, 내부 5번째 후보를 challenger로 사용해 기존 약한 테마보다 8% 이상 강하거나 3회 연속 우위를 확인할 때 교체하는 히스테리시스 적용
+- 테마별 상승 확산도, 구성종목 중앙값 수익률, 대장주 거래대금 집중도, 10분 환산 자금 유입 속도, 종합 강도점수 추가
+- 테마 생애주기를 `출현 / 확산 / 주도 / 과열 / 둔화 / 이탈 / 유지`로 원시값 기반 분류
+- 여러 테마에 동시에 속한 종목의 거래대금을 1/N로 나누는 중복조정 거래대금 추가
+- 국내 테마 종목/키워드 목록을 `backend/data/themes.kr.json`으로 분리해 버전·검토 정책을 가진 감사 가능한 카탈로그로 변경
+- 시장 스냅샷/테마/뉴스/선물에 `LIVE / DELAYED / STALE / FALLBACK / MISSING` 신선도 판정 추가
+- TOP100 표본 부족, 누적 거래대금 역행, 비정상적으로 동일한 등락률 등 데이터 품질 이상 감지 추가
+- 상승 종목 비율·상승 거래대금 비중·TOP10 집중도·외국인/기관/프로그램 수급·테마 확산을 조합한 규칙 기반 시장 상태 엔진 추가
+- 외국인·기관·비차익·차익 프로그램의 장중 흐름 sparkline 추가
+- 뉴스에 A/B/C 근거 등급 추가: A=공시·거래소 등 1차자료 확인, B=복수 출처, C=단일 기사/미확인
+- 주도 종목 뉴스 시각과 인접 가격을 한 타임라인에 표시해 뉴스와 주가의 선후관계를 확인하되 인과관계로 단정하지 않도록 변경
+- 최근 2거래일 히스토리를 5분 단위로 복기하는 장중 Replay 슬라이더 추가
+- 매 거래일 15:20 `PRE_CLOSE`, 15:35 `FINAL` 두 시점의 시장/테마/수급 상태를 35거래일 영속 저장하는 Close Archive 추가
+- 검증된 KOSPI200 선물 공급원을 연결할 수 있는 `FUTURES_SNAPSHOT_URL` 인터페이스 추가. 공급원이 없으면 선물 값을 임의 생성하지 않고 `실데이터 미연결`로 표시
+- 공개 `/api/market/refresh`에 기본 20초 서버 쿨다운을 적용하고, CORS wildcard를 제거해 명시적 `MARKET_ALLOWED_ORIGIN`이 있을 때만 Origin 허용
+- `/api/market/intelligence`, `/api/market/event-timeline`, `/api/market/replay`, `/api/market/close-archive`, `/api/market/futures` 추가
+- Nginx가 `market-intelligence.json` prepared snapshot을 직접 제공하도록 확장해 Pi의 페이지 조회 비용 최소화
+- `RUNTIME_STATUS.md`를 별도로 게시하는 15분 주기 런타임 상태 워크플로 추가: Pi 로컬 앱 상태, 실제 배포 커밋, 터널 상태, 터널 레지스트리 갱신시각, 터널 age를 분리 기록
+- `package-lock.json` 생성 및 CI를 `npm ci` 기반으로 전환해 의존성 재현성 강화
+- Market Intelligence 신선도·뉴스 근거등급·테마 4개 제한·데이터 품질 이상 감지 백엔드 테스트 추가
+
 ## 0.5.1
 - 국내 테마 흐름에서 Toss 종목 메타데이터의 `securityType=STOCK` 기준으로 ETF/ETN/리츠 등 비개별주 상품 제외
 - 테마 강도 영역을 강한 4개 테마 중심으로 재정렬하고 더 강한 후보가 등장하면 약한 테마가 교체될 수 있도록 개선

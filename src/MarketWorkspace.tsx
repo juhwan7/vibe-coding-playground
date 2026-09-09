@@ -295,7 +295,7 @@ export default function MarketWorkspace() {
     }).filter((item): item is RankingItem & { symbol: string } => Boolean(item.symbol) && isIndividualStock(item)).slice(0, 100)
   }, [themeFlow.topRankings, themeFlow.themes, snapshot?.topRankings, snapshot?.stocks])
 
-  const themes = (themeFlow.themes ?? []).slice(0, 5)
+  const themes = (themeFlow.themes ?? []).slice(0, 4)
   const topAmount = Math.max(1, rankings[0]?.tradingAmount ?? 1)
   const totalAmount = rankings.reduce((sum, item) => sum + (item.tradingAmount ?? 0), 0)
   const investors = snapshot?.marketInvestors?.total
@@ -306,14 +306,14 @@ export default function MarketWorkspace() {
     <section className="workspace-main">
       <section className="theme-strength-board panel" data-testid="theme-strength-board">
         <header className="theme-board-head">
-          <div><p>THEME ROTATION / INDIVIDUAL STOCKS</p><h1>테마 강도 비교 <span>(개별주식 거래대금 기준 · 5개 유지)</span></h1><small>거래대금·현재가·등락률은 10초마다 갱신합니다. 테마는 강도순 5개를 유지하며 평균 3분 선차트는 실제 등락률 값을 그대로 쓰고 Y축만 자동 확대해 변동성을 더 잘 보이게 합니다.</small></div>
+          <div><p>THEME ROTATION / INDIVIDUAL STOCKS</p><h1>테마 강도 비교 <span>(개별주식 거래대금 기준 · 4개 유지)</span></h1><small>거래대금·현재가·등락률은 10초마다 갱신합니다. 테마는 항상 4개를 유지하며 더 강한 후보가 교체 문턱을 충족할 때만 약한 테마와 교체됩니다.</small></div>
           <div className="theme-board-controls"><span className={themeFlow.ok ? 'flow-live' : 'flow-loading'}>{themeFlow.ok ? '● 거래대금 10초 최신화' : '● 데이터 준비 중'}</span></div>
         </header>
 
-        <div className="theme-method-strip"><span>대상 <b>개별주(STOCK)만</b></span><span>테마 <b>5개 · 강도순 자동교체</b></span><span>차트 <b>평균 3분 선차트 · 자동 확대축</b></span><span>최신화 <b>10초 · {displayTime(themeFlow.updatedAt)}</b></span></div>
+        <div className="theme-method-strip"><span>대상 <b>개별주(STOCK)만</b></span><span>테마 <b>4개 · 8% 또는 3회 확인 후 교체</b></span><span>차트 <b>평균 3분 선차트 · 자동 확대축</b></span><span>최신화 <b>10초 · {displayTime(themeFlow.updatedAt)}</b></span></div>
         <div className="theme-strength-list">
           {themes.map((theme, index) => <ThemeRow key={theme.name} theme={theme} rank={index + 1} />)}
-          {Array.from({ length: Math.max(0, 5 - themes.length) }, (_, index) => <div className="theme-strength-placeholder" key={index}>테마 {themes.length + index + 1} 후보 계산 중</div>)}
+          {Array.from({ length: Math.max(0, 4 - themes.length) }, (_, index) => <div className="theme-strength-placeholder" key={index}>테마 {themes.length + index + 1} 후보 계산 중</div>)}
         </div>
       </section>
 

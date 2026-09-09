@@ -1,0 +1,117 @@
+name: Publish Runtime Status
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_run:
+    workflows: ["Deploy to Raspberry Pi"]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-runtime-status
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    if: >-
+      ${{ github.event_name != 'workflow_run' ||
+          (github.event.workflow_run.conclusion == 'success' &&
+           github.event.workflow_run.head_branch == 'main' &&
+           github.event.workflow_run.head_repository.full_name == github.repository) }}
+    runs-on: [self-hosted, linux, ARM64, k-market-pi]
+    timeout-minutes: 4
+    steps:
+      - name: Publish independent app and tunnel health
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP="$HOME/vibe-coding-playground"
+          STATUS_BRANCH=tunnel-status
+          STATUS_PATH=RUNTIME_STATUS.md
+          TUNNEL_PATH=CURRENT_TUNNEL.md
+          API="https://api.github.com/repos/$REPOSITORY"
+          RAW_TUNNEL="https://raw.githubusercontent.com/$REPOSITORY/$STATUS_BRANCH/$TUNNEL_PATH"
+          RAW_RUNTIME="https://raw.githubusercontent.com/$REPOSITORY/$STATUS_BRANCH/$STATUS_PATH"
+          now_epoch="$(date +%s)"
+          checked_at="$(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+
+          app_commit="$(git -C "$APP" rev-parse HEAD 2>/dev/null || echo unknown)"
+          if curl --fail --silent --show-error --connect-timeout 2 --max-time 6 http://127.0.0.1:8080/api/health >/tmp/runtime-health.json; then
+            app_status=online
+          else
+            app_status=offline
+          fi
+
+          tunnel_doc="$(curl --fail --silent --show-error --max-time 8 "$RAW_TUNNEL" 2>/dev/null || true)"
+          tunnel_url="$(printf '%s' "$tunnel_doc" | grep -Eo 'https://[a-z0-9-]+\.trycloudflare\.com' | head -n 1 || true)"
+          registry_updated_at="$(printf '%s' "$tunnel_doc" | sed -n 's/^- 갱신 시각: `\([^`]*\)`.*/\1/p' | head -n 1)"
+          if [ -n "$tunnel_url" ] && curl --fail --silent --show-error --connect-timeout 3 --max-time 7 "$tunnel_url/api/health" >/tmp/runtime-tunnel-health.json 2>/dev/null; then
+            tunnel_status=online
+          elif [ -n "$tunnel_url" ]; then
+            tunnel_status=unreachable
+          else
+            tunnel_status=offline
+          fi
+
+          old="$(curl --fail --silent --show-error --max-time 8 "$RAW_RUNTIME" 2>/dev/null || true)"
+          old_url="$(printf '%s' "$old" | sed -n 's/^- Tunnel URL: `\([^`]*\)`.*/\1/p' | head -n 1)"
+          first_seen_epoch="$(printf '%s' "$old" | sed -n 's/^- Tunnel first seen epoch: `\([^`]*\)`.*/\1/p' | head -n 1)"
+          if [ -z "$tunnel_url" ]; then
+            first_seen_epoch=0
+          elif [ "$old_url" != "$tunnel_url" ] || ! [[ "$first_seen_epoch" =~ ^[0-9]+$ ]] || [ "$first_seen_epoch" -le 0 ]; then
+            first_seen_epoch="$now_epoch"
+          fi
+          if [ "$first_seen_epoch" -gt 0 ]; then
+            tunnel_age_seconds=$((now_epoch - first_seen_epoch))
+          else
+            tunnel_age_seconds=0
+          fi
+
+          cat >/tmp/runtime-status.md <<EOF
+          # MARKET FLOW Runtime Status
+
+          - Last health check: \`$checked_at\`
+          - App status: \`$app_status\`
+          - App deployed commit: \`$app_commit\`
+          - Tunnel status: \`$tunnel_status\`
+          - Tunnel URL: \`${tunnel_url:-none}\`
+          - Tunnel registry updated at: \`${registry_updated_at:-unknown}\`
+          - Tunnel first seen epoch: \`$first_seen_epoch\`
+          - Tunnel age seconds: \`$tunnel_age_seconds\`
+
+          앱 로컬 헬스체크와 Cloudflare Quick Tunnel 상태를 별도로 기록합니다. \`CURRENT_TUNNEL.md\`는 주소 레지스트리이고, 이 파일은 실제 배포 커밋과 최근 헬스체크 상태의 기준입니다.
+          EOF
+          sed -i 's/^          //' /tmp/runtime-status.md
+          encoded="$(base64 -w 0 /tmp/runtime-status.md)"
+
+          meta=/tmp/runtime-meta.json
+          code="$(curl --silent --show-error -o "$meta" -w '%{http_code}' \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'Accept: application/vnd.github+json' \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "$API/contents/$STATUS_PATH?ref=$STATUS_BRANCH")"
+          sha=''
+          if [ "$code" = 200 ]; then
+            sha="$(tr -d '\n' <"$meta" | sed -n 's/.*"sha":[[:space:]]*"\([^"]*\)".*/\1/p')"
+          elif [ "$code" != 404 ]; then
+            cat "$meta" || true
+            exit 1
+          fi
+
+          if [ -n "$sha" ]; then
+            printf '{"message":"chore: update runtime health status","content":"%s","branch":"%s","sha":"%s"}' "$encoded" "$STATUS_BRANCH" "$sha" >/tmp/runtime-update.json
+          else
+            printf '{"message":"chore: publish runtime health status","content":"%s","branch":"%s"}' "$encoded" "$STATUS_BRANCH" >/tmp/runtime-update.json
+          fi
+          curl --fail --silent --show-error -X PUT \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'Accept: application/vnd.github+json' \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "$API/contents/$STATUS_PATH" --data-binary @/tmp/runtime-update.json >/dev/null
