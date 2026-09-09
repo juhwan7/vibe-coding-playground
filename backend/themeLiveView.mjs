@@ -1,4 +1,5 @@
 import { themesForStock } from './themeCatalog.mjs'
+import { cachedDescriptionForStock, classifyStockSector } from './stockClassification.mjs'
 
 function number(value) {
   const parsed = Number(value)
@@ -30,9 +31,30 @@ function mergeRanking(base, live) {
 
 function withCatalogThemes(item) {
   if (!item) return item
+  const verifiedThemes = themesForStock(item.symbol, item.name)
+  if (verifiedThemes.length) {
+    return {
+      ...item,
+      catalogThemes: verifiedThemes,
+      classificationLabel: verifiedThemes[0],
+      classificationKind: 'theme',
+      classificationSource: 'theme-catalog',
+    }
+  }
+
+  const classification = classifyStockSector({
+    symbol: item.symbol,
+    name: item.name,
+    description: cachedDescriptionForStock(item.symbol),
+  })
   return {
     ...item,
-    catalogThemes: themesForStock(item.symbol, item.name),
+    // 기존 프론트의 중립 배지 렌더링 경로를 그대로 재사용한다.
+    // 실제 주도테마 선정에는 themeCatalog.mjs만 사용하므로 이 fallback은 테마 집계에 영향이 없다.
+    catalogThemes: [classification.label],
+    classificationLabel: classification.label,
+    classificationKind: classification.label === '기타·개별주' ? 'fallback' : 'sector',
+    classificationSource: classification.source,
   }
 }
 
