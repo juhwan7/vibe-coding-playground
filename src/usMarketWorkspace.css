@@ -28,6 +28,92 @@
   overflow-wrap: anywhere;
 }
 
+.us-theme-saas-summary-bar {
+  grid-template-columns: minmax(180px, .8fr) minmax(360px, 1.65fr) minmax(340px, 1.15fr);
+}
+
+.us-theme-workspace .theme-concentration-stat {
+  margin-top: 8px;
+}
+
+.us-theme-workspace .theme-concentration-stat > b {
+  color: var(--theme-accent);
+}
+
+.us-theme-workspace .us-theme-chart-wrap {
+  overflow: hidden;
+}
+
+.us-theme-workspace .us-theme-event-layer {
+  inset: 45px 12px 10px;
+}
+
+.us-theme-workspace .us-theme-event-marker.is-turnover > i {
+  background: #ffbd4a;
+}
+
+.us-theme-workspace .us-theme-event-marker.is-rise > i {
+  top: 23px;
+  background: var(--theme-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--theme-accent) 14%, transparent);
+}
+
+.us-theme-workspace .us-theme-event-marker.is-rise::after {
+  top: 38px;
+}
+
+.us-theme-workspace .top100-stock > small {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.us-theme-workspace .top100-stock-meta {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.us-theme-workspace .top100-row {
+  min-height: 66px;
+}
+
+.us-theme-workspace .top100-amount {
+  display: grid;
+  justify-items: end;
+  gap: 2px;
+}
+
+.us-theme-workspace .top100-amount > strong {
+  white-space: nowrap;
+}
+
+.us-theme-workspace .top100-share {
+  color: #6f8796;
+  font-size: 8.5px;
+  font-weight: 800;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+:root[data-theme='light'] .us-theme-workspace .top100-share,
+:root:not([data-theme='dark']) .us-theme-workspace .top100-share {
+  color: #6a7d90;
+}
+
+@media (max-width: 1250px) {
+  .us-theme-saas-summary-bar {
+    grid-template-columns: 1fr;
+  }
+
+  .us-theme-saas-summary-bar .theme-saas-leaders {
+    flex-wrap: wrap;
+    overflow: visible;
+  }
+}
+
 @media (max-width: 1050px) {
   .us-theme-workspace .market-bottom-strip {
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
@@ -57,5 +143,13 @@
 
   .us-theme-workspace .top100-head {
     min-width: 0;
+  }
+
+  .us-theme-saas-summary-bar .theme-saas-summary-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .us-theme-saas-summary-bar .theme-saas-leader-chip {
+    max-width: 100%;
   }
 }
