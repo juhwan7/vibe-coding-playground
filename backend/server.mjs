@@ -10,12 +10,13 @@ import { FeatureNewsService } from './featureNewsService.mjs'
 import { TossClient } from './tossClient.mjs'
 
 const port = Number(process.env.PORT || 8787)
+const primaryRefreshMs = Math.max(5000, Number(process.env.MARKET_PRIMARY_REFRESH_MS || process.env.POLL_MS || 10000))
 const client = new TossClient({
   clientId: process.env.TOSS_CLIENT_ID,
   clientSecret: process.env.TOSS_CLIENT_SECRET,
 })
 const collector = new MarketCollector(client, {
-  fastMs: Number(process.env.POLL_MS || 60000),
+  fastMs: primaryRefreshMs,
   slowMs: Number(process.env.SLOW_POLL_MS || 180000),
 })
 const history = new SnapshotStore()
@@ -59,10 +60,15 @@ function fundingStatus() {
   }
 }
 
+function liveKrThemePayload() {
+  return themeFlow.livePayload?.() ?? themeFlow.payload
+}
+
 async function publishPreparedFast() {
   const writes = []
   if (collector.snapshot) writes.push(prepared.write('market-snapshot.json', collector.snapshot))
-  if (themeFlow.payload?.ok) writes.push(prepared.write('kr-theme-flow.json', themeFlow.payload))
+  const krThemePayload = liveKrThemePayload()
+  if (krThemePayload?.ok) writes.push(prepared.write('kr-theme-flow.json', krThemePayload))
   if (usThemeFlow.payload?.ok) writes.push(prepared.write('us-theme-flow.json', usThemeFlow.payload))
   if (featureNews.payload?.ok) writes.push(prepared.write('feature-news.json', featureNews.payload))
   if (writes.length) await Promise.allSettled(writes)
@@ -124,10 +130,11 @@ const server = http.createServer(async (request, response) => {
       quizDescriptionsCached: true,
       featureNewsEnabled: true,
       refreshPolicy: {
-        primaryMarketSeconds: 60,
-        slowMarketSeconds: 180,
-        featureNewsSeconds: 180,
-        themeChartSeconds: 60,
+        primaryMarketSeconds: Math.round(primaryRefreshMs / 1000),
+        slowMarketSeconds: Math.round(collector.slowMs / 1000),
+        featureNewsSeconds: Math.round(Number(process.env.FEATURE_NEWS_REFRESH_MS || 180000) / 1000),
+        themeChartLiveSeconds: Math.round(primaryRefreshMs / 1000),
+        themeCandleCollectionSeconds: Math.round(themeFlow.refreshMs / 1000),
         preparedPublishSeconds: 2,
         offSessionSeconds: 300,
       },
@@ -156,7 +163,8 @@ const server = http.createServer(async (request, response) => {
   }
 
   if (url.pathname === '/api/market/theme-flow') {
-    return send(response, themeFlow.payload?.ok ? 200 : 503, themeFlow.payload)
+    const payload = liveKrThemePayload()
+    return send(response, payload?.ok ? 200 : 503, payload)
   }
 
   if (url.pathname === '/api/market/theme-stock-chart') {
