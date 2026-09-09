@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef, useState, type WheelEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type WheelEvent } from 'react'
 import './featureNews.css'
+import './featureNewsEnhancements.css'
 
 type RankingItem = { symbol?: string | null; name?: string | null; tradingAmount?: number | null }
 type Snapshot = { topRankings?: RankingItem[] }
@@ -14,7 +15,7 @@ type NewsItem = {
   duplicateCount?: number | null
   sourceCount?: number | null
 }
-type NewsPayload = { ok?: boolean; updatedAt?: string | null; source?: string | null; items?: NewsItem[]; error?: string | null }
+type NewsPayload = { ok?: boolean; updatedAt?: string | null; windowStart?: string | null; source?: string | null; items?: NewsItem[]; error?: string | null }
 
 const THEME_WORDS: Array<[string, string[]]> = [
   ['반도체', ['반도체','하이닉스','삼성전자','HBM','파운드리']],
@@ -44,6 +45,16 @@ function timestamp(value?: string | null) {
   return Number.isFinite(parsed) ? parsed : 0
 }
 
+function kstSixStart(now = Date.now()) {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(new Date(now))
+  const year = parts.find((part) => part.type === 'year')?.value ?? '1970'
+  const month = parts.find((part) => part.type === 'month')?.value ?? '01'
+  const day = parts.find((part) => part.type === 'day')?.value ?? '01'
+  return Date.parse(`${year}-${month}-${day}T06:00:00+09:00`)
+}
+
 function conciseTitle(item: NewsItem) {
   return (item.summary || item.title)
     .replace(/^\s*(?:\[[^\]]{1,30}\]\s*)+/g, '')
@@ -64,8 +75,11 @@ function looksPromotional(item: NewsItem) {
 export default function FeatureNews() {
   const [news, setNews] = useState<NewsPayload>({ ok: false, items: [] })
   const [snapshot, setSnapshot] = useState<Snapshot>({})
+  const [dragging, setDragging] = useState(false)
   const timelineRef = useRef<HTMLDivElement>(null)
   const positionedRef = useRef(false)
+  const dragRef = useRef({ pointerId: -1, startX: 0, startScrollLeft: 0, moved: false })
+  const suppressClickUntil = useRef(0)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -111,8 +125,13 @@ export default function FeatureNews() {
   const topStocks = useMemo(() => (snapshot.topRankings ?? []).slice(0, 50).filter((item) => item.name), [snapshot.topRankings])
   const items = useMemo(() => {
     const exactSeen = new Set<string>()
+    const from = kstSixStart()
+    const until = Date.now() + 5 * 60 * 1000
     return (news.items ?? [])
-      .filter((item) => !looksPromotional(item))
+      .filter((item) => {
+        const published = timestamp(item.publishedAt)
+        return published >= from && published <= until && !looksPromotional(item)
+      })
       .map((item) => {
         const summary = conciseTitle(item)
         const matches = topStocks.filter((stock) => stock.name && summary.includes(stock.name)).slice(0, 3)
@@ -125,18 +144,18 @@ export default function FeatureNews() {
         return true
       })
       .sort((a, b) => timestamp(a.publishedAt) - timestamp(b.publishedAt))
-      .slice(-20)
+      .slice(-48)
   }, [news.items, topStocks])
 
   useEffect(() => {
     const node = timelineRef.current
-    if (!node || !items.length) return
+    if (!node || !items.length || dragging) return
     const frame = window.requestAnimationFrame(() => {
       node.scrollTo({ left: node.scrollWidth, behavior: positionedRef.current ? 'smooth' : 'auto' })
       positionedRef.current = true
     })
     return () => window.cancelAnimationFrame(frame)
-  }, [items.length, news.updatedAt])
+  }, [items.length, news.updatedAt, dragging])
 
   const handleWheel = (event: WheelEvent<HTMLDivElement>) => {
     if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return
@@ -144,13 +163,61 @@ export default function FeatureNews() {
     event.currentTarget.scrollLeft += event.deltaY
   }
 
+  const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return
+    dragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startScrollLeft: event.currentTarget.scrollLeft,
+      moved: false,
+    }
+    event.currentTarget.setPointerCapture?.(event.pointerId)
+  }
+
+  const handlePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (dragRef.current.pointerId !== event.pointerId) return
+    const delta = event.clientX - dragRef.current.startX
+    if (!dragRef.current.moved && Math.abs(delta) > 4) {
+      dragRef.current.moved = true
+      setDragging(true)
+    }
+    if (!dragRef.current.moved) return
+    event.preventDefault()
+    event.currentTarget.scrollLeft = dragRef.current.startScrollLeft - delta
+  }
+
+  const finishPointerDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (dragRef.current.pointerId !== event.pointerId) return
+    if (dragRef.current.moved) suppressClickUntil.current = performance.now() + 300
+    event.currentTarget.releasePointerCapture?.(event.pointerId)
+    dragRef.current.pointerId = -1
+    dragRef.current.moved = false
+    setDragging(false)
+  }
+
+  const handleClickCapture = (event: ReactMouseEvent<HTMLDivElement>) => {
+    if (performance.now() >= suppressClickUntil.current) return
+    event.preventDefault()
+    event.stopPropagation()
+  }
+
   return <section className="feature-news-shell" data-testid="feature-news">
     <header className="feature-news-head">
-      <div><p>FEATURE STOCK ISSUE TIMELINE</p><h2>특징주 이슈</h2><small>기사 나열 대신 같은 이슈는 묶고 홍보성 제목은 제외합니다. 오래된 이슈는 왼쪽, 최신 이슈는 오른쪽에 쌓입니다.</small></div>
+      <div><p>FEATURE STOCK ISSUE TIMELINE</p><h2>특징주 이슈</h2><small>오늘 오전 6시 이후 올라온 이슈만 시간순으로 표시합니다. 같은 이슈는 묶고 명시적인 광고·홍보성 제목은 제외합니다.</small></div>
       <div><b>{news.ok ? '● 뉴스 3분 최신화' : '● 뉴스 연결 중'}</b><span>{displayTime(news.updatedAt)}</span></div>
     </header>
-    <div className="feature-news-timeline" ref={timelineRef} onWheel={handleWheel} data-testid="feature-news-timeline">
-      {items.map((item, index) => <a className="feature-news-item" href={item.link} target="_blank" rel="noreferrer" key={`${item.link}-${index}`}>
+    <div
+      className={`feature-news-timeline${dragging ? ' dragging' : ''}`}
+      ref={timelineRef}
+      onWheel={handleWheel}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={finishPointerDrag}
+      onPointerCancel={finishPointerDrag}
+      onClickCapture={handleClickCapture}
+      data-testid="feature-news-timeline"
+    >
+      {items.map((item, index) => <a className="feature-news-item" href={item.link} target="_blank" rel="noreferrer" draggable={false} key={`${item.link}-${index}`}>
         <div className="feature-news-time"><time>{displayClock(item.publishedAt)}</time><span>{index + 1}</span></div>
         <h3>{item.summary}</h3>
         <div className="feature-news-tags">
@@ -160,8 +227,8 @@ export default function FeatureNews() {
         </div>
         <div className="feature-news-source"><span>{(item.sourceCount ?? 1) > 1 ? `${item.sourceCount}개 매체` : item.source || '뉴스'}</span>{item.matches.length > 0 && <b>TOP50 연관</b>}</div>
       </a>)}
-      {!items.length && <div className="feature-news-empty"><strong>특징주 이슈를 불러오는 중입니다.</strong><span>중복 기사와 명시적인 광고·홍보성 제목은 제외하고 시간순 이슈만 표시합니다.</span>{news.error && <small>{news.error}</small>}</div>}
+      {!items.length && <div className="feature-news-empty"><strong>오늘 06:00 이후 특징주 이슈가 아직 없습니다.</strong><span>새 기사가 확인되면 시간순으로 두 줄에 추가됩니다.</span>{news.error && <small>{news.error}</small>}</div>}
     </div>
-    <footer>마우스 휠로 좌우 이동할 수 있습니다. 카드 클릭 시 대표 기사 원문이 열리며, 뉴스와 주가의 인과관계는 자동 판단하지 않습니다.</footer>
+    <footer>마우스 휠 또는 클릭한 채 좌우로 끌어서 이동할 수 있습니다. 카드 클릭 시 대표 기사 원문이 열리며, 뉴스와 주가의 인과관계는 자동 판단하지 않습니다.</footer>
   </section>
 }
