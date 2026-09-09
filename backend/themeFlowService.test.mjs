@@ -128,6 +128,21 @@ test('findIntradayCandleGaps detects only long gaps inside the regular session',
   assert.equal(gaps[1].to, '2026-09-09T15:20:00+09:00')
 })
 
+test('findIntradayCandleGaps detects a missing opening range even when there is no 09:00 candle', () => {
+  const candles = [
+    ...minuteCandles('2026-09-08', 9 * 60, 9 * 60 + 1, 90),
+    { timestamp: '2026-09-09T12:30:00+09:00', closePrice: 100 },
+    { timestamp: '2026-09-09T12:31:00+09:00', closePrice: 101 },
+  ]
+
+  const gaps = findIntradayCandleGaps(candles)
+  assert.equal(gaps.length, 1)
+  assert.equal(gaps[0].edge, 'session-start')
+  assert.equal(gaps[0].from, '2026-09-09T00:00:00.000Z')
+  assert.equal(gaps[0].to, '2026-09-09T12:30:00+09:00')
+  assert.equal(gaps[0].gapMs, 210 * 60000)
+})
+
 test('refreshSymbol backfills a missing intraday range instead of leaving the theme chart broken', async () => {
   const calls = []
   const client = {
@@ -179,4 +194,58 @@ test('refreshSymbol backfills a missing intraday range instead of leaving the th
   assert.ok(calls.some((path) => path.includes('before=cursor-1')))
   assert.ok(calls.some((path) => path.includes('before=cursor-2')))
   assert.ok(repaired.some((candle) => candle.timestamp === '2026-09-09T13:30:00+09:00'))
+})
+
+test('refreshSymbol backfills the missing morning when collection started after noon', async () => {
+  const calls = []
+  const client = {
+    configured: true,
+    async request(path) {
+      calls.push(path)
+      const url = new URL(`https://example.test${path}`)
+      const before = url.searchParams.get('before')
+      if (!before) {
+        return {
+          result: {
+            candles: minuteCandles('2026-09-09', 15 * 60 + 20, 15 * 60 + 25, 130),
+            nextBefore: 'opening-cursor-1',
+          },
+        }
+      }
+      if (before === 'opening-cursor-1') {
+        return {
+          result: {
+            candles: minuteCandles('2026-09-09', 12 * 60 + 1, 15 * 60 + 19, 115),
+            nextBefore: 'opening-cursor-2',
+          },
+        }
+      }
+      if (before === 'opening-cursor-2') {
+        return {
+          result: {
+            candles: minuteCandles('2026-09-09', 9 * 60, 12 * 60, 100),
+            nextBefore: null,
+          },
+        }
+      }
+      throw new Error(`unexpected candle cursor: ${before}`)
+    },
+  }
+
+  const service = new ThemeFlowService(client, () => null)
+  service.candleCache.set('006400', [
+    { timestamp: '2026-09-08T09:00:00+09:00', closePrice: 95, volume: 10 },
+    { timestamp: '2026-09-09T13:00:00+09:00', closePrice: 120, volume: 10 },
+  ])
+
+  const before = findIntradayCandleGaps(service.candleCache.get('006400'))
+  assert.equal(before[0]?.edge, 'session-start')
+
+  await service.refreshSymbol('006400')
+
+  const repaired = service.candleCache.get('006400')
+  assert.equal(findIntradayCandleGaps(repaired).length, 0)
+  assert.ok(calls.some((path) => path.includes('before=opening-cursor-1')))
+  assert.ok(calls.some((path) => path.includes('before=opening-cursor-2')))
+  assert.ok(repaired.some((candle) => candle.timestamp === '2026-09-09T09:30:00+09:00'))
 })
