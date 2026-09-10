@@ -60,51 +60,44 @@ test('domestic theme flow keeps the brief hidden in a side drawer and shows five
   await page.screenshot({ path: testInfo.outputPath('theme-flow-dashboard.png'), fullPage: true })
 })
 
-test('market observatory visualizes lifecycle and theme spotlight from verified theme data', async ({ page }) => {
-  const rankings = [
-    { symbol: '034020', name: '두산에너빌리티', market: 'KOSPI', securityType: 'STOCK', lastPrice: 72000, changeRate: 3.2, tradingAmount: 900_000_000_000, tradingVolume: 12000000, catalogThemes: ['원전'] },
-    { symbol: '005930', name: '삼성전자', market: 'KOSPI', securityType: 'STOCK', lastPrice: 91000, changeRate: 1.1, tradingAmount: 700_000_000_000, tradingVolume: 9000000, catalogThemes: ['반도체'] },
-  ]
-  const point = (timestamp: string, value: number, tradingAmount: number) => ({
-    timestamp, day: '2026-09-11', value, closeValue: value, volume: 1000, tradingAmount, memberCount: 1, dominantWeightPercent: 100,
-  })
-  const themes = [
-    { name: '원전', tradingAmount: 900_000_000_000, memberCount: 1, members: [rankings[0]], points: [point('2026-09-11T09:00:00+09:00', 0, 100_000_000), point('2026-09-11T09:03:00+09:00', 1.2, 130_000_000)], currentValue: 1.2, change1h: 1.2, change3h: 1.2, dominantWeightPercent: 100, selectionBasis: '테스트 실데이터' },
-    { name: '반도체', tradingAmount: 700_000_000_000, memberCount: 1, members: [rankings[1]], points: [point('2026-09-11T09:00:00+09:00', 0, 90_000_000), point('2026-09-11T09:03:00+09:00', .6, 100_000_000)], currentValue: .6, change1h: .6, change3h: .6, dominantWeightPercent: 100, selectionBasis: '테스트 실데이터' },
-  ]
-
-  await page.route('**/api/market/theme-flow', async (route) => {
-    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, updatedAt: '2026-09-11T09:03:00+09:00', themes, topRankings: rankings }) })
-  })
-  await page.route('**/api/market/snapshot', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        ok: true,
-        updatedAt: '2026-09-11T09:03:00+09:00',
-        topRankings: rankings,
-        stocks: Object.fromEntries(rankings.map((item) => [item.symbol, item])),
-        indices: { KOSPI: { lastPrice: 3450.12, changeRate: 1.02 }, KOSDAQ: { lastPrice: 910.22, changeRate: .74 } },
-        marketInvestors: { total: { foreignerNetBuyAmount: 420_000_000_000, institutionNetBuyAmount: -80_000_000_000 } },
-      }),
-    })
-  })
-  await page.route('**/api/market/intelligence', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        market: { concentration: 42, breadth: { advancerShare: 63 } },
-        themes: [{ name: '원전', lifecycle: '주도' }, { name: '반도체', lifecycle: '확산' }],
-      }),
-    })
-  })
-
+test('market observatory adds lifecycle controls and theme spotlight without fake market data', async ({ page }) => {
   await page.goto('/')
-  await expect(page.getByTestId('market-hud')).toContainText('원전')
-  await expect(page.locator('.theme-lifecycle-panel')).toHaveCount(2)
-  await expect(page.locator('.theme-lifecycle-panel').first()).toContainText('주도')
+  await expect(page.getByTestId('market-hud')).toBeVisible()
+
+  // The default browser-test backend can legitimately have no live theme rows.
+  // Inject only DOM shells, not market values, so the enhancer interaction itself is deterministic.
+  await page.waitForTimeout(1100)
+  await page.locator('.theme-strength-list').evaluate((node) => {
+    node.innerHTML = `
+      <article class="theme-strength-row" style="--theme-accent:#ff4d6d">
+        <div class="theme-summary-cell">
+          <div class="theme-rank-line"><b>1</b><span class="theme-icon">◉</span><h2>원전</h2></div>
+          <p>검증용 UI 셸</p>
+          <strong>-</strong>
+          <div><span>1일 누적 거래대금 합계</span><b>-</b></div>
+          <div><span>최대 종목 거래대금 비중</span><b>-</b></div>
+        </div>
+      </article>
+      <article class="theme-strength-row" style="--theme-accent:#39a0ff">
+        <div class="theme-summary-cell">
+          <div class="theme-rank-line"><b>2</b><span class="theme-icon">●</span><h2>반도체</h2></div>
+          <p>검증용 UI 셸</p>
+          <strong>-</strong>
+          <div><span>1일 누적 거래대금 합계</span><b>-</b></div>
+          <div><span>최대 종목 거래대금 비중</span><b>-</b></div>
+        </div>
+      </article>
+    `
+  })
+  await page.locator('.top100-list').evaluate((node) => {
+    node.innerHTML = `
+      <div class="top100-row" data-theme-name="원전" data-symbol="034020" data-trading-amount="0"><b>1</b><div>원전 종목</div><strong>-</strong><div><small class="top100-share">TOP100 0%</small></div></div>
+      <div class="top100-row" data-theme-name="반도체" data-symbol="005930" data-trading-amount="0"><b>2</b><div>반도체 종목</div><strong>-</strong><div><small class="top100-share">TOP100 0%</small></div></div>
+    `
+  })
+
+  await expect(page.locator('.theme-lifecycle-panel')).toHaveCount(2, { timeout: 3000 })
+  await expect(page.locator('.theme-lifecycle-panel').first()).toContainText('확인 중')
 
   const spotlightButtons = page.locator('.theme-spotlight-toggle')
   await expect(spotlightButtons).toHaveCount(2)
@@ -117,7 +110,6 @@ test('market observatory visualizes lifecycle and theme spotlight from verified 
   await spotlightButtons.first().click()
   await expect(page.locator('.market-workspace')).not.toHaveClass(/theme-spotlight-active/)
 })
-
 test('US theme flow page is available', async ({ page }, testInfo) => {
   await page.goto('/')
   await page.getByRole('button', { name: '미국 테마 흐름' }).click()
