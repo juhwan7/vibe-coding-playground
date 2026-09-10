@@ -124,6 +124,19 @@ function displayTime(iso?: string | null) {
   return new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).format(new Date(iso))
 }
 
+function marketSession(now = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit', hour12: false,
+  }).formatToParts(now)
+  const hour = Number(parts.find((part) => part.type === 'hour')?.value ?? 0)
+  const minute = Number(parts.find((part) => part.type === 'minute')?.value ?? 0)
+  const total = hour * 60 + minute
+  if (total >= 8 * 60 && total < 9 * 60) return { code: 'pre', label: 'PRE', detail: 'NXT 프리마켓' }
+  if (total >= 9 * 60 && total < 15 * 60 + 30) return { code: 'krx', label: 'LIVE', detail: 'KRX 정규장' }
+  if (total >= 15 * 60 + 30 && total < 20 * 60) return { code: 'nxt', label: 'NXT', detail: '애프터마켓' }
+  return { code: 'closed', label: 'CLOSED', detail: '고빈도 수집 휴식' }
+}
+
 function timeParts(iso: string) {
   const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(new Date(iso))
   const hour = Number(parts.find((part) => part.type === 'hour')?.value ?? 8)
@@ -194,6 +207,30 @@ function FlashValue({ value, className = '', children }: { value: string | numbe
     previous.current = value
   }, [value])
   return <span key={version} className={`value-flash ${className}`.trim()}>{children}</span>
+}
+
+function MarketHud({ snapshot, themes, totalAmount }: { snapshot: Snapshot | null; themes: ThemeGroup[]; totalAmount: number }) {
+  const session = marketSession()
+  const leader = themes[0]
+  const investors = snapshot?.marketInvestors?.total
+  const kospi = snapshot?.indices?.KOSPI
+  const kosdaq = snapshot?.indices?.KOSDAQ
+  const updatedAt = snapshot?.updatedAt ?? null
+
+  return <section className="market-hud panel" data-testid="market-hud" data-session={session.code}>
+    <div className="market-hud-lead">
+      <div className="market-hud-status"><i aria-hidden="true" /><span>{session.label}</span></div>
+      <div><p>MARKET OBSERVATORY</p><strong>{session.detail}</strong><small>실제 관측값만 표시 · {displayTime(updatedAt)} 갱신</small></div>
+    </div>
+    <div className="market-hud-metrics">
+      <div><span>KOSPI</span><strong>{kospi?.lastPrice?.toLocaleString() ?? '-'}</strong><b className={(kospi?.changeRate ?? 0) >= 0 ? 'up' : 'down'}>{fmtRate(kospi?.changeRate)}</b></div>
+      <div><span>KOSDAQ</span><strong>{kosdaq?.lastPrice?.toLocaleString() ?? '-'}</strong><b className={(kosdaq?.changeRate ?? 0) >= 0 ? 'up' : 'down'}>{fmtRate(kosdaq?.changeRate)}</b></div>
+      <div><span>외국인 현물</span><strong className={(investors?.foreignerNetBuyAmount ?? 0) >= 0 ? 'up' : 'down'}>{fmtWon(investors?.foreignerNetBuyAmount)}</strong></div>
+      <div><span>기관 현물</span><strong className={(investors?.institutionNetBuyAmount ?? 0) >= 0 ? 'up' : 'down'}>{fmtWon(investors?.institutionNetBuyAmount)}</strong></div>
+      <div><span>TOP100 거래대금</span><strong>{fmtAmount(totalAmount)}</strong></div>
+      <div className="market-hud-leader"><span>선두 테마</span><strong>{leader?.name ?? '-'}</strong><b className={(leader?.currentValue ?? 0) >= 0 ? 'up' : 'down'}>{fmtRate(leader?.currentValue)}</b></div>
+    </div>
+  </section>
 }
 
 function StockLineChart({ payload, accent }: { payload: StockChartPayload; accent: string }) {
@@ -455,6 +492,7 @@ export default function MarketWorkspace() {
   const kosdaq = snapshot?.indices?.KOSDAQ
 
   return <div className="market-workspace theme-flow-workspace">
+    <MarketHud snapshot={snapshot} themes={themes} totalAmount={totalAmount} />
     <section className="workspace-main">
       <section className="theme-strength-board panel" data-testid="theme-strength-board">
         <header className="theme-board-head">
@@ -502,6 +540,8 @@ export default function MarketWorkspace() {
           return <div
             className={`top100-row${themeMembership ? ' top100-row-themed' : ''}`}
             data-theme-name={catalogTheme ?? undefined}
+            data-symbol={item.symbol}
+            data-trading-amount={item.tradingAmount ?? undefined}
             key={`${item.symbol}-${index}`}
             style={themeMembership ? { ['--top100-theme-accent' as string]: themeMembership.accent } : undefined}
             title={tooltip}

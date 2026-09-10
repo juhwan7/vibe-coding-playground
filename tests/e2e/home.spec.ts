@@ -37,6 +37,9 @@ test('domestic theme flow keeps the brief hidden in a side drawer and shows five
   await expect(page.getByText(/거래대금 가중 3분 선차트 · 강한 자동 확대축/)).toBeVisible()
   await expect(page.getByTestId('top100-ranking')).toBeVisible()
   await expect(page.getByRole('heading', { name: '거래대금 TOP100 · 개별주만' })).toBeVisible()
+  await expect(page.getByTestId('market-hud')).toBeVisible()
+  await expect(page.getByTestId('market-hud')).toContainText('MARKET OBSERVATORY')
+  await expect(page.getByTestId('market-hud')).toContainText('선두 테마')
 
   await expect(page.getByTestId('moneyflow-dashboard')).toBeVisible()
   await expect(page.getByRole('heading', { name: '거래대금 TOP100 시장 지도' })).toBeVisible()
@@ -57,6 +60,56 @@ test('domestic theme flow keeps the brief hidden in a side drawer and shows five
   await page.screenshot({ path: testInfo.outputPath('theme-flow-dashboard.png'), fullPage: true })
 })
 
+test('market observatory adds lifecycle controls and theme spotlight without fake market data', async ({ page }) => {
+  await page.goto('/')
+  await expect(page.getByTestId('market-hud')).toBeVisible()
+
+  // The default browser-test backend can legitimately have no live theme rows.
+  // Inject only DOM shells, not market values, so the enhancer interaction itself is deterministic.
+  await page.waitForTimeout(1100)
+  await page.locator('.theme-strength-list').evaluate((node) => {
+    node.innerHTML = `
+      <article class="theme-strength-row" style="--theme-accent:#ff4d6d">
+        <div class="theme-summary-cell">
+          <div class="theme-rank-line"><b>1</b><span class="theme-icon">◉</span><h2>원전</h2></div>
+          <p>검증용 UI 셸</p>
+          <strong>-</strong>
+          <div><span>1일 누적 거래대금 합계</span><b>-</b></div>
+          <div><span>최대 종목 거래대금 비중</span><b>-</b></div>
+        </div>
+      </article>
+      <article class="theme-strength-row" style="--theme-accent:#39a0ff">
+        <div class="theme-summary-cell">
+          <div class="theme-rank-line"><b>2</b><span class="theme-icon">●</span><h2>반도체</h2></div>
+          <p>검증용 UI 셸</p>
+          <strong>-</strong>
+          <div><span>1일 누적 거래대금 합계</span><b>-</b></div>
+          <div><span>최대 종목 거래대금 비중</span><b>-</b></div>
+        </div>
+      </article>
+    `
+  })
+  await page.locator('.top100-list').evaluate((node) => {
+    node.innerHTML = `
+      <div class="top100-row" data-theme-name="원전" data-symbol="034020" data-trading-amount="0"><b>1</b><div>원전 종목</div><strong>-</strong><div><small class="top100-share">TOP100 0%</small></div></div>
+      <div class="top100-row" data-theme-name="반도체" data-symbol="005930" data-trading-amount="0"><b>2</b><div>반도체 종목</div><strong>-</strong><div><small class="top100-share">TOP100 0%</small></div></div>
+    `
+  })
+
+  await expect(page.locator('.theme-lifecycle-panel')).toHaveCount(2, { timeout: 3000 })
+  await expect(page.locator('.theme-lifecycle-panel').first()).toContainText('확인 중')
+
+  const spotlightButtons = page.locator('.theme-spotlight-toggle')
+  await expect(spotlightButtons).toHaveCount(2)
+  await spotlightButtons.first().click()
+  await expect(page.locator('.market-workspace')).toHaveClass(/theme-spotlight-active/)
+  await expect(spotlightButtons.first()).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.locator('.top100-row.spotlight-match')).toHaveCount(1)
+  await expect(page.locator('.top100-row.spotlight-muted')).toHaveCount(1)
+
+  await spotlightButtons.first().click()
+  await expect(page.locator('.market-workspace')).not.toHaveClass(/theme-spotlight-active/)
+})
 test('US theme flow page is available', async ({ page }, testInfo) => {
   await page.goto('/')
   await page.getByRole('button', { name: '미국 테마 흐름' }).click()
