@@ -4,7 +4,7 @@ import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { QuizDescriptionService } from './quizDescriptionService.mjs'
-import { prioritizeQuizTargets } from './quizRuntimeBootstrap.mjs'
+import { prioritizeQuizTargets, recoverQuizUniverseFromDescriptionCache } from './quizRuntimeBootstrap.mjs'
 
 test('quiz targets alternate KOSPI 200 and KOSDAQ 150 so both pools become playable early', () => {
   const kospi200 = Array.from({ length: 5 }, (_, index) => ({ code: String(100001 + index), name: `코스피${index}`, pool: 'kospi200' }))
@@ -16,6 +16,46 @@ test('quiz targets alternate KOSPI 200 and KOSDAQ 150 so both pools become playa
     'kospi200', 'kosdaq150', 'kospi200', 'kosdaq150',
   ])
   assert.equal(targets.length, 9)
+})
+
+test('description cache restores a playable quiz universe when live index sources are unavailable', () => {
+  const cache = new Map()
+  for (let index = 0; index < 6; index += 1) {
+    cache.set(`1${String(index).padStart(5, '0')}`, {
+      code: `1${String(index).padStart(5, '0')}`,
+      name: `코스피캐시${index}`,
+      pool: 'kospi200',
+      description: '코스피 기업설명',
+    })
+    cache.set(`2${String(index).padStart(5, '0')}`, {
+      code: `2${String(index).padStart(5, '0')}`,
+      name: `코스닥캐시${index}`,
+      pool: 'kosdaq150',
+      description: '코스닥 기업설명',
+    })
+  }
+  cache.set('300001', { code: '300001', name: '소속없음', pool: null, description: '제외' })
+  cache.set('300002', { code: '300002', name: '설명없음', pool: 'kospi200', description: null })
+
+  const recovered = recoverQuizUniverseFromDescriptionCache({ cache })
+  assert.ok(recovered)
+  assert.equal(recovered.payload.universeMode, 'description-cache-recovery')
+  assert.equal(recovered.kospi200.length, 6)
+  assert.equal(recovered.kosdaq150.length, 6)
+  assert.deepEqual(recovered.targets.slice(0, 4).map((item) => item.pool), ['kospi200', 'kosdaq150', 'kospi200', 'kosdaq150'])
+})
+
+test('description cache recovery refuses to pretend a pool is playable with fewer than four stocks', () => {
+  const cache = new Map([
+    ['100001', { code: '100001', name: '코스피1', pool: 'kospi200', description: '설명' }],
+    ['100002', { code: '100002', name: '코스피2', pool: 'kospi200', description: '설명' }],
+    ['100003', { code: '100003', name: '코스피3', pool: 'kospi200', description: '설명' }],
+    ['200001', { code: '200001', name: '코스닥1', pool: 'kosdaq150', description: '설명' }],
+    ['200002', { code: '200002', name: '코스닥2', pool: 'kosdaq150', description: '설명' }],
+    ['200003', { code: '200003', name: '코스닥3', pool: 'kosdaq150', description: '설명' }],
+    ['200004', { code: '200004', name: '코스닥4', pool: 'kosdaq150', description: '설명' }],
+  ])
+  assert.equal(recoverQuizUniverseFromDescriptionCache({ cache }), null)
 })
 
 test('runtime bootstrap fetches the index universe itself when the Pi cache is missing', async () => {
