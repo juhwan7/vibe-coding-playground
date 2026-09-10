@@ -208,11 +208,13 @@ function updateThemeRows(
 
   rows.forEach((row, index) => {
     const theme = themes[index]
+    const renderedThemeName = row.querySelector<HTMLElement>('.theme-rank-line h2')?.textContent?.trim() ?? ''
+    const themeName = theme?.name ?? renderedThemeName
     row.classList.add('theme-saas-row')
     row.classList.toggle('theme-leader-row', index === 0)
-    row.dataset.themeName = theme?.name ?? ''
+    row.dataset.themeName = themeName
     row.classList.remove('theme-rank-up', 'theme-rank-down', 'theme-rank-new')
-    const movement = theme ? rankMovements[theme.name] : null
+    const movement = themeName ? rankMovements[themeName] : null
     if (movement && movement.kind !== 'same') row.classList.add(`theme-rank-${movement.kind}`)
     row.classList.remove('theme-strength-hot', 'theme-strength-warm', 'theme-strength-negative', 'theme-strength-flat')
     const strength = numberOrNull(theme?.currentValue) ?? 0
@@ -233,18 +235,18 @@ function updateThemeRows(
       }
 
       summary.querySelector('.theme-lifecycle-panel')?.remove()
-      if (theme) {
-        const lifecycle = intel?.themes?.find((item) => item.name === theme.name)?.lifecycle ?? '확인 중'
+      if (themeName) {
+        const lifecycle = intel?.themes?.find((item) => item.name === themeName)?.lifecycle ?? '확인 중'
         const lifecycleIndex = lifecycleStageIndex(lifecycle)
         const panel = createElement('div', 'theme-lifecycle-panel')
         const head = createElement('div', 'theme-lifecycle-head')
         const label = createElement('span', '', '테마 생명주기')
         label.append(createElement('b', '', lifecycle))
-        const spotlight = createElement('button', 'theme-spotlight-toggle', spotlightTheme === theme.name ? '집중 해제' : '집중 보기')
+        const spotlight = createElement('button', 'theme-spotlight-toggle', spotlightTheme === themeName ? '집중 해제' : '집중 보기')
         spotlight.type = 'button'
-        spotlight.dataset.themeName = theme.name
-        spotlight.setAttribute('aria-pressed', spotlightTheme === theme.name ? 'true' : 'false')
-        spotlight.title = `${theme.name} 관련 종목만 강조합니다.`
+        spotlight.dataset.themeName = themeName
+        spotlight.setAttribute('aria-pressed', spotlightTheme === themeName ? 'true' : 'false')
+        spotlight.title = `${themeName} 관련 종목만 강조합니다.`
         head.append(label, spotlight)
 
         const track = createElement('div', 'theme-lifecycle-track')
