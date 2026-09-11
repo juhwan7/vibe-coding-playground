@@ -275,9 +275,10 @@ export default function ThemeAverageCandleChart({ theme, accent }: { theme: Them
 
   const hasLiveSource = livePoints.length > 0
   const points = useMemo(() => {
+    const today = kstDay(new Date().toISOString())
     return resampleThemeSeries30s(mergeThemeSeries(theme.points ?? [], livePoints))
       .map((point) => ({ ...point, lineValue: point.value }))
-      .filter((point) => Number.isFinite(point.lineValue))
+      .filter((point) => point.day === today && Number.isFinite(point.lineValue))
       .sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp))
   }, [livePoints, theme.points])
 
@@ -339,7 +340,7 @@ export default function ThemeAverageCandleChart({ theme, accent }: { theme: Them
         const x = xForMinute(tick.dayIndex, tick.minute)
         return <g key={`${tick.day}-${tick.hour}`}>
           <line x1={x} x2={x} y1={chartTop} y2={chartBottom} className={tick.hour === 8 ? 'theme-day-line' : 'theme-hour-line'} />
-          <text x={Math.min(width - 34, x + 3)} y="250" className="theme-hour-label">{String(tick.hour).padStart(2, '0')}:00</text>
+          <text x={Math.min(width - 26, x + 3)} y="250" className="theme-hour-label">{String(tick.hour).padStart(2, '0')}</text>
         </g>
       })}
       {days.map((day, dayIndex) => <text key={`${day}-label`} x={xForMinute(dayIndex, 0) + 4} y="15" className="theme-day-label">{compactDay(day)} {dayIndex === days.length - 1 ? '오늘' : '전일'}</text>)}
