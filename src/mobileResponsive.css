@@ -147,6 +147,7 @@
   .us-theme-workspace .top100-rate,
   .us-theme-workspace .top100-after-rate,
   .us-theme-workspace .top100-amount { font-size: 10px !important; white-space: nowrap; }
+  .us-theme-workspace .us-top100-company-summary { font-size: 8.5px !important; }
 
   .daily-issues-head { padding: 16px 12px !important; gap: 10px; }
   .daily-issues-layout, .daily-issues-detail, .daily-issues-list, .daily-issues-chart-wrap { width: 100%; min-width: 0; max-width: 100%; }
