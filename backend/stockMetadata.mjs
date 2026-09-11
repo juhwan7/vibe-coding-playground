@@ -41,33 +41,66 @@ export function directNameFromRanking(item = {}) {
 }
 
 export class StockMetadataCache {
-  constructor({ ttlMs = 6 * 60 * 60 * 1000, chunkSize = 25 } = {}) {
+  constructor({ ttlMs = 6 * 60 * 60 * 1000, chunkSize = 10, unresolvedRetryMs = 60 * 1000 } = {}) {
     this.ttlMs = ttlMs
     this.chunkSize = chunkSize
+    this.unresolvedRetryMs = unresolvedRetryMs
     this.items = new Map()
     this.updatedAt = 0
+    this.lastAttemptAt = new Map()
   }
 
   get(symbol) {
     return this.items.get(String(symbol ?? '').trim()) ?? null
   }
 
+  ingest(payload) {
+    for (const record of stockRecords(payload)) {
+      const meta = stockMeta(record)
+      if (meta.symbol) this.items.set(meta.symbol, meta)
+    }
+  }
+
+  unresolved(symbols = []) {
+    return symbols.filter((symbol) => !validStockName(this.items.get(symbol)?.name, symbol))
+  }
+
   async ensure(client, symbols = []) {
     const unique = [...new Set(symbols.map((symbol) => String(symbol ?? '').trim()).filter(Boolean))]
     if (!unique.length) return this.items
-    const missing = unique.filter((symbol) => !this.items.has(symbol))
-    const targets = missing.length ? missing : (Date.now() - this.updatedAt >= this.ttlMs ? unique : [])
+
+    const now = Date.now()
+    const stale = now - this.updatedAt >= this.ttlMs
+    const unresolved = new Set(this.unresolved(unique))
+    const targets = unique.filter((symbol) => {
+      if (!unresolved.has(symbol)) return stale
+      return now - (this.lastAttemptAt.get(symbol) ?? 0) >= this.unresolvedRetryMs
+    })
     if (!targets.length) return this.items
+
+    for (const symbol of targets) this.lastAttemptAt.set(symbol, now)
 
     for (let index = 0; index < targets.length; index += this.chunkSize) {
       const chunk = targets.slice(index, index + this.chunkSize)
-      const payload = await client.request(`/api/v1/stocks?symbols=${encodeURIComponent(chunk.join(','))}`)
-      for (const record of stockRecords(payload)) {
-        const meta = stockMeta(record)
-        if (meta.symbol) this.items.set(meta.symbol, meta)
+      try {
+        const payload = await client.request(`/api/v1/stocks?symbols=${encodeURIComponent(chunk.join(','))}`)
+        this.ingest(payload)
+      } catch {
+        // 개별 종목 재시도에서 복구한다.
       }
     }
-    this.updatedAt = Date.now()
+
+    // 묶음 요청이 일부 종목을 누락하거나 이름 없이 반환하는 경우 개별 조회로 한 번 더 복구한다.
+    for (const symbol of this.unresolved(targets)) {
+      try {
+        const payload = await client.request(`/api/v1/stocks?symbols=${encodeURIComponent(symbol)}`)
+        this.ingest(payload)
+      } catch {
+        // 다음 unresolvedRetryMs 이후 다시 시도한다.
+      }
+    }
+
+    this.updatedAt = now
     return this.items
   }
 }

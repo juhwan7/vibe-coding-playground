@@ -1,6 +1,6 @@
 import { WATCHLIST, WATCH_SYMBOLS } from './watchlist.mjs'
 import { TossApiError, sleep } from './tossClient.mjs'
-import { directNameFromRanking } from './stockMetadata.mjs'
+import { StockMetadataCache, directNameFromRanking } from './stockMetadata.mjs'
 
 const NON_INDIVIDUAL_RANKING_NAME = /(ETF|ETN|KODEX|TIGER|RISE|ACE|PLUS|SOL|HANARO|KOSEF|TIMEFOLIO|ARIRANG|FOCUS|KBSTAR|리츠|스팩|인프라)/i
 const TRACKING_START_SECONDS = 8 * 60 * 60
@@ -186,7 +186,9 @@ export function mergeMarketTradingAmountRankings(dailyItems = [], realtimeItems 
 export function isDisplayableIndividualRanking(item = {}) {
   const symbol = String(item?.symbol ?? '').trim()
   const name = String(item?.name ?? '').trim()
+  const securityType = String(item?.securityType ?? '').trim().toUpperCase()
   if (!/^\d{6}$/.test(symbol) || !name || name === symbol || /^\d{6}$/.test(name)) return false
+  if (securityType && securityType !== 'STOCK') return false
   return !NON_INDIVIDUAL_RANKING_NAME.test(name)
 }
 
@@ -201,6 +203,7 @@ export class MarketCollector {
     this.marketInvestors = { KOSPI: null, KOSDAQ: null, total: null }
     this.program = new Map()
     this.rankingNames = new Map()
+    this.stockMetadata = new StockMetadataCache({ chunkSize: 10 })
     this.snapshot = null
     this.lastError = null
     this.lastSlowAt = 0
@@ -262,15 +265,31 @@ export class MarketCollector {
       const prices = new Map((pricesPayload?.result ?? []).map((item) => [item.symbol, item]))
       const dailyRankings = rankingRecords(rankingPayload)
       const realtimeRankings = rankingRecords(realtimeRankingPayload)
+      const rankingSymbols = [...new Set(
+        [...dailyRankings, ...realtimeRankings]
+          .map((item) => item?.symbol ?? item?.stock?.symbol ?? null)
+          .filter(Boolean),
+      )]
+      await this.stockMetadata.ensure(this.client, rankingSymbols).catch(() => {})
+
       const dailyRankingMap = new Map(dailyRankings.map((item) => [item?.symbol ?? item?.stock?.symbol ?? null, item]).filter(([symbol]) => symbol))
       const realtimeRankingMap = new Map(realtimeRankings.map((item) => [item?.symbol ?? item?.stock?.symbol ?? null, item]).filter(([symbol]) => symbol))
       const normalizedRankings = mergeMarketTradingAmountRankings(
         dailyRankings,
         realtimeRankings,
-        (symbol) => this.rankingNames.get(symbol) ?? null,
+        (symbol) => this.stockMetadata.get(symbol)?.name ?? this.rankingNames.get(symbol) ?? null,
       ).map((item) => {
-        if (item.symbol && item.name) this.rankingNames.set(item.symbol, item.name)
-        return item
+        const meta = item.symbol ? this.stockMetadata.get(item.symbol) : null
+        const enriched = {
+          ...item,
+          name: meta?.name ?? item.name ?? null,
+          market: meta?.market ?? item.market ?? null,
+          securityType: meta?.securityType ?? null,
+          isCommonShare: meta?.isCommonShare ?? null,
+          status: meta?.status ?? null,
+        }
+        if (enriched.symbol && enriched.name) this.rankingNames.set(enriched.symbol, enriched.name)
+        return enriched
       }).filter(isDisplayableIndividualRanking).slice(0, 100)
       const rankingMap = new Map(normalizedRankings.map((item) => [item.symbol, item]))
       const indices = new Map((indicesPayload?.result ?? []).map((item) => [item.symbol, item]))

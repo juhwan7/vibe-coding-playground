@@ -5,6 +5,12 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { SnapshotStore } from './snapshotStore.mjs'
 
+function recentKstMarketIso({ minute = 30 } = {}) {
+  const nowKst = new Date(Date.now() + 9 * 60 * 60 * 1000)
+  const day = nowKst.toISOString().slice(0, 10)
+  return new Date(`${day}T09:${String(minute).padStart(2, '0')}:00+09:00`).toISOString()
+}
+
 function sample(updatedAt, marketTradingAmount) {
   return {
     ok: true,
@@ -28,7 +34,7 @@ test('persists a compact latest snapshot for fast startup restore', async () => 
       filePath: historyPath,
       latestPath: join(dir, 'latest.json'),
     })
-    const snapshot = sample('2026-09-09T00:30:00.000Z', 123456)
+    const snapshot = sample(recentKstMarketIso(), 123456)
     assert.equal(await store.maybeAppend(snapshot), true)
     const latest = await store.latest({ maxAgeHours: 48 })
     assert.equal(latest.marketTradingAmount, 123456)
@@ -53,8 +59,8 @@ test('keeps an already loaded one-minute history cache updated incrementally', a
     const initial = await store.read({ days: 8, resolutionMinutes: 1 })
     assert.equal(initial.samples.length, 0)
 
-    await store.maybeAppend(sample('2026-09-09T00:30:00.000Z', 100))
-    await store.maybeAppend(sample('2026-09-09T00:31:00.000Z', 120))
+    await store.maybeAppend(sample(recentKstMarketIso(), 100))
+    await store.maybeAppend(sample(recentKstMarketIso({ minute: 31 }), 120))
 
     const updated = await store.read({ days: 8, resolutionMinutes: 1 })
     assert.equal(updated.samples.length, 2)
@@ -72,7 +78,7 @@ test('reads only a bounded recent tail from an oversized history file', async ()
     const filler = `${JSON.stringify({ updatedAt: '2026-09-08T00:00:00.000Z', padding: 'x'.repeat(2048) })}\n`
     await writeFile(historyPath, filler.repeat(2600), 'utf8')
 
-    const recent = sample('2026-09-09T00:30:00.000Z', 777)
+    const recent = sample(recentKstMarketIso(), 777)
     await writeFile(historyPath, `${await readFile(historyPath, 'utf8')}${JSON.stringify(recent)}\n`, 'utf8')
 
     const store = new SnapshotStore({
