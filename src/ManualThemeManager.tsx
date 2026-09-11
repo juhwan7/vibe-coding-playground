@@ -70,20 +70,21 @@ export default function ManualThemeManager() {
   useEffect(() => {
     let currentHost: HTMLDivElement | null = null
     const syncHost = () => {
-      const board = document.querySelector<HTMLElement>('.theme-flow-workspace .theme-strength-board')
-      const anchor = board?.querySelector<HTMLElement>('.theme-method-strip')
-      if (!board || !anchor) {
+      const workspace = document.querySelector<HTMLElement>('.theme-flow-workspace')
+      const board = workspace?.querySelector<HTMLElement>('.theme-strength-board')
+      const isUsThemePage = board?.matches('[data-testid="us-theme-strength-board"]') ?? false
+      if (!workspace || !board || isUsThemePage) {
         if (currentHost?.isConnected) currentHost.remove()
         currentHost = null
         setHost(null)
         return
       }
 
-      if (currentHost?.isConnected && currentHost.parentElement === board) return
+      if (currentHost?.isConnected && currentHost.parentElement === workspace) return
       currentHost?.remove()
       const next = document.createElement('div')
       next.id = 'manual-theme-manager-host'
-      board.insertBefore(next, anchor)
+      workspace.append(next)
       currentHost = next
       setHost(next)
     }
