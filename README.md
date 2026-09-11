@@ -14,7 +14,7 @@
 
 ### 현재 실제 접속 주소
 
-**https://logged-knee-yard-library.trycloudflare.com**
+**https://venice-border-singh-develops.trycloudflare.com**
 
 > Cloudflare Quick Tunnel 주소는 바뀔 수 있습니다. 최신 주소와 상태는 [`tunnel-status/CURRENT_TUNNEL.md`](https://github.com/juhwan7/vibe-coding-playground/blob/tunnel-status/CURRENT_TUNNEL.md)에서 확인합니다.
 
