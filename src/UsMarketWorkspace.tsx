@@ -62,6 +62,19 @@ type UsThemeFlowResponse = {
     note?: string
     themes?: Array<{ name: string; regularMemberCount: number; observedMemberCount: number; currentValue: number | null; sampledAt: string | null; points: ThemePoint[] }>
     movers?: Array<{ symbol: string; name: string; market: string; theme: string; regularClose: number; afterHoursPrice: number; afterHoursChangeRate: number; sampledAt: string }>
+    rankings?: Array<{
+      regularRank: number
+      symbol: string
+      name: string
+      market: string
+      regularTradingAmount: number | null
+      regularChangeRate: number | null
+      regularClose: number | null
+      regularCloseSource: string | null
+      afterHoursPrice: number | null
+      afterHoursChangeRate: number | null
+      sampledAt: string | null
+    }>
   }
   regularSnapshotCapturedAt?: string | null
   regularSnapshotSource?: string | null
@@ -344,6 +357,7 @@ export default function UsMarketWorkspace() {
   const afterHours = flow.afterHours
   const regularThemeMap = useMemo(() => new Map((regularSession?.themes ?? []).map((theme) => [theme.name, theme])), [regularSession?.themes])
   const afterThemeMap = useMemo(() => new Map((afterHours?.themes ?? []).map((theme) => [theme.name, theme])), [afterHours?.themes])
+  const afterRankingMap = useMemo(() => new Map((afterHours?.rankings ?? []).map((item) => [item.symbol, item])), [afterHours?.rankings])
   const afterMovers = afterHours?.movers ?? []
   const themeMembership = useMemo(() => {
     const map = new Map<string, { name: string; accent: string }>()
@@ -448,14 +462,16 @@ export default function UsMarketWorkspace() {
         </div>)}
         {!afterMovers.length && <div className="us-after-empty">검증된 16:00 ET 이후 가격 샘플을 기다리고 있습니다. 정규장 데이터를 복사해 채우지 않습니다.</div>}
       </section>
-      <div className="top100-head"><div><p>REGULAR SESSION TURNOVER / 1 DAY</p><h2>정규장 거래대금 TOP50 · 개별주만</h2></div><span>{displayKstTime(flow.rankedAt ?? flow.updatedAt)}</span></div>
-      <div className="top100-list-head"><span>순위</span><span>종목명</span><span>등락률</span><span>거래대금</span></div>
+      <div className="top100-head"><div><p>REGULAR SESSION TURNOVER / 1 DAY</p><h2>정규장 거래대금 TOP50 · 개별주만</h2><small className="us-regular-rank-lock">순위·거래대금·정규장 등락률은 16:00 ET 스냅샷 고정 · 애프터 등락률만 갱신</small></div><span>{displayKstTime(flow.rankedAt ?? flow.updatedAt)}</span></div>
+      <div className="top100-list-head"><span>순위</span><span>종목명</span><span>정규장</span><span>애프터</span><span>거래대금</span></div>
       <div className="top100-list">
         {rankings.map((item, index) => {
           const amount = item.tradingAmount ?? 0
           const width = amount / topAmount * 100
           const share = totalAmount > 0 ? amount / totalAmount * 100 : null
           const themeInfo = themeMembership.get(item.symbol)
+          const afterRanking = afterRankingMap.get(item.symbol)
+          const afterRate = afterRanking?.afterHoursChangeRate ?? null
           const rowStyle = {
             ['--top100-heat-alpha' as string]: usTurnoverHeat(amount, topAmount),
             ...(themeInfo ? { ['--top100-theme-accent' as string]: themeInfo.accent } : {}),
@@ -467,7 +483,11 @@ export default function UsMarketWorkspace() {
               <small><span className="top100-stock-meta">{item.market ?? 'US'} · {fmtUsdPrice(item.lastPrice)}</span>{themeInfo && <span className="top100-theme-label">{themeInfo.name}</span>}</small>
               <div className="top100-mini-track"><i style={{ width: `${width}%` }} /></div>
             </div>
-            <strong className={`top100-rate ${(item.changeRate ?? 0) >= 0 ? 'up' : 'down'}`}>{fmtRate(item.changeRate)}</strong>
+            <strong className={`top100-rate ${(item.changeRate ?? 0) >= 0 ? 'up' : 'down'}`} title="정규장 마감 등락률">{fmtRate(item.changeRate)}</strong>
+            <strong
+              className={`top100-after-rate ${afterRate == null ? 'is-waiting' : afterRate >= 0 ? 'up' : 'down'}`}
+              title={afterRanking?.sampledAt ? `16:00 ET 이후 실제 가격 기준 · ${displayKstTime(afterRanking.sampledAt)}` : '검증된 정규장 이후 가격 샘플 대기'}
+            >{fmtRate(afterRate)}</strong>
             <div className="top100-amount"><strong>{fmtUsdAmount(item.tradingAmount)}</strong><span className="top100-share">TOP50 {fmtShare(share)}</span></div>
           </div>
         })}
