@@ -6,6 +6,7 @@ type RankingItem = {
   symbol: string | null
   name: string | null
   englishName?: string | null
+  description?: string | null
   market: string | null
   currency?: string | null
   lastPrice: number | null
@@ -463,7 +464,7 @@ export default function UsMarketWorkspace() {
         {!afterMovers.length && <div className="us-after-empty">검증된 16:00 ET 이후 가격 샘플을 기다리고 있습니다. 정규장 데이터를 복사해 채우지 않습니다.</div>}
       </section>
       <div className="top100-head"><div><p>REGULAR SESSION TURNOVER / 1 DAY</p><h2>정규장 거래대금 TOP50 · 개별주만</h2><small className="us-regular-rank-lock">순위·거래대금·정규장 등락률은 16:00 ET 스냅샷 고정 · 애프터 등락률만 갱신</small></div><span>{displayKstTime(flow.rankedAt ?? flow.updatedAt)}</span></div>
-      <div className="top100-list-head"><span>순위</span><span>종목명</span><span>정규장</span><span>애프터</span><span>거래대금</span></div>
+      <div className="top100-list-head"><span>순위</span><span>티커 · 종목명 · 핵심사업</span><span>정규장</span><span>애프터</span><span>거래대금</span></div>
       <div className="top100-list">
         {rankings.map((item, index) => {
           const amount = item.tradingAmount ?? 0
@@ -472,6 +473,7 @@ export default function UsMarketWorkspace() {
           const themeInfo = themeMembership.get(item.symbol)
           const afterRanking = afterRankingMap.get(item.symbol)
           const afterRate = afterRanking?.afterHoursChangeRate ?? null
+          const companySummary = compactUsCompanySummary(item)
           const rowStyle = {
             ['--top100-heat-alpha' as string]: usTurnoverHeat(amount, topAmount),
             ...(themeInfo ? { ['--top100-theme-accent' as string]: themeInfo.accent } : {}),
@@ -480,7 +482,11 @@ export default function UsMarketWorkspace() {
             <b>{index + 1}</b>
             <div className="top100-stock">
               <strong>{item.symbol} · {item.name ?? item.englishName ?? item.symbol}</strong>
-              <small><span className="top100-stock-meta">{item.market ?? 'US'} · {fmtUsdPrice(item.lastPrice)}</span>{themeInfo && <span className="top100-theme-label">{themeInfo.name}</span>}</small>
+              <div className="top100-company-summary us-top100-company-summary">
+                {themeInfo && <span className="top100-theme-label">{themeInfo.name}</span>}
+                <span>{companySummary}</span>
+              </div>
+              <small><span className="top100-stock-meta">{item.market ?? 'US'} · {fmtUsdPrice(item.lastPrice)} · {item.symbol}</span></small>
               <div className="top100-mini-track"><i style={{ width: `${width}%` }} /></div>
             </div>
             <strong className={`top100-rate ${(item.changeRate ?? 0) >= 0 ? 'up' : 'down'}`} title="정규장 마감 등락률">{fmtRate(item.changeRate)}</strong>
@@ -496,3 +502,21 @@ export default function UsMarketWorkspace() {
     </aside>
   </div>
 }
+
+const US_COMPANY_SUMMARIES: Record<string, string> = {
+  ORCL: '기업용 데이터베이스·클라우드 인프라', SNDK: '낸드플래시·저장장치 솔루션', NVDA: 'AI 가속기 GPU·데이터센터 반도체',
+  MU: 'DRAM·낸드 메모리 반도체', SPCX: '우주 발사·위성통신 서비스', AENT: '항공·국방 전자 시스템',
+  INTC: 'PC·서버용 반도체와 파운드리', TNON: '신약 개발 바이오테크', LCLN: '생명과학 분석·진단 장비',
+  AAPL: '스마트폰·PC·웨어러블 생태계', TSLA: '전기차·에너지저장장치', GOOGL: '검색·광고·클라우드 플랫폼',
+  META: '소셜미디어·디지털 광고·AI', BE: '연료전지 기반 분산전원', MRVL: '데이터센터·네트워크 반도체',
+  ADBE: '디지털 콘텐츠 제작 소프트웨어', AVGO: '반도체·인프라 소프트웨어', MSTR: '기업 분석 소프트웨어·비트코인 보유',
+  AMD: 'CPU·GPU·데이터센터 반도체', LITE: '광통신 부품·레이저 솔루션', SURG: '통신 충전·핀테크 플랫폼',
+  AMZN: '전자상거래·클라우드(AWS)', CRCL: '스테이블코인·결제 인프라', PLTR: '데이터 분석·AI 소프트웨어',
+}
+
+function compactUsCompanySummary(item: RankingItem) {
+  const supplied = String(item.description ?? '').replace(/\s+/g, ' ').trim()
+  if (supplied) return supplied.length > 40 ? `${supplied.slice(0, 38).trim()}…` : supplied
+  return item.symbol ? US_COMPANY_SUMMARIES[item.symbol] ?? '기업 핵심사업 정보 확인 중' : '기업 핵심사업 정보 확인 중'
+}
+
