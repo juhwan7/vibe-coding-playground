@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { buildExtendedSessionQuoteObservation } from './themeFlowServiceFive.mjs'
+import { buildExtendedSessionQuoteObservation, ThemeFlowServiceFive } from './themeFlowServiceFive.mjs'
 
 test('15:30 전에는 누적값 기준점만 저장하고 차트 표본은 만들지 않는다', () => {
   const result = buildExtendedSessionQuoteObservation({
@@ -68,3 +68,28 @@ test('20시 이후에는 추가 차트 표본을 만들지 않는다', () => {
   assert.equal(result.sample, null)
   assert.deepEqual(result.counter, previous)
 })
+
+test('국내 애프터 순위는 정규장 스냅샷 순서를 유지하고 이후 등락률만 별도로 계산한다', () => {
+  const service = new ThemeFlowServiceFive({ configured: false }, () => null, { cachePath: '/tmp/kr-session-snapshot-test.json' })
+  const regular = [
+    { symbol: '000660', name: 'SK하이닉스', lastPrice: 200000, changeRate: -2.5, tradingAmount: 500 },
+    { symbol: '005930', name: '삼성전자', lastPrice: 70000, changeRate: 1.2, tradingAmount: 400 },
+  ]
+  service.captureRegularSnapshot({ updatedAt: '2026-09-09T15:29:50+09:00' }, regular)
+
+  const after = service.buildAfterHours({
+    updatedAt: '2026-09-09T16:00:00+09:00',
+    topRankings: [
+      { symbol: '005930', lastPrice: 71400 },
+      { symbol: '000660', lastPrice: 204000 },
+    ],
+  })
+
+  assert.equal(after.active, true)
+  assert.deepEqual(after.rankings.map((item) => item.symbol), ['000660', '005930'])
+  assert.equal(after.rankings[0].regularTradingAmount, 500)
+  assert.equal(after.rankings[0].regularChangeRate, -2.5)
+  assert.ok(Math.abs(after.rankings[0].afterHoursChangeRate - 2) < 1e-9)
+  assert.ok(Math.abs(after.rankings[1].afterHoursChangeRate - 2) < 1e-9)
+})
+
