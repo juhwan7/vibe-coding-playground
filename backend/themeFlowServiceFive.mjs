@@ -13,6 +13,8 @@ const DEFAULT_PERSIST_MIN_MS = 5 * 60 * 1000
 const TRACKING_START_MINUTE = 8 * 60
 const EXTENDED_SESSION_START_MINUTE = 15 * 60 + 30
 const EXTENDED_SESSION_END_MINUTE = 20 * 60
+const REGULAR_SESSION_START_MINUTE = 9 * 60
+const REGULAR_SESSION_END_MINUTE = 15 * 60 + 30
 
 function number(value) {
   const parsed = Number(value)
@@ -32,6 +34,16 @@ function minuteOfDay(timestamp) {
   const hour = Number(parts.find((part) => part.type === 'hour')?.value ?? 0)
   const minute = Number(parts.find((part) => part.type === 'minute')?.value ?? 0)
   return hour * 60 + minute
+}
+
+function isRegularSessionTimestamp(timestamp) {
+  const minute = minuteOfDay(timestamp)
+  return minute >= REGULAR_SESSION_START_MINUTE && minute < REGULAR_SESSION_END_MINUTE
+}
+
+function isExtendedSessionTimestamp(timestamp) {
+  const minute = minuteOfDay(timestamp)
+  return minute >= EXTENDED_SESSION_START_MINUTE && minute <= EXTENDED_SESSION_END_MINUTE
 }
 
 function recentTradingDayFilter(memberSeries, count = 2) {
@@ -173,6 +185,7 @@ export class ThemeFlowServiceFive extends ThemeFlowService {
     this.gapRepairDiagnostics = new Map()
     this.extendedQuoteSamples = new Map()
     this.extendedQuoteCounters = new Map()
+    this.regularSnapshot = null
     this.cacheGuard = {
       loadSkippedOversize: false,
       skippedBytes: 0,
@@ -235,6 +248,7 @@ export class ThemeFlowServiceFive extends ThemeFlowService {
       for (const [symbol, counter] of Object.entries(saved?.extendedQuoteCounters ?? {})) {
         if (counter && typeof counter === 'object') this.extendedQuoteCounters.set(symbol, counter)
       }
+      if (saved?.regularSnapshot && typeof saved.regularSnapshot === 'object') this.regularSnapshot = saved.regularSnapshot
       this.cacheGuard.loadedSymbols = this.candleCache.size
     } catch {
       // 첫 실행, 이전 캐시 없음, 손상된 캐시는 API 백필과 새 관측 표본으로 복구한다.
@@ -282,11 +296,12 @@ export class ThemeFlowServiceFive extends ThemeFlowService {
     this.pruneCandleCache(this.activeChartSymbols)
     await mkdir(dirname(this.cachePath), { recursive: true })
     const payload = {
-      version: 6,
+      version: 7,
       savedAt: new Date(now).toISOString(),
       candles: Object.fromEntries([...this.candleCache.entries()]),
       extendedQuoteSamples: Object.fromEntries([...this.extendedQuoteSamples.entries()]),
       extendedQuoteCounters: Object.fromEntries([...this.extendedQuoteCounters.entries()]),
+      regularSnapshot: this.regularSnapshot,
     }
     const tempPath = `${this.cachePath}.tmp`
     await writeFile(tempPath, JSON.stringify(payload), 'utf8')
@@ -381,6 +396,47 @@ export class ThemeFlowServiceFive extends ThemeFlowService {
       captured += 1
     }
     return captured
+  }
+
+  captureRegularSnapshot(snapshot, topRankings = []) {
+    const capturedAt = snapshot?.updatedAt
+    if (!capturedAt || !isRegularSessionTimestamp(capturedAt) || !topRankings.length) return
+    this.regularSnapshot = {
+      day: dateKey(capturedAt),
+      capturedAt,
+      topRankings: topRankings.map((item) => ({ ...item })),
+    }
+  }
+
+  buildAfterHours(snapshot, fallbackRankings = []) {
+    const timestamp = snapshot?.updatedAt ?? null
+    const regularRankings = this.regularSnapshot?.topRankings ?? fallbackRankings
+    const sameDay = timestamp && this.regularSnapshot?.day === dateKey(timestamp)
+    const liveBySymbol = new Map((snapshot?.topRankings ?? []).filter((item) => item?.symbol).map((item) => [item.symbol, item]))
+    const active = Boolean(timestamp && sameDay && isExtendedSessionTimestamp(timestamp))
+    const rankings = regularRankings.map((regular, index) => {
+      const latest = liveBySymbol.get(regular.symbol)
+      const regularClose = number(regular.lastPrice)
+      const afterHoursPrice = active ? number(latest?.lastPrice) : null
+      return {
+        regularRank: index + 1,
+        symbol: regular.symbol,
+        regularTradingAmount: number(regular.tradingAmount),
+        regularChangeRate: number(regular.changeRate),
+        regularClose,
+        afterHoursPrice,
+        afterHoursChangeRate: regularClose != null && afterHoursPrice != null ? (afterHoursPrice / regularClose - 1) * 100 : null,
+        sampledAt: afterHoursPrice == null ? null : timestamp,
+      }
+    })
+    return {
+      active,
+      sessionDay: this.regularSnapshot?.day ?? null,
+      sampledAt: active ? timestamp : null,
+      observedSymbols: rankings.filter((item) => item.afterHoursChangeRate != null).length,
+      rankings,
+      note: 'TOP100 순위·거래대금·정규장 등락률은 15:30 KST 직전 정규장 스냅샷으로 고정합니다. 정규장 이후 등락률은 해당 스냅샷 가격 대비 실제 NXT 현재가가 관측된 경우에만 계산하며, 이후 거래대금은 추정하지 않습니다.',
+    }
   }
 
   async refreshSymbol(symbol) {
@@ -491,6 +547,11 @@ export class ThemeFlowServiceFive extends ThemeFlowService {
       await this.ensureMeta(symbols).catch(() => {})
       const enrichedRankings = snapshot.topRankings.map((item) => this.enrichRanking(item))
       const topRankings = enrichedRankings.filter(isIndividualStock).slice(0, 100)
+      this.captureRegularSnapshot(snapshot, topRankings)
+      const useRegularSnapshot = !isRegularSessionTimestamp(snapshot.updatedAt)
+        && this.regularSnapshot?.day === dateKey(snapshot.updatedAt)
+        && Boolean(this.regularSnapshot?.topRankings?.length)
+      const displayTopRankings = useRegularSnapshot ? this.regularSnapshot.topRankings : topRankings
       const groups = selectThemeGroups(topRankings, { targetCount: 5 })
       const chartSymbols = [...new Set(groups.flatMap((group) => group.members.map((member) => member.symbol).filter(Boolean)))]
       this.activeChartSymbols = chartSymbols
@@ -532,11 +593,14 @@ export class ThemeFlowServiceFive extends ThemeFlowService {
         ok: true,
         updatedAt: new Date().toISOString(),
         sourceUpdatedAt: snapshot.updatedAt ?? null,
-        topRankings,
+        topRankings: displayTopRankings,
         themes,
         filteredOutCount: Math.max(0, enrichedRankings.length - topRankings.length),
         unresolvedNameCount: topRankings.filter((item) => !validStockName(item.name, item.symbol)).length,
         cache: this.cacheStats(),
+        afterHours: this.buildAfterHours(snapshot, displayTopRankings),
+        regularSnapshotCapturedAt: this.regularSnapshot?.capturedAt ?? null,
+        regularSnapshotSource: useRegularSnapshot ? 'captured-regular-snapshot' : (isRegularSessionTimestamp(snapshot.updatedAt) ? 'live-regular' : 'unavailable'),
         criteria: {
           rankingLimit: 50,
           fallbackRankingLimit: 100,
@@ -565,3 +629,4 @@ export class ThemeFlowServiceFive extends ThemeFlowService {
     }
   }
 }
+
