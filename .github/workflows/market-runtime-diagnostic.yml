@@ -38,12 +38,39 @@ jobs:
           curl --fail --silent --show-error \
             http://localhost:8080/api/market/snapshot \
             >/tmp/market-runtime-snapshot.json
+          curl --fail --silent --show-error \
+            http://localhost:8080/api/market/theme-flow \
+            >/tmp/market-runtime-theme-flow.json
 
-          node <<'NODE'
+          # The self-hosted Pi runner does not require host Node.js. The application
+          # backend image already contains the exact Node runtime used in production,
+          # so copy the observed proxy responses into that container and inspect them there.
+          cleanup_runtime_files() {
+            docker compose exec -T backend rm -f \
+              /tmp/market-runtime-health.json \
+              /tmp/market-runtime-snapshot.json \
+              /tmp/market-runtime-theme-flow.json \
+              >/dev/null 2>&1 || true
+          }
+          trap cleanup_runtime_files EXIT
+
+          docker compose cp /tmp/market-runtime-health.json backend:/tmp/market-runtime-health.json >/dev/null
+          docker compose cp /tmp/market-runtime-snapshot.json backend:/tmp/market-runtime-snapshot.json >/dev/null
+          docker compose cp /tmp/market-runtime-theme-flow.json backend:/tmp/market-runtime-theme-flow.json >/dev/null
+
+          docker compose exec -T backend node <<'NODE'
           const fs = require('fs')
           const health = JSON.parse(fs.readFileSync('/tmp/market-runtime-health.json', 'utf8'))
           const snapshot = JSON.parse(fs.readFileSync('/tmp/market-runtime-snapshot.json', 'utf8'))
-          const skHynix = snapshot?.topRankings?.find((item) => item?.symbol === '000660')
+          const themeFlow = JSON.parse(fs.readFileSync('/tmp/market-runtime-theme-flow.json', 'utf8'))
+          const rankings = Array.isArray(snapshot?.topRankings) ? snapshot.topRankings : []
+          const invalidName = (item) => {
+            const symbol = String(item?.symbol ?? '').trim()
+            const name = String(item?.name ?? '').trim()
+            return !name || name === symbol || /^\\d{6}$/.test(name)
+          }
+          const unresolvedRankings = rankings.filter(invalidName)
+          const skHynix = rankings.find((item) => item?.symbol === '000660')
             ?? snapshot?.stocks?.['000660']
             ?? null
 
@@ -64,6 +91,12 @@ jobs:
               rankingPolicy: snapshot?.rankingPolicy ?? null,
               rankedAt: snapshot?.rankedAt ?? null,
               rankingRankedAt: snapshot?.rankingRankedAt ?? null,
+              rankingCount: rankings.length,
+              unresolvedNameCount: unresolvedRankings.length,
+              top10Names: rankings.slice(0, 10).map((item) => ({
+                symbol: item?.symbol ?? null,
+                name: item?.name ?? null,
+              })),
               skHynix: skHynix ? {
                 symbol: skHynix.symbol ?? '000660',
                 name: skHynix.name ?? 'SK하이닉스',
@@ -74,6 +107,12 @@ jobs:
                 lastPrice: skHynix.lastPrice ?? null,
               } : null,
             },
+            themeFlow: {
+              ok: themeFlow?.ok ?? null,
+              updatedAt: themeFlow?.updatedAt ?? null,
+              unresolvedNameCount: themeFlow?.unresolvedNameCount ?? null,
+              themeCount: Array.isArray(themeFlow?.themes) ? themeFlow.themes.length : null,
+            },
           }
 
           console.log('=== Domestic market runtime diagnostic ===')
@@ -81,6 +120,9 @@ jobs:
           console.log('=== End domestic market runtime diagnostic ===')
 
           if (!snapshot || !Object.prototype.hasOwnProperty.call(snapshot, 'updatedAt')) {
+            process.exitCode = 1
+          }
+          if (unresolvedRankings.length > 0) {
             process.exitCode = 1
           }
           NODE
