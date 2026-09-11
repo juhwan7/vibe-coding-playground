@@ -1,24 +1,24 @@
 # MARKET FLOW Theme Diagnostics
 
-- Last check: `2026-09-11 05:14:33 UTC`
-- App deployed commit: `17a9ecacc8f5fac6b85432a41e6605406cb1d4e1`
+- Last check: `2026-09-11 05:46:43 UTC`
+- App deployed commit: `eeb525ed89aa579aaf20cd81b3ea4ae4f58de29b`
 - Local theme-flow API: `online`
 
 - API ok: `true`
-- API updatedAt: `2026-09-11T05:14:51.889Z`
+- API updatedAt: `2026-09-11T05:47:01.330Z`
 - cache pendingGapSymbols: `0`
 
 ## 현재 5개 테마 장중 커버리지
 
-- **조선**: day=`2026-09-11`, points=`126`, first=`08:00`, last=`14:15`, openingDelay=`0m`, maxGap=`3m`
+- **조선**: day=`2026-09-11`, points=`136`, first=`08:00`, last=`14:45`, openingDelay=`0m`, maxGap=`3m`
   - members: HD현대중공업(329180), 한화오션(042660), HD현대마린솔루션(443060)
-- **금융**: day=`2026-09-11`, points=`126`, first=`08:00`, last=`14:15`, openingDelay=`0m`, maxGap=`3m`
-  - members: KB금융(105560), 삼성화재(000810), 신한지주(055550)
-- **원전**: day=`2026-09-11`, points=`126`, first=`08:00`, last=`14:15`, openingDelay=`0m`, maxGap=`3m`
+- **금융**: day=`2026-09-11`, points=`136`, first=`08:00`, last=`14:45`, openingDelay=`0m`, maxGap=`3m`
+  - members: KB금융(105560), 신한지주(055550), 삼성화재(000810)
+- **원전**: day=`2026-09-11`, points=`136`, first=`08:00`, last=`14:45`, openingDelay=`0m`, maxGap=`3m`
   - members: 한전기술(052690), 두산에너빌리티(034020), 우리기술(032820)
-- **광통신**: day=`2026-09-11`, points=`106`, first=`09:00`, last=`14:15`, openingDelay=`0m`, maxGap=`3m`
-  - members: 우리로(046970), 빛과전자(069540)
-- **반도체**: day=`2026-09-11`, points=`126`, first=`08:00`, last=`14:15`, openingDelay=`0m`, maxGap=`3m`
-  - members: SK하이닉스(000660), 삼성전자(005930), 삼성전기(009150), 한미반도체(042700), 주성엔지니어링(036930), LG이노텍(011070), 심텍(222800), DB하이텍(000990), 원익IPS(240810)
+- **반도체**: day=`2026-09-11`, points=`136`, first=`08:00`, last=`14:45`, openingDelay=`0m`, maxGap=`3m`
+  - members: SK하이닉스(000660), 삼성전자(005930), 삼성전기(009150), 주성엔지니어링(036930), 한미반도체(042700), LG이노텍(011070), 심텍(222800), DB하이텍(000990)
+- **2차전지**: day=`2026-09-11`, points=`136`, first=`08:00`, last=`14:45`, openingDelay=`0m`, maxGap=`3m`
+  - members: 삼성SDI(006400), LG에너지솔루션(373220), 엘앤에프(066970)
 
 이 파일은 Raspberry Pi의 실제 `/api/market/theme-flow` 응답을 기준으로 테마 차트의 장중 시작 시각과 최대 데이터 공백을 기록합니다.
