@@ -59,6 +59,15 @@ type ThemeFlowResponse = {
   updatedAt?: string | null
   topRankings?: RankingItem[]
   themes?: ThemeGroup[]
+  regularSnapshotCapturedAt?: string | null
+  regularSnapshotSource?: string | null
+  afterHours?: {
+    active?: boolean
+    observedSymbols?: number
+    sampledAt?: string | null
+    note?: string
+    rankings?: Array<{ symbol: string; regularRank: number; regularTradingAmount: number | null; regularChangeRate: number | null; regularClose: number | null; afterHoursPrice: number | null; afterHoursChangeRate: number | null; sampledAt: string | null }>
+  }
   error?: string | null
 }
 
@@ -363,7 +372,9 @@ export default function MarketWorkspace() {
       metadata.set(item.symbol, bucket)
     }
 
-    const live = snapshot?.topRankings?.length ? snapshot.topRankings : themeFlow.topRankings ?? []
+    const live = themeFlow.regularSnapshotSource === 'captured-regular-snapshot'
+      ? themeFlow.topRankings ?? []
+      : snapshot?.topRankings?.length ? snapshot.topRankings : themeFlow.topRankings ?? []
     return live.map((item) => {
       const candidates = item.symbol ? metadata.get(item.symbol) ?? [] : []
       const meta = candidates.find((candidate) => validStockName(candidate.name, candidate.symbol)) ?? candidates[0] ?? null
@@ -379,7 +390,7 @@ export default function MarketWorkspace() {
         catalogThemes: item.catalogThemes ?? meta?.catalogThemes ?? [],
       } as RankingItem
     }).filter((item): item is RankingItem & { symbol: string } => Boolean(item.symbol) && isIndividualStock(item)).slice(0, 100)
-  }, [themeFlow.topRankings, themeFlow.themes, snapshot?.topRankings, snapshot?.stocks])
+  }, [themeFlow.topRankings, themeFlow.themes, themeFlow.regularSnapshotSource, snapshot?.topRankings, snapshot?.stocks])
 
   useEffect(() => {
     let active = true
@@ -453,6 +464,8 @@ export default function MarketWorkspace() {
   const investors = snapshot?.marketInvestors?.total
   const kospi = snapshot?.indices?.KOSPI
   const kosdaq = snapshot?.indices?.KOSDAQ
+  const afterHours = themeFlow.afterHours
+  const afterRankingBySymbol = useMemo(() => new Map((afterHours?.rankings ?? []).map((item) => [item.symbol, item])), [afterHours?.rankings])
 
   return <div className="market-workspace theme-flow-workspace">
     <section className="workspace-main">
@@ -484,8 +497,8 @@ export default function MarketWorkspace() {
     </section>
 
     <aside className="top100-rail panel" data-testid="top100-ranking">
-      <div className="top100-head"><div><p>MARKET TURNOVER / STOCK ONLY</p><h2>거래대금 TOP100 · 개별주만</h2></div><span>{displayTime(snapshot?.updatedAt)}</span></div>
-      <div className="top100-list-head"><span>순위</span><span>종목명 · 핵심사업</span><span>등락률</span><span>거래대금 / 비중</span></div>
+      <div className="top100-head"><div><p>REGULAR SESSION TURNOVER / STOCK ONLY</p><h2>정규장 거래대금 TOP100 · 개별주만</h2><small className="us-regular-rank-lock">순위·거래대금·정규장 등락률은 15:30 KST 스냅샷 고정 · 이후 등락률만 갱신</small></div><span>{displayTime(themeFlow.regularSnapshotCapturedAt ?? snapshot?.updatedAt)}</span></div>
+      <div className="top100-list-head top100-list-head-session"><span>순위</span><span>종목명 · 핵심사업</span><span>정규장</span><span>이후</span><span>거래대금 / 비중</span></div>
       <div className="top100-list">
         {rankings.map((item, index) => {
           const displayName = validStockName(item.name, item.symbol)
@@ -494,6 +507,9 @@ export default function MarketWorkspace() {
           const fullDescription = companyDescriptions[item.symbol] ?? null
           const companySummary = compactCompanySummary(fullDescription)
           const share = totalAmount > 0 ? (item.tradingAmount ?? 0) / totalAmount * 100 : null
+          const afterRanking = afterRankingBySymbol.get(item.symbol)
+          const regularRate = afterRanking?.regularChangeRate ?? item.changeRate
+          const afterRate = afterRanking?.afterHoursChangeRate ?? null
           const tooltip = [
             themeMembership ? `현재 ${themeMembership.rank}위 테마 · ${themeMembership.name}` : (item.catalogThemes?.length ? `검증 테마 · ${item.catalogThemes.join(', ')}` : null),
             `${item.symbol} · 현재가 ${item.lastPrice?.toLocaleString() ?? '-'}`,
@@ -514,7 +530,8 @@ export default function MarketWorkspace() {
                 <span>{companySummary ?? '실제 기업개요 불러오는 중…'}</span>
               </div>
             </div>
-            <strong className={`top100-rate ${(item.changeRate ?? 0) >= 0 ? 'up' : 'down'}`}><FlashValue value={item.changeRate}>{fmtRate(item.changeRate)}</FlashValue></strong>
+            <strong className={`top100-rate ${(regularRate ?? 0) >= 0 ? 'up' : 'down'}`} title="정규장 마감 등락률"><FlashValue value={regularRate}>{fmtRate(regularRate)}</FlashValue></strong>
+            <strong className={`top100-after-rate ${afterRate == null ? 'is-waiting' : afterRate >= 0 ? 'up' : 'down'}`} title={afterRanking?.sampledAt ? `15:30 KST 이후 실제 NXT 현재가 기준 · ${displayTime(afterRanking.sampledAt)}` : '검증된 정규장 이후 실제 가격 샘플 대기'}>{fmtRate(afterRate)}</strong>
             <div className="top100-amount">
               <strong><FlashValue value={item.tradingAmount}>{fmtAmount(item.tradingAmount)}</FlashValue></strong>
               <small className="top100-share">TOP100 {fmtShare(share)}</small>
@@ -525,3 +542,4 @@ export default function MarketWorkspace() {
     </aside>
   </div>
 }
+
