@@ -697,42 +697,105 @@ export class UsThemeFlowService {
     return { day, closedAt, source, themes: themeSummaries }
   }
 
-  buildAfterHours(groups = this.activeGroups) {
-    const allSymbols = [...new Set(groups.flatMap((group) => group.members.map((member) => member.symbol).filter(Boolean)))]
-    const regularDays = [...new Set(allSymbols.flatMap((symbol) =>
-      (this.candleCache.get(symbol) ?? []).filter(isRegularCandle).map((candle) => usDateKey(candle.timestamp))))].sort()
-    const sessionDay = regularDays.at(-1) ?? this.regularSnapshot?.day ?? null
-    const moverBySymbol = new Map()
+  buildAfterHours(groups = this.activeGroups, rankings = this.payload.topRankings ?? []) {
+    const rankingItems = (rankings ?? [])
+      .map((item) => this.enrichRanking(item))
+      .filter(isUsIndividualStock)
+      .filter((item) => Boolean(item.symbol))
+      .slice(0, 50)
+
+    const themeBySymbol = new Map()
+    for (const group of groups) {
+      for (const member of group.members ?? []) {
+        if (member?.symbol && !themeBySymbol.has(member.symbol)) themeBySymbol.set(member.symbol, group.name)
+      }
+    }
+
+    const allSymbols = [...new Set([
+      ...rankingItems.map((item) => item.symbol).filter(Boolean),
+      ...groups.flatMap((group) => group.members.map((member) => member.symbol).filter(Boolean)),
+    ])]
+    const regularDays = [...new Set(allSymbols.flatMap((symbol) => [
+      ...(this.candleCache.get(symbol) ?? []).filter(isRegularCandle).map((candle) => usDateKey(candle.timestamp)),
+      ...(this.livePriceCache.get(symbol) ?? [])
+        .filter((sample) => isRegularTimestamp(sample.timestamp) && sample.timestampVerified !== false)
+        .map((sample) => usDateKey(sample.timestamp)),
+    ]))].sort()
+    const sessionDay = this.regularSnapshot?.day ?? regularDays.at(-1) ?? null
+    const rankingBySymbol = new Map(rankingItems.map((item) => [item.symbol, item]))
+    const regularCloseInfo = new Map()
+
+    const resolveRegularClose = (member) => {
+      const symbol = member?.symbol
+      if (!symbol) return { price: null, source: null }
+      if (regularCloseInfo.has(symbol)) return regularCloseInfo.get(symbol)
+
+      const regularCandles = (this.candleCache.get(symbol) ?? [])
+        .filter((candle) => (!sessionDay || usDateKey(candle.timestamp) === sessionDay) && isRegularCandle(candle))
+        .sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp))
+      const candleClose = number(regularCandles.at(-1)?.closePrice)
+      if (candleClose != null) {
+        const resolved = { price: candleClose, source: '1m-close' }
+        regularCloseInfo.set(symbol, resolved)
+        return resolved
+      }
+
+      const regularSamples = (this.livePriceCache.get(symbol) ?? [])
+        .filter((sample) => (!sessionDay || usDateKey(sample.timestamp) === sessionDay)
+          && isRegularTimestamp(sample.timestamp)
+          && sample.timestampVerified !== false)
+        .sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp))
+      const sampleClose = number(regularSamples.at(-1)?.lastPrice)
+      if (sampleClose != null) {
+        const resolved = { price: sampleClose, source: '30s-regular-sample' }
+        regularCloseInfo.set(symbol, resolved)
+        return resolved
+      }
+
+      const snapshotPrice = number(rankingBySymbol.get(symbol)?.lastPrice ?? member?.lastPrice)
+      const resolved = { price: snapshotPrice, source: snapshotPrice == null ? null : 'regular-snapshot' }
+      regularCloseInfo.set(symbol, resolved)
+      return resolved
+    }
+
+    const afterSamplesFor = (symbol) => (this.livePriceCache.get(symbol) ?? [])
+      .filter((sample) => (!sessionDay || usDateKey(sample.timestamp) === sessionDay)
+        && isUsPostMarketTimestamp(sample.timestamp)
+        && sample.timestampVerified !== false)
+      .sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp))
+
+    const rankingRows = rankingItems.map((member, index) => {
+      const { price: regularClose, source: regularCloseSource } = resolveRegularClose(member)
+      const samples = afterSamplesFor(member.symbol)
+      const latest = samples.at(-1) ?? null
+      const afterHoursPrice = number(latest?.lastPrice)
+      const afterHoursChangeRate = regularClose != null && afterHoursPrice != null
+        ? (afterHoursPrice / regularClose - 1) * 100
+        : null
+      return {
+        regularRank: index + 1,
+        symbol: member.symbol,
+        name: member.name ?? member.englishName ?? member.symbol,
+        market: member.market ?? 'US',
+        regularTradingAmount: number(member.tradingAmount),
+        regularChangeRate: number(member.changeRate),
+        regularClose,
+        regularCloseSource,
+        afterHoursPrice,
+        afterHoursChangeRate,
+        sampledAt: latest?.timestamp ?? null,
+      }
+    })
+
     const themes = groups.map((group) => {
       const members = group.members.map((member) => this.enrichRanking(member)).filter(isUsIndividualStock)
       const memberSeries = []
       for (const member of members) {
-        const regularCandles = (this.candleCache.get(member.symbol) ?? [])
-          .filter((candle) => (!sessionDay || usDateKey(candle.timestamp) === sessionDay) && isRegularCandle(candle))
-          .sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp))
-        const regularClose = regularCandles.at(-1)?.closePrice ?? null
+        const { price: regularClose } = resolveRegularClose(member)
         if (regularClose == null) continue
-        const samples = (this.livePriceCache.get(member.symbol) ?? [])
-          .filter((sample) => (!sessionDay || usDateKey(sample.timestamp) === sessionDay)
-            && isUsPostMarketTimestamp(sample.timestamp)
-            && sample.timestampVerified !== false)
-          .sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp))
+        const samples = afterSamplesFor(member.symbol)
         if (!samples.length) continue
-        const latest = samples.at(-1)
-        const afterHoursChangeRate = (latest.lastPrice / regularClose - 1) * 100
         memberSeries.push({ symbol: member.symbol, regularClose, samples, weight: member.tradingAmount ?? 0 })
-        if (!moverBySymbol.has(member.symbol)) {
-          moverBySymbol.set(member.symbol, {
-            symbol: member.symbol,
-            name: member.name ?? member.englishName ?? member.symbol,
-            market: member.market ?? 'US',
-            theme: group.name,
-            regularClose,
-            afterHoursPrice: latest.lastPrice,
-            afterHoursChangeRate,
-            sampledAt: latest.timestamp,
-          })
-        }
       }
       const points = aggregateUsAfterHoursThemeSeries(memberSeries)
       return {
@@ -744,19 +807,23 @@ export class UsThemeFlowService {
         points,
       }
     }).slice(0, 5)
-    const movers = [...moverBySymbol.values()]
+
+    const movers = rankingRows
+      .filter((item) => item.afterHoursChangeRate != null)
+      .map((item) => ({ ...item, theme: themeBySymbol.get(item.symbol) ?? '기타' }))
       .sort((a, b) => Math.abs(b.afterHoursChangeRate) - Math.abs(a.afterHoursChangeRate))
       .slice(0, 15)
-    const latestSampledAt = movers.map((item) => item.sampledAt).filter(Boolean).sort().at(-1) ?? null
+    const latestSampledAt = rankingRows.map((item) => item.sampledAt).filter(Boolean).sort().at(-1) ?? null
     return {
       sessionDay,
       active: usPostMarketSessionActive(),
-      observedSymbols: moverBySymbol.size,
+      observedSymbols: rankingRows.filter((item) => item.afterHoursChangeRate != null).length,
       sampledAt: latestSampledAt,
       themes,
       movers,
+      rankings: rankingRows,
       source: 'verified-current-price-samples',
-      note: '정규장 16:00 ET 종가 대비 실제 애프터 가격 샘플만 표시하며 애프터 거래대금은 임의 계산하지 않습니다.',
+      note: 'TOP50 순위·거래대금·정규장 등락률은 정규장 스냅샷을 고정합니다. 애프터 등락률은 정규장 1분 종가를 우선 기준으로 하며, 없으면 마지막 검증 정규장 샘플/스냅샷 가격을 기준으로 실제 애프터 가격 샘플만 계산합니다. 애프터 거래대금은 추정하지 않습니다.',
     }
   }
 
@@ -764,8 +831,16 @@ export class UsThemeFlowService {
     if (this.liveSampling || this.refreshing || !this.client.configured || !usLiveSamplingActive() || !this.activeGroups.length) return this.payload
     this.liveSampling = true
     try {
-      const symbols = [...new Set(this.activeGroups.flatMap((group) => group.members.map((member) => member.symbol).filter(Boolean)))]
-      const samples = await loadUsLivePrices(this.client, symbols)
+      const rankingSymbols = (this.payload.topRankings ?? this.regularSnapshot?.topRankings ?? [])
+        .slice(0, 50)
+        .map((item) => item.symbol)
+        .filter(Boolean)
+      const themeSymbols = this.activeGroups.flatMap((group) => group.members.map((member) => member.symbol).filter(Boolean))
+      const symbols = [...new Set([...rankingSymbols, ...themeSymbols])]
+      const chunks = []
+      for (let index = 0; index < symbols.length; index += 25) chunks.push(symbols.slice(index, index + 25))
+      const batches = await Promise.all(chunks.map((chunk) => loadUsLivePrices(this.client, chunk).catch(() => [])))
+      const samples = batches.flat()
       for (const sample of samples) {
         const existing = this.livePriceCache.get(sample.symbol) ?? []
         this.livePriceCache.set(sample.symbol, mergeUsLivePriceSamples(existing, [sample]))
@@ -778,7 +853,7 @@ export class UsThemeFlowService {
           updatedAt: new Date().toISOString(),
           themes,
           regularSession: this.buildRegularSessionSummary(themes, this.regularSnapshot ? 'captured-regular-snapshot' : 'reconstructed-current-ranking'),
-          afterHours: this.buildAfterHours(),
+          afterHours: this.buildAfterHours(this.activeGroups, this.payload.topRankings ?? this.regularSnapshot?.topRankings ?? []),
           stage: themes.some((theme) => theme.points.length >= 2) ? 'ready' : this.payload.stage,
           liveSampledAt: new Date().toISOString(),
           liveSampleCount: samples.length,
@@ -863,7 +938,7 @@ export class UsThemeFlowService {
         topRankings: displayTopRankings,
         themes,
         regularSession: this.buildRegularSessionSummary(themes, useRegularSnapshot ? 'captured-regular-snapshot' : (usRegularSessionActive() ? 'live-regular' : 'reconstructed-current-ranking')),
-        afterHours: this.buildAfterHours(displayGroups),
+        afterHours: this.buildAfterHours(displayGroups, displayTopRankings),
         regularSnapshotCapturedAt: this.regularSnapshot?.capturedAt ?? null,
         regularSnapshotSource: useRegularSnapshot ? 'captured-regular-snapshot' : (usRegularSessionActive() ? 'live-regular' : 'reconstructed-current-ranking'),
         stage: themes.some((theme) => theme.points.length >= 2) ? 'ready' : 'rankings-ready',
@@ -886,9 +961,9 @@ export class UsThemeFlowService {
           weighting: '1m actual turnover; 30s live uses current cumulative member turnover',
           ranking: `${rankingResult.type}/US/${rankingResult.duration}`,
           chartSession: 'US regular 09:30-16:00 ET only',
-          afterHoursSession: 'US after-hours 16:00-20:00 ET; verified current-price samples only; regular close baseline=0%',
+          afterHoursSession: 'US after-hours 16:00-20:00 ET; regular TOP50 30s verified price samples; 1m regular close preferred baseline=0%',
           dataSeparation: 'regular detail is not duplicated in after-hours; after-hours exposes delta/flow only',
-          regularSnapshot: 'freeze TOP50 + five themes after regular close; persisted for comparison',
+          regularSnapshot: 'freeze TOP50 order + turnover + regular change and five themes after regular close; persisted for comparison',
           historyTradingDays: 2,
           persisted: true,
           liveSamplingPersisted: true,
