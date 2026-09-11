@@ -96,6 +96,7 @@ test('TOP100 개별주 목록에서 이름 미확인 상품과 ETF/ETN을 제외
   assert.equal(isDisplayableIndividualRanking({ symbol: '005930', name: '삼성전자' }), true)
   assert.equal(isDisplayableIndividualRanking({ symbol: '069500', name: null }), false)
   assert.equal(isDisplayableIndividualRanking({ symbol: '069500', name: 'KODEX 200' }), false)
+  assert.equal(isDisplayableIndividualRanking({ symbol: '123456', name: '가상상장지수상품', securityType: 'ETF' }), false)
   assert.equal(isDisplayableIndividualRanking({ symbol: '122630', name: 'KODEX 레버리지' }), false)
   assert.equal(isDisplayableIndividualRanking({ symbol: '102110', name: 'TIGER 200' }), false)
   assert.equal(isDisplayableIndividualRanking({ symbol: '005930', name: '005930' }), false)
