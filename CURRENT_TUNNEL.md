@@ -1,7 +1,7 @@
 # MARKET FLOW 현재 접속 주소
 
-- 상태: `online`
-- 갱신 시각: `2026-09-10 21:17:06 UTC`
+- 상태: `unreachable`
+- 갱신 시각: `2026-09-11 15:14:16 UTC`
 - Raspberry Pi tunnel service: `active` (`docker`)
 
 ## 접속
