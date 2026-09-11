@@ -26,6 +26,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          APP="$HOME/vibe-coding-playground"
+          cd "$APP"
 
           # 배포 직후 startup-cache가 먼저 노출될 수 있으므로 실제 live/degraded
           # 수집 결과가 나타날 시간을 짧게 준다. 마지막 정상 캐시 자체는 실패로
