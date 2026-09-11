@@ -130,12 +130,19 @@
     padding-left: 6px !important;
     padding-right: 6px !important;
   }
+  .us-theme-workspace .top100-list-head,
+  .us-theme-workspace .top100-row {
+    grid-template-columns: 24px minmax(0, 1fr) 48px 48px 64px !important;
+  }
   .top100-list-head { font-size: 9px !important; }
   .top100-row { min-height: 54px; }
   .top100-row > b { font-size: 10px !important; }
   .top100-stock strong { font-size: 12px !important; }
   .top100-stock small { font-size: 9px !important; }
   .top100-rate, .top100-amount { font-size: 11px !important; white-space: nowrap; }
+  .us-theme-workspace .top100-rate,
+  .us-theme-workspace .top100-after-rate,
+  .us-theme-workspace .top100-amount { font-size: 10px !important; white-space: nowrap; }
 
   .daily-issues-head { padding: 16px 12px !important; gap: 10px; }
   .daily-issues-layout, .daily-issues-detail, .daily-issues-list, .daily-issues-chart-wrap { width: 100%; min-width: 0; max-width: 100%; }
@@ -196,6 +203,7 @@
   .theme-toggle { min-width: 60px !important; }
   .theme-saas-summary-metrics, .us-theme-saas-summary-bar .theme-saas-summary-metrics, .market-bottom-strip, .us-theme-workspace .market-bottom-strip, .replay-kpis { grid-template-columns: 1fr !important; }
   .top100-list-head, .top100-row, .daily-issues-list-head, .daily-issues-list-row, .replay-table-head, .replay-table-row { grid-template-columns: 22px minmax(0, 1fr) 48px 64px !important; }
+  .us-theme-workspace .top100-list-head, .us-theme-workspace .top100-row { grid-template-columns: 22px minmax(0, 1fr) 44px 44px 58px !important; }
   .theme-chart-metrics, .theme-window-stats { grid-template-columns: 1fr !important; }
   .daily-issues-detail-head h2 { font-size: 21px !important; }
   .replay-turns > div { grid-template-columns: 42px minmax(0, 1fr) 66px; }

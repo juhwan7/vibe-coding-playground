@@ -11,6 +11,7 @@ import {
   loadUsRanking,
   mergeUsLivePriceSamples,
   mergeUsThemePoints,
+  UsThemeFlowService,
 } from './usThemeFlowService.mjs'
 
 test('buildUsThemeGroups requires three US top50 members and sorts by turnover', () => {
@@ -246,4 +247,46 @@ test('loadUsLivePrices marks fallback timestamps unverified so they cannot masqu
   const prices = await loadUsLivePrices(client, ['NVDA'], '2026-09-09T20:30:00.000Z')
   assert.equal(prices[0].timestamp, '2026-09-09T20:30:00.000Z')
   assert.equal(prices[0].timestampVerified, false)
+})
+
+
+test('after-hours ranking keeps regular-session order and appends a separate post-close change rate', () => {
+  const service = new UsThemeFlowService({ configured: false, async request() { return {} } }, { cachePath: '/tmp/us-theme-flow-test.json' })
+  const rankings = [
+    { symbol: 'NVDA', name: 'NVIDIA', market: 'NASDAQ', securityType: 'STOCK', lastPrice: 100, changeRate: -2.5, tradingAmount: 500 },
+    { symbol: 'AMD', name: 'AMD', market: 'NASDAQ', securityType: 'STOCK', lastPrice: 200, changeRate: 1.25, tradingAmount: 400 },
+  ]
+  service.regularSnapshot = {
+    day: '2026-09-09',
+    topRankings: rankings,
+    groups: [],
+  }
+  service.candleCache.set('NVDA', [
+    { timestamp: '2026-09-09T20:00:00.000Z', closePrice: 100, volume: 1, tradingAmount: 100 },
+  ])
+  service.livePriceCache.set('NVDA', [
+    { timestamp: '2026-09-09T20:00:30.000Z', lastPrice: 103, timestampVerified: true },
+  ])
+  service.livePriceCache.set('AMD', [
+    { timestamp: '2026-09-09T19:59:30.000Z', lastPrice: 200, timestampVerified: true },
+    { timestamp: '2026-09-09T20:01:00.000Z', lastPrice: 198, timestampVerified: true },
+  ])
+
+  const summary = service.buildAfterHours([], rankings)
+  assert.deepEqual(summary.rankings.map((item) => item.symbol), ['NVDA', 'AMD'])
+  assert.deepEqual(summary.rankings.map((item) => item.regularRank), [1, 2])
+
+  const nvda = summary.rankings[0]
+  assert.equal(nvda.regularTradingAmount, 500)
+  assert.equal(nvda.regularChangeRate, -2.5)
+  assert.equal(nvda.regularClose, 100)
+  assert.equal(nvda.regularCloseSource, '1m-close')
+  assert.ok(Math.abs(nvda.afterHoursChangeRate - 3) < 1e-9)
+
+  const amd = summary.rankings[1]
+  assert.equal(amd.regularClose, 200)
+  assert.equal(amd.regularCloseSource, '30s-regular-sample')
+  assert.ok(Math.abs(amd.afterHoursChangeRate + 1) < 1e-9)
+
+  assert.deepEqual(summary.movers.map((item) => item.symbol), ['NVDA', 'AMD'])
 })
