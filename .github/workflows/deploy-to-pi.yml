@@ -66,6 +66,19 @@ jobs:
             SERVICES="backend frontend"
           fi
 
+          # A self-hosted Pi can retain manual tracked edits from emergency debugging.
+          # Never discard them with reset --hard: preserve them in git stash first, then
+          # deploy the exact commit that passed CI. Ignored local secrets such as .env
+          # are not included in this tracked-change stash and remain untouched.
+          LOCAL_TRACKED_CHANGES="$(git status --porcelain --untracked-files=no)"
+          if [ -n "$LOCAL_TRACKED_CHANGES" ]; then
+            echo "Pi checkout has local tracked changes; preserving them before deployment:"
+            printf '%s\n' "$LOCAL_TRACKED_CHANGES"
+            git stash push -m "pi-pre-deploy-${VERIFIED_SHA}" >/tmp/pi-deploy-stash.txt
+            cat /tmp/pi-deploy-stash.txt
+            echo "Preserved stash: $(git stash list -1 --format='%gd %s')"
+          fi
+
           git checkout --detach "$VERIFIED_SHA"
 
           # React/TypeScript/Vite was already built and tested on GitHub-hosted CI.
