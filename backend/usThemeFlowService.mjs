@@ -125,6 +125,7 @@ function stockMeta(item) {
     securityType: item?.securityType ?? item?.stock?.securityType ?? null,
     isCommonShare: item?.isCommonShare ?? item?.stock?.isCommonShare ?? null,
     currency: item?.currency ?? item?.stock?.currency ?? 'USD',
+    description: item?.description ?? item?.companyDescription ?? item?.businessDescription ?? item?.overview ?? item?.stock?.description ?? item?.stock?.companyDescription ?? null,
   }
 }
 
@@ -594,6 +595,7 @@ export class UsThemeFlowService {
       securityType: meta?.securityType ?? null,
       isCommonShare: meta?.isCommonShare ?? null,
       currency: meta?.currency ?? item?.currency ?? 'USD',
+      description: meta?.description ?? item?.description ?? null,
     }
   }
 
@@ -985,3 +987,4 @@ export class UsThemeFlowService {
     }
   }
 }
+
