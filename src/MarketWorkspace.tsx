@@ -227,9 +227,9 @@ function StockLineChart({ payload, accent }: { payload: StockChartPayload; accen
     </div>
     <svg className="theme-chart theme-chart-expanded" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" role="img" aria-label={`${payload.name ?? payload.symbol} 3분 선차트`}>
       {[.25, .5, .75].map((ratio) => <line key={ratio} x1="0" x2={width} y1={top + (bottom - top) * ratio} y2={top + (bottom - top) * ratio} className="theme-chart-grid" />)}
-      {[8, 10, 12, 14, 16, 18, 20].map((hour) => {
+      {Array.from({ length: 13 }, (_, index) => 8 + index).map((hour) => {
         const tx = (hour - 8) / 12 * width
-        return <g key={hour}><line x1={tx} x2={tx} y1={top} y2={bottom} className="theme-hour-line" /><text x={Math.min(width - 34, tx + 3)} y="222" className="theme-hour-label">{String(hour).padStart(2, '0')}:00</text></g>
+        return <g key={hour}><line x1={tx} x2={tx} y1={top} y2={bottom} className="theme-hour-line" /><text x={Math.min(width - 26, tx + 3)} y="222" className="theme-hour-label">{String(hour).padStart(2, '0')}</text></g>
       })}
       <text x={width - 5} y={top + 8} textAnchor="end" className="theme-candle-price-label">{Math.round(hi).toLocaleString()}</text>
       <text x={width - 5} y={bottom - 3} textAnchor="end" className="theme-candle-price-label">{Math.round(lo).toLocaleString()}</text>
