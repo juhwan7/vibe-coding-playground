@@ -1,5 +1,8 @@
 # Changelog
 
+- Firebase Web SDK를 추가하고 `.env` 기반 초기화 모듈(`src/firebase.ts`)을 구성; 설정값이 없을 때 기존 앱은 그대로 동작하며 Auth/Firestore는 필요 시 지연 초기화
+- Firebase 설정용 Vite 환경변수 타입과 `.env.example` 항목을 추가하고, `package.json` 변경 시 `package-lock.json`을 자동 갱신하도록 GitHub Actions 개선
+
 - 모바일 브라우저에서 **데스크톱 사이트**로 전환한 경우 1600px 데스크톱 뷰포트를 사용해 PC 레이아웃을 유지하도록 개선; 일반 모바일 폭에서는 기존 모바일 UI 유지
 
 - 상단 메뉴에 **초보자 간단분석** 화면을 추가해 `돈의 흐름 → 이유 → 시장 분위기` 순서로 기존 국내 테마 흐름·금일 이슈 정리·증시 자금 화면을 쉽게 따라갈 수 있도록 안내
