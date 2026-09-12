@@ -1,0 +1,241 @@
+.beginner-analysis {
+  width: min(1180px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 54px 0 72px;
+}
+
+.beginner-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(320px, .65fr);
+  gap: 24px;
+  align-items: stretch;
+}
+
+.beginner-eyebrow {
+  margin: 0 0 10px;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: .16em;
+  color: #55d7c2;
+}
+
+.beginner-hero h1 {
+  margin: 0;
+  font-size: clamp(38px, 6vw, 70px);
+  line-height: 1.02;
+  letter-spacing: -.055em;
+}
+
+.beginner-lead {
+  max-width: 760px;
+  margin: 24px 0 0;
+  font-size: 16px;
+  line-height: 1.8;
+  color: #8ea2ad;
+}
+
+.beginner-summary-card,
+.beginner-step-card,
+.beginner-guide {
+  border: 1px solid #1b2b32;
+  background: linear-gradient(180deg, #0a1318, #071015);
+  box-shadow: inset 0 1px rgba(255,255,255,.02);
+}
+
+.beginner-summary-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 250px;
+  padding: 28px;
+  border-radius: 20px;
+}
+
+.beginner-summary-card span {
+  font-size: 11px;
+  font-weight: 800;
+  color: #6f858f;
+}
+
+.beginner-summary-card strong {
+  margin-top: 14px;
+  font-size: 24px;
+  line-height: 1.4;
+  color: #eaf7f4;
+}
+
+.beginner-summary-card p {
+  margin: 16px 0 0;
+  line-height: 1.7;
+  color: #78909b;
+}
+
+.beginner-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 22px;
+}
+
+.beginner-step-card {
+  min-height: 300px;
+  padding: 24px;
+  border-radius: 18px;
+}
+
+.beginner-step-number {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 30px;
+  border-radius: 999px;
+  background: rgba(85, 215, 194, .1);
+  color: #72e2cf;
+  font-family: Consolas, monospace;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.beginner-step-card h2 {
+  margin: 22px 0 12px;
+  font-size: 21px;
+  letter-spacing: -.025em;
+}
+
+.beginner-step-card p {
+  min-height: 96px;
+  margin: 0;
+  color: #81959f;
+  line-height: 1.75;
+}
+
+.beginner-step-card button {
+  margin-top: 20px;
+  padding: 10px 13px;
+  border: 1px solid #2a4948;
+  border-radius: 10px;
+  background: #0d2220;
+  color: #9bf0df;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.beginner-step-card button:hover {
+  border-color: #4b7772;
+  background: #12302d;
+}
+
+.beginner-guide {
+  display: grid;
+  grid-template-columns: .7fr 1.3fr;
+  gap: 28px;
+  margin-top: 22px;
+  padding: 28px;
+  border-radius: 18px;
+}
+
+.beginner-guide h2 {
+  margin: 0;
+  font-size: 24px;
+  line-height: 1.35;
+}
+
+.beginner-guide-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.beginner-guide-grid div {
+  padding: 16px;
+  border: 1px solid #17262d;
+  border-radius: 12px;
+  background: #081116;
+}
+
+.beginner-guide-grid strong,
+.beginner-guide-grid span {
+  display: block;
+}
+
+.beginner-guide-grid strong {
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: #dfe9ec;
+}
+
+.beginner-guide-grid span {
+  color: #748a95;
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+:root:not([data-theme='dark']) .beginner-eyebrow,
+:root[data-theme='light'] .beginner-eyebrow { color: #167967; }
+
+:root:not([data-theme='dark']) .beginner-analysis,
+:root[data-theme='light'] .beginner-analysis { color: #182236; }
+
+:root:not([data-theme='dark']) .beginner-lead,
+:root[data-theme='light'] .beginner-lead { color: #66778c; }
+
+:root:not([data-theme='dark']) .beginner-summary-card,
+:root:not([data-theme='dark']) .beginner-step-card,
+:root:not([data-theme='dark']) .beginner-guide,
+:root[data-theme='light'] .beginner-summary-card,
+:root[data-theme='light'] .beginner-step-card,
+:root[data-theme='light'] .beginner-guide {
+  border-color: #dce4ec;
+  background: #ffffff;
+  box-shadow: 0 6px 22px rgba(31, 49, 73, .05);
+}
+
+:root:not([data-theme='dark']) .beginner-summary-card strong,
+:root[data-theme='light'] .beginner-summary-card strong { color: #182236; }
+
+:root:not([data-theme='dark']) .beginner-summary-card p,
+:root:not([data-theme='dark']) .beginner-step-card p,
+:root:not([data-theme='dark']) .beginner-guide-grid span,
+:root[data-theme='light'] .beginner-summary-card p,
+:root[data-theme='light'] .beginner-step-card p,
+:root[data-theme='light'] .beginner-guide-grid span { color: #6d7f92; }
+
+:root:not([data-theme='dark']) .beginner-guide-grid div,
+:root[data-theme='light'] .beginner-guide-grid div {
+  border-color: #e2e8ef;
+  background: #f8fafc;
+}
+
+:root:not([data-theme='dark']) .beginner-guide-grid strong,
+:root[data-theme='light'] .beginner-guide-grid strong { color: #1f2d42; }
+
+:root:not([data-theme='dark']) .beginner-step-card button,
+:root[data-theme='light'] .beginner-step-card button {
+  border-color: #b9ded7;
+  background: #effaf7;
+  color: #176b5d;
+}
+
+@media (max-width: 900px) {
+  .beginner-hero,
+  .beginner-guide { grid-template-columns: 1fr; }
+
+  .beginner-steps { grid-template-columns: 1fr; }
+
+  .beginner-step-card { min-height: 0; }
+  .beginner-step-card p { min-height: 0; }
+}
+
+@media (max-width: 680px) {
+  .beginner-analysis {
+    width: min(100% - 20px, 1180px);
+    padding-top: 28px;
+  }
+
+  .beginner-summary-card,
+  .beginner-step-card,
+  .beginner-guide { padding: 20px; }
+
+  .beginner-guide-grid { grid-template-columns: 1fr; }
+}

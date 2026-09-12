@@ -9,6 +9,7 @@ import UsDataNotice from './UsDataNotice'
 import StockQuiz, { warmQuizUniverse } from './StockQuiz'
 import FeatureNews from './FeatureNews'
 import DailyIssues from './DailyIssues'
+import BeginnerAnalysis from './BeginnerAnalysis'
 import './liveMarket.css'
 import './theme.css'
 import './usMarketWorkspace.css'
@@ -18,7 +19,7 @@ export { moneyFlowScore } from './marketData'
 export { answerIsCorrect, buildQuizRound } from './StockQuiz'
 
 type Theme = 'light' | 'dark'
-type Page = 'liquidity' | 'flow' | 'us-flow' | 'daily-issues' | 'replay' | 'quiz'
+type Page = 'liquidity' | 'flow' | 'us-flow' | 'daily-issues' | 'beginner' | 'replay' | 'quiz'
 
 export default function App() {
   const [page, setPage] = useState<Page>('flow')
@@ -78,6 +79,7 @@ export default function App() {
   if (page === 'liquidity') content = <LiquidityDashboard key={`liquidity-${dataRevision}`} />
   if (page === 'us-flow') content = <div key={`us-flow-${dataRevision}`}><UsDataNotice /><UsMarketWorkspace /></div>
   if (page === 'daily-issues') content = <DailyIssues key={`daily-issues-${dataRevision}`} />
+  if (page === 'beginner') content = <BeginnerAnalysis onNavigate={navigate} />
   if (page === 'replay') content = <MarketReplay key={`replay-${dataRevision}`} />
   if (page === 'quiz') content = <StockQuiz key={`quiz-${dataRevision}`} />
 
@@ -89,6 +91,7 @@ export default function App() {
         <button className={page === 'liquidity' ? 'active' : ''} onClick={() => navigate('liquidity')}>증시 자금</button>
         <button className={page === 'us-flow' ? 'active' : ''} onClick={() => navigate('us-flow')}>미국 테마 흐름</button>
         <button className={page === 'daily-issues' ? 'active' : ''} onClick={() => navigate('daily-issues')}>금일 이슈 정리</button>
+        <button className={page === 'beginner' ? 'active' : ''} onClick={() => navigate('beginner')}>초보자 간단분석</button>
         <button className={page === 'replay' ? 'active' : ''} onClick={() => navigate('replay')}>시장 복기</button>
         <button className={page === 'quiz' ? 'active' : ''} onClick={() => navigate('quiz')}>종목 퀴즈</button>
       </div>
