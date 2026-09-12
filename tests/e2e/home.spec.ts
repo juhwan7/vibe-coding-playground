@@ -57,6 +57,20 @@ test('domestic theme flow keeps the brief hidden in a side drawer and shows five
   await page.screenshot({ path: testInfo.outputPath('theme-flow-dashboard.png'), fullPage: true })
 })
 
+test('beginner simple analysis page is available from the top menu', async ({ page }, testInfo) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: '초보자 간단분석' }).click()
+  await expect(page.getByTestId('beginner-analysis')).toBeVisible()
+  await expect(page.getByRole('heading', { name: /주식이 처음이라면/ })).toBeVisible()
+  await expect(page.getByText('돈의 흐름 → 이유 → 시장 분위기')).toBeVisible()
+  await expect(page.getByRole('heading', { name: '지금 어디에 돈이 들어오나?' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '왜 움직이고 있나?' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '시장 전체 분위기는 어떤가?' })).toBeVisible()
+  await page.getByRole('button', { name: '국내 테마 흐름 보기' }).click()
+  await expect(page.getByTestId('theme-strength-board')).toBeVisible()
+  await page.screenshot({ path: testInfo.outputPath('beginner-simple-analysis.png'), fullPage: true })
+})
+
 test('US theme flow page is available', async ({ page }, testInfo) => {
   await page.goto('/')
   await page.getByRole('button', { name: '미국 테마 흐름' }).click()
@@ -231,7 +245,7 @@ test('stock quiz uses one prepared Pi cache and never fetches descriptions per q
 
 test('pages have no horizontal overflow', async ({ page }) => {
   await page.goto('/')
-  for (const label of ['국내 테마 흐름', '증시 자금', '미국 테마 흐름', '금일 이슈 정리', '시장 복기', '종목 퀴즈']) {
+  for (const label of ['국내 테마 흐름', '증시 자금', '미국 테마 흐름', '금일 이슈 정리', '초보자 간단분석', '시장 복기', '종목 퀴즈']) {
     const sizes = await page.evaluate(() => ({ scrollWidth: document.documentElement.scrollWidth, clientWidth: document.documentElement.clientWidth }))
     expect(sizes.scrollWidth).toBeLessThanOrEqual(sizes.clientWidth + 1)
     await page.getByRole('button', { name: label }).click()
