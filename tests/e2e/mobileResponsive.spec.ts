@@ -63,3 +63,27 @@ test('360px 모바일에서 주요 화면이 잘리지 않고 상단 메뉴만 �
   await expectVisibleInsideViewport(page, '.index-quiz-shell')
   await expectVisibleInsideViewport(page, '.index-quiz-select')
 })
+
+
+test('모바일 브라우저에서 데스크톱 사이트 폭이면 PC 레이아웃으로 전환한다', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'mobile', '모바일 브라우저 에뮬레이션에서만 확인합니다.')
+
+  await page.setViewportSize({ width: 980, height: 1200 })
+  await page.goto('/')
+
+  await expect(page.locator('html')).toHaveAttribute('data-layout-mode', 'desktop-site')
+  await expect(page.locator('meta[name="viewport"]')).toHaveAttribute('content', 'width=1600')
+  await expect(page.getByTestId('theme-strength-board')).toBeVisible()
+
+  const layout = await page.evaluate(() => ({
+    innerWidth: window.innerWidth,
+    workspaceDisplay: getComputedStyle(document.querySelector('.market-workspace')!).display,
+    workspaceColumns: getComputedStyle(document.querySelector('.market-workspace')!).gridTemplateColumns,
+  }))
+
+  expect(layout.innerWidth).toBeGreaterThanOrEqual(1500)
+  expect(layout.workspaceDisplay).toBe('grid')
+  expect(layout.workspaceColumns.split(' ').length).toBeGreaterThanOrEqual(2)
+
+  await page.screenshot({ path: testInfo.outputPath('mobile-desktop-site-layout.png'), fullPage: true })
+})
