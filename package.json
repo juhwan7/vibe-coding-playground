@@ -17,7 +17,8 @@
     "vite": "^7.0.0",
     "typescript": "^5.9.0",
     "react": "^19.1.0",
-    "react-dom": "^19.1.0"
+    "react-dom": "^19.1.0",
+    "firebase": "^12.18.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.55.0",
