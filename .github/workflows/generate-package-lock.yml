@@ -22,6 +22,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ github.ref_name }}
+          fetch-depth: 0
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -36,4 +37,9 @@ jobs:
           git add package-lock.json
           git diff --cached --quiet && exit 0
           git commit -m 'chore: npm 잠금파일 갱신'
+
+          # 이 작업이 실행되는 사이 main에 다른 커밋이 들어올 수 있으므로
+          # 최신 main 위로 잠금파일 커밋을 재배치한 뒤 push한다.
+          git fetch origin "${GITHUB_REF_NAME}"
+          git rebase "origin/${GITHUB_REF_NAME}"
           git push origin "HEAD:${GITHUB_REF_NAME}"
