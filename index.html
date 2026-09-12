@@ -2,7 +2,19 @@
 <html lang="ko">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta id="app-viewport" name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      (() => {
+        const viewport = document.getElementById('app-viewport')
+        const coarsePointer = window.matchMedia?.('(pointer: coarse)').matches || navigator.maxTouchPoints > 0
+        const desktopSiteWidth = window.innerWidth >= 800
+
+        if (viewport && coarsePointer && desktopSiteWidth) {
+          viewport.setAttribute('content', 'width=1600')
+          document.documentElement.dataset.layoutMode = 'desktop-site'
+        }
+      })()
+    </script>
     <meta name="theme-color" content="#090b10" />
     <title>Vibe Coding Starter</title>
   </head>
