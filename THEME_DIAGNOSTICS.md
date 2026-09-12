@@ -1,21 +1,21 @@
 # MARKET FLOW Theme Diagnostics
 
-- Last check: `2026-09-12 00:15:11 UTC`
-- App deployed commit: `8ac65a3d3c38c47e331c6a0678a0dd45e12715e9`
+- Last check: `2026-09-12 00:59:52 UTC`
+- App deployed commit: `873a70e21946baa72660a63289d1f98dafa99668`
 - Local theme-flow API: `online`
 
 - API ok: `true`
-- API updatedAt: `2026-09-12T00:15:29.588Z`
+- API updatedAt: `2026-09-12T01:00:07.381Z`
 - cache pendingGapSymbols: `0`
 
 ## 현재 5개 테마 장중 커버리지
 
 - **원전**: day=`2026-09-11`, points=`241`, first=`08:00`, last=`20:00`, openingDelay=`0m`, maxGap=`3m`
   - members: 두산에너빌리티(034020), 한전기술(052690), 우리기술(032820)
-- **금융**: day=`2026-09-11`, points=`241`, first=`08:00`, last=`20:00`, openingDelay=`0m`, maxGap=`3m`
-  - members: KB금융(105560), 신한지주(055550), 우리금융지주(316140)
 - **조선**: day=`2026-09-11`, points=`241`, first=`08:00`, last=`20:00`, openingDelay=`0m`, maxGap=`3m`
   - members: HD현대중공업(329180), 한화오션(042660), HD한국조선해양(009540)
+- **금융**: day=`2026-09-11`, points=`241`, first=`08:00`, last=`20:00`, openingDelay=`0m`, maxGap=`3m`
+  - members: KB금융(105560), 신한지주(055550), 우리금융지주(316140)
 - **반도체**: day=`2026-09-11`, points=`241`, first=`08:00`, last=`20:00`, openingDelay=`0m`, maxGap=`3m`
   - members: SK하이닉스(000660), 삼성전자(005930), 삼성전기(009150), 한미반도체(042700), 주성엔지니어링(036930), LG이노텍(011070), DB하이텍(000990), 심텍(222800)
 - **2차전지**: day=`2026-09-11`, points=`241`, first=`08:00`, last=`20:00`, openingDelay=`0m`, maxGap=`3m`
