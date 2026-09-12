@@ -56,7 +56,7 @@ test('theme cache pruning retains active symbols and caps retained symbol count'
 
     await service.persistCache({ force: true })
     const saved = JSON.parse(await readFile(cachePath, 'utf8'))
-    assert.equal(saved.version, 6)
+    assert.equal(saved.version, 7)
     assert.equal(Object.keys(saved.candles).length, 5)
     assert.deepEqual(saved.extendedQuoteSamples, {})
     assert.deepEqual(saved.extendedQuoteCounters, {})
