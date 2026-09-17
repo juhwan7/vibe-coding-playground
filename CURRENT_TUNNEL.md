@@ -1,11 +1,11 @@
 # MARKET FLOW 현재 접속 주소
 
 - 상태: `online`
-- 갱신 시각: `2026-09-15 23:42:56 UTC`
+- 갱신 시각: `2026-09-17 05:27:08 UTC`
 - Raspberry Pi tunnel service: `active` (`docker`)
 
 ## 접속
 
-**[https://including-effectiveness-server-electronics.trycloudflare.com](https://including-effectiveness-server-electronics.trycloudflare.com)**
+**[https://phillips-secondary-baskets-sitemap.trycloudflare.com](https://phillips-secondary-baskets-sitemap.trycloudflare.com)**
 
 이 파일은 Raspberry Pi가 5분마다 Cloudflare Quick Tunnel 주소를 확인해 자동 갱신합니다. systemd 재시작 권한이 없으면 user 서비스, 그래도 안 되면 Docker 기반 fallback 터널을 자동 사용합니다.
