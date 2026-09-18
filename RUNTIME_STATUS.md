@@ -1,12 +1,12 @@
 # MARKET FLOW Runtime Status
 
-- Last health check: `2026-09-18 19:58:37 UTC`
-- App status: `online`
+- Last health check: `2026-09-18 22:27:50 UTC`
+- App status: `offline`
 - App deployed commit: `056f41f3e3b9d24d93289c8ef8b7e03b8a628fc2`
-- Tunnel status: `unreachable`
+- Tunnel status: `online`
 - Tunnel URL: `https://phillips-secondary-baskets-sitemap.trycloudflare.com`
 - Tunnel registry updated at: `2026-09-17 14:59:00 UTC`
 - Tunnel first seen epoch: `1789624037`
-- Tunnel age seconds: `137480`
+- Tunnel age seconds: `146433`
 
 앱 로컬 헬스체크와 Cloudflare Quick Tunnel 상태를 별도로 기록합니다. `CURRENT_TUNNEL.md`는 주소 레지스트리이고, 이 파일은 실제 배포 커밋과 최근 헬스체크 상태의 기준입니다.
