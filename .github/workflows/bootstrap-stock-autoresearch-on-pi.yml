@@ -1,0 +1,200 @@
+name: Bootstrap Stock AutoResearch on Raspberry Pi
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/bootstrap-stock-autoresearch-on-pi.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: bootstrap-stock-autoresearch-on-pi
+  cancel-in-progress: false
+
+jobs:
+  bootstrap:
+    runs-on: [self-hosted, linux, ARM64, k-market-pi]
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout control repository
+        uses: actions/checkout@v4
+
+      - name: Install and start Toss Collector
+        id: bootstrap
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          SOURCE_ENV="$HOME/vibe-coding-playground/.env"
+          APP="$HOME/stock-autoresearch"
+          CONFIG_DIR="$HOME/.config/stock-autoresearch"
+          DATA_DIR="$HOME/.local/share/stock-autoresearch/toss"
+          ENV_FILE="$CONFIG_DIR/toss.env"
+          SERVICE_DIR="$HOME/.config/systemd/user"
+          SERVICE_FILE="$SERVICE_DIR/stock-autoresearch-toss.service"
+
+          test -f "$SOURCE_ENV" || { echo "::error::Pi-local vibe-coding-playground .env is missing"; exit 10; }
+
+          set -a
+          # shellcheck disable=SC1090
+          . "$SOURCE_ENV"
+          set +a
+
+          test -n "${TOSS_CLIENT_ID:-}" || { echo "::error::TOSS_CLIENT_ID is missing from Pi-local .env"; exit 11; }
+          test -n "${TOSS_CLIENT_SECRET:-}" || { echo "::error::TOSS_CLIENT_SECRET is missing from Pi-local .env"; exit 12; }
+
+          if [ -d "$APP/.git" ]; then
+            git -C "$APP" fetch --depth=1 origin main
+            git -C "$APP" checkout -f main
+            git -C "$APP" reset --hard origin/main
+          else
+            rm -rf "$APP"
+            git clone --depth=1 https://github.com/juhwan7/stock-autoresearch.git "$APP"
+          fi
+
+          mkdir -p "$CONFIG_DIR" "$DATA_DIR" "$SERVICE_DIR"
+          umask 077
+          {
+            printf 'TOSS_CLIENT_ID=%s\n' "$TOSS_CLIENT_ID"
+            printf 'TOSS_CLIENT_SECRET=%s\n' "$TOSS_CLIENT_SECRET"
+            printf 'PYTHONUNBUFFERED=1\n'
+          } > "$ENV_FILE"
+          chmod 600 "$ENV_FILE"
+
+          PYTHON_BIN="$(command -v python3)"
+          "$PYTHON_BIN" -m venv "$APP/.venv" || {
+            if sudo -n true >/dev/null 2>&1; then
+              sudo -n apt-get update
+              sudo -n apt-get install -y python3-venv
+              "$PYTHON_BIN" -m venv "$APP/.venv"
+            else
+              echo "::error::python3 venv unavailable and passwordless sudo is not available"
+              exit 13
+            fi
+          }
+
+          "$APP/.venv/bin/python" -m pip install --disable-pip-version-check --upgrade pip
+          "$APP/.venv/bin/python" -m pip install --disable-pip-version-check "websockets>=17.1,<18"
+
+          cat > "$SERVICE_FILE" <<'EOF'
+          [Unit]
+          Description=Stock AutoResearch Toss realtime collector
+          After=network-online.target
+          Wants=network-online.target
+
+          [Service]
+          Type=simple
+          WorkingDirectory=%h/stock-autoresearch
+          EnvironmentFile=%h/.config/stock-autoresearch/toss.env
+          ExecStart=%h/stock-autoresearch/.venv/bin/python %h/stock-autoresearch/src/autoresearch/toss_collector.py --output %h/.local/share/stock-autoresearch/toss/latest.json --top-n 80 --ranking-refresh 600 --snapshot-seconds 20
+          Restart=always
+          RestartSec=5
+
+          [Install]
+          WantedBy=default.target
+          EOF
+
+          systemctl --user daemon-reload
+          systemctl --user enable --now stock-autoresearch-toss.service
+          systemctl --user restart stock-autoresearch-toss.service
+
+          # Wait for OAuth + ranking + WebSocket declaration + first snapshot.
+          for i in $(seq 1 18); do
+            if [ -s "$DATA_DIR/latest.json" ]; then
+              break
+            fi
+            sleep 5
+          done
+
+          systemctl --user is-active --quiet stock-autoresearch-toss.service || {
+            echo "::error::Collector service is not active"
+            exit 14
+          }
+          test -s "$DATA_DIR/latest.json" || {
+            echo "::error::Collector did not produce latest.json"
+            exit 15
+          }
+
+          "$APP/.venv/bin/python" - "$DATA_DIR/latest.json" <<'PY'
+          import json, pathlib, sys
+          p = pathlib.Path(sys.argv[1])
+          d = json.loads(p.read_text(encoding="utf-8"))
+          assert d.get("provider") == "toss", "provider is not toss"
+          assert d.get("captured_at"), "captured_at missing"
+          ranking = d.get("ranking") or []
+          assert ranking, "ranking is empty"
+          print(f"Collector validation OK: ranking_count={len(ranking)}, captured_at={d['captured_at']}")
+          PY
+
+      - name: Publish non-secret bootstrap status
+        if: always()
+        shell: bash
+        env:
+          BOOTSTRAP_OUTCOME: ${{ steps.bootstrap.outcome }}
+        run: |
+          set -u
+          APP="$HOME/stock-autoresearch"
+          SNAPSHOT="$HOME/.local/share/stock-autoresearch/toss/latest.json"
+          STATUS="/tmp/stock-autoresearch-bootstrap-status.md"
+
+          SERVICE_STATE="$(systemctl --user is-active stock-autoresearch-toss.service 2>/dev/null || true)"
+          ENABLED_STATE="$(systemctl --user is-enabled stock-autoresearch-toss.service 2>/dev/null || true)"
+          PYTHON_VERSION="$("$HOME/stock-autoresearch/.venv/bin/python" --version 2>&1 || python3 --version 2>&1 || true)"
+          REVISION="$(git -C "$APP" rev-parse --short HEAD 2>/dev/null || echo unavailable)"
+
+          SNAPSHOT_STATE="missing"
+          CAPTURED_AT="unavailable"
+          RANKING_COUNT="0"
+          SUBSCRIPTION_COUNT="0"
+          if [ -s "$SNAPSHOT" ]; then
+            readarray -t SNAP_INFO < <("$HOME/stock-autoresearch/.venv/bin/python" - "$SNAPSHOT" <<'PY' 2>/dev/null || true
+          import json, pathlib, sys
+          d=json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+          print("present")
+          print(d.get("captured_at") or "unavailable")
+          print(len(d.get("ranking") or []))
+          print(len((d.get("collector") or {}).get("subscriptions") or []))
+          PY
+          )
+            SNAPSHOT_STATE="${SNAP_INFO[0]:-present}"
+            CAPTURED_AT="${SNAP_INFO[1]:-unavailable}"
+            RANKING_COUNT="${SNAP_INFO[2]:-0}"
+            SUBSCRIPTION_COUNT="${SNAP_INFO[3]:-0}"
+          fi
+
+          {
+            echo "# Stock AutoResearch Raspberry Pi Bootstrap"
+            echo
+            echo "- Updated: `$(date -u '+%Y-%m-%d %H:%M:%S UTC')`"
+            echo "- Bootstrap step: `$BOOTSTRAP_OUTCOME`"
+            echo "- Collector service: `$SERVICE_STATE`"
+            echo "- Collector enabled: `$ENABLED_STATE`"
+            echo "- Installed revision: `$REVISION`"
+            echo "- Python: `$PYTHON_VERSION`"
+            echo "- Snapshot: `$SNAPSHOT_STATE`"
+            echo "- Snapshot captured_at: `$CAPTURED_AT`"
+            echo "- Toss ranking rows: `$RANKING_COUNT`"
+            echo "- WebSocket subscriptions: `$SUBSCRIPTION_COUNT`"
+            echo
+            echo "공인 IP, TOSS_CLIENT_ID, TOSS_CLIENT_SECRET은 이 상태 파일에 기록하지 않습니다."
+          } > "$STATUS"
+
+          # Publish status on an isolated branch so normal app CI/deploy is not retriggered.
+          git config user.name "stock-autoresearch-bootstrap[bot]"
+          git config user.email "stock-autoresearch-bootstrap[bot]@users.noreply.github.com"
+          git checkout --orphan stock-autoresearch-status
+          git rm -rf . >/dev/null 2>&1 || true
+          cp "$STATUS" STOCK_AUTORESEARCH_STATUS.md
+          git add STOCK_AUTORESEARCH_STATUS.md
+          git commit -m "status: stock-autoresearch Pi bootstrap"
+          git push --force origin HEAD:stock-autoresearch-status
+
+      - name: Fail workflow when bootstrap failed
+        if: steps.bootstrap.outcome != 'success'
+        shell: bash
+        run: exit 1
