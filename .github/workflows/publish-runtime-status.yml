@@ -43,6 +43,37 @@ jobs:
           checked_at="$(date -u '+%Y-%m-%d %H:%M:%S UTC')"
 
           app_commit="$(git -C "$APP" rev-parse HEAD 2>/dev/null || echo unknown)"
+
+          STOCK_APP="$HOME/stock-autoresearch"
+          STOCK_SNAPSHOT="$HOME/.local/share/stock-autoresearch/toss/latest.json"
+          stock_collector_status="$(systemctl --user is-active stock-autoresearch-toss.service 2>/dev/null || true)"
+          stock_collector_enabled="$(systemctl --user is-enabled stock-autoresearch-toss.service 2>/dev/null || true)"
+          stock_autoresearch_commit="$(git -C "$STOCK_APP" rev-parse HEAD 2>/dev/null || echo unavailable)"
+          stock_snapshot_status=missing
+          stock_snapshot_captured_at=unavailable
+          stock_ranking_count=0
+          stock_subscription_count=0
+          if [ -s "$STOCK_SNAPSHOT" ] && [ -x "$STOCK_APP/.venv/bin/python" ]; then
+            readarray -t stock_info < <("$STOCK_APP/.venv/bin/python" - "$STOCK_SNAPSHOT" <<'PY' 2>/dev/null || true
+          import json, pathlib, sys
+          try:
+              d = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+              print("present")
+              print(d.get("captured_at") or "unavailable")
+              print(len(d.get("ranking") or []))
+              print(len((d.get("collector") or {}).get("subscriptions") or []))
+          except Exception:
+              print("invalid")
+              print("unavailable")
+              print("0")
+              print("0")
+          PY
+          )
+            stock_snapshot_status="${stock_info[0]:-present}"
+            stock_snapshot_captured_at="${stock_info[1]:-unavailable}"
+            stock_ranking_count="${stock_info[2]:-0}"
+            stock_subscription_count="${stock_info[3]:-0}"
+          fi
           if curl --fail --silent --show-error --connect-timeout 2 --max-time 6 http://127.0.0.1:8080/api/health >/tmp/runtime-health.json; then
             app_status=online
           else
