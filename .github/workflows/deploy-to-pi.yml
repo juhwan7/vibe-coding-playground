@@ -216,3 +216,114 @@ jobs:
           cat /tmp/k-market-health.json
           echo
           echo "Deployed verified commit: $VERIFIED_SHA"
+
+      - name: Install or update Stock AutoResearch Toss collector
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          SOURCE_ENV="$HOME/vibe-coding-playground/.env"
+          APP="$HOME/stock-autoresearch"
+          CONFIG_DIR="$HOME/.config/stock-autoresearch"
+          DATA_DIR="$HOME/.local/share/stock-autoresearch/toss"
+          ENV_FILE="$CONFIG_DIR/toss.env"
+          SERVICE_DIR="$HOME/.config/systemd/user"
+          SERVICE_FILE="$SERVICE_DIR/stock-autoresearch-toss.service"
+
+          test -f "$SOURCE_ENV" || { echo "::error::Pi-local .env not found"; exit 20; }
+
+          set -a
+          # shellcheck disable=SC1090
+          . "$SOURCE_ENV"
+          set +a
+
+          test -n "${TOSS_CLIENT_ID:-}" || { echo "::error::TOSS_CLIENT_ID missing in Pi-local .env"; exit 21; }
+          test -n "${TOSS_CLIENT_SECRET:-}" || { echo "::error::TOSS_CLIENT_SECRET missing in Pi-local .env"; exit 22; }
+
+          if [ -d "$APP/.git" ]; then
+            git -C "$APP" fetch --depth=1 origin main
+            git -C "$APP" checkout -f main
+            git -C "$APP" reset --hard origin/main
+          else
+            rm -rf "$APP"
+            git clone --depth=1 https://github.com/juhwan7/stock-autoresearch.git "$APP"
+          fi
+
+          mkdir -p "$CONFIG_DIR" "$DATA_DIR" "$SERVICE_DIR"
+          umask 077
+          {
+            printf 'TOSS_CLIENT_ID=%s\n' "$TOSS_CLIENT_ID"
+            printf 'TOSS_CLIENT_SECRET=%s\n' "$TOSS_CLIENT_SECRET"
+            printf 'PYTHONUNBUFFERED=1\n'
+          } > "$ENV_FILE"
+          chmod 600 "$ENV_FILE"
+
+          PYTHON_BIN="$(command -v python3)"
+          if [ ! -x "$APP/.venv/bin/python" ]; then
+            "$PYTHON_BIN" -m venv "$APP/.venv" || {
+              if sudo -n true >/dev/null 2>&1; then
+                sudo -n apt-get update
+                sudo -n apt-get install -y python3-venv
+                "$PYTHON_BIN" -m venv "$APP/.venv"
+              else
+                echo "::error::python3 venv unavailable and passwordless sudo unavailable"
+                exit 23
+              fi
+            }
+          fi
+
+          "$APP/.venv/bin/python" -m pip install --disable-pip-version-check --quiet "websockets>=17.1,<18"
+
+          cat > "$SERVICE_FILE" <<'EOF'
+          [Unit]
+          Description=Stock AutoResearch Toss realtime collector
+          After=network-online.target
+          Wants=network-online.target
+
+          [Service]
+          Type=simple
+          WorkingDirectory=%h/stock-autoresearch
+          EnvironmentFile=%h/.config/stock-autoresearch/toss.env
+          ExecStart=%h/stock-autoresearch/.venv/bin/python %h/stock-autoresearch/src/autoresearch/toss_collector.py --output %h/.local/share/stock-autoresearch/toss/latest.json --top-n 80 --ranking-refresh 600 --snapshot-seconds 20
+          Restart=always
+          RestartSec=5
+
+          [Install]
+          WantedBy=default.target
+          EOF
+
+          systemctl --user daemon-reload
+          systemctl --user enable stock-autoresearch-toss.service
+          systemctl --user restart stock-autoresearch-toss.service
+
+          for attempt in $(seq 1 18); do
+            if [ -s "$DATA_DIR/latest.json" ]; then
+              break
+            fi
+            sleep 5
+          done
+
+          systemctl --user is-active --quiet stock-autoresearch-toss.service || {
+            echo "::error::Stock AutoResearch collector is not active"
+            journalctl --user -u stock-autoresearch-toss.service -n 30 --no-pager || true
+            exit 24
+          }
+          test -s "$DATA_DIR/latest.json" || {
+            echo "::error::Stock AutoResearch collector did not create latest.json"
+            journalctl --user -u stock-autoresearch-toss.service -n 30 --no-pager || true
+            exit 25
+          }
+
+          "$APP/.venv/bin/python" - "$DATA_DIR/latest.json" <<'PY'
+          import json, pathlib, sys
+          p = pathlib.Path(sys.argv[1])
+          d = json.loads(p.read_text(encoding="utf-8"))
+          ranking = d.get("ranking") or []
+          if d.get("provider") != "toss":
+              raise SystemExit("snapshot provider is not toss")
+          if not d.get("captured_at"):
+              raise SystemExit("snapshot captured_at missing")
+          if not ranking:
+              raise SystemExit("snapshot ranking is empty")
+          print(f"Stock AutoResearch Toss collector OK: ranking={len(ranking)} captured_at={d['captured_at']}")
+          PY
