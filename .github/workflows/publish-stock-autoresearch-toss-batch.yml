@@ -1,0 +1,136 @@
+name: Publish Stock AutoResearch Toss Batch
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/publish-stock-autoresearch-toss-batch.yml"
+  schedule:
+    - cron: "*/6 * * * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-stock-autoresearch-toss-batch
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: [self-hosted, linux, ARM64, k-market-pi]
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout control repository
+        uses: actions/checkout@v4
+
+      - name: Collect Toss Top50 and rolling 1-minute data
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          SOURCE_ENV="$HOME/vibe-coding-playground/.env"
+          APP="$HOME/stock-autoresearch"
+          OUT_DIR="/tmp/stock-autoresearch-toss-publish"
+
+          test -f "$SOURCE_ENV" || { echo "::error::Pi-local .env is missing"; exit 10; }
+
+          set -a
+          # shellcheck disable=SC1090
+          . "$SOURCE_ENV"
+          set +a
+
+          test -n "${TOSS_CLIENT_ID:-}" || { echo "::error::TOSS_CLIENT_ID missing"; exit 11; }
+          test -n "${TOSS_CLIENT_SECRET:-}" || { echo "::error::TOSS_CLIENT_SECRET missing"; exit 12; }
+
+          if [ -d "$APP/.git" ]; then
+            git -C "$APP" fetch --depth=1 origin main
+            git -C "$APP" checkout -f main
+            git -C "$APP" reset --hard origin/main
+          else
+            rm -rf "$APP"
+            git clone --depth=1 https://github.com/juhwan7/stock-autoresearch.git "$APP"
+          fi
+
+          PY="$APP/.venv/bin/python"
+          if [ ! -x "$PY" ]; then
+            python3 -m venv "$APP/.venv"
+            PY="$APP/.venv/bin/python"
+          fi
+          if ! "$PY" -c 'import websockets' >/dev/null 2>&1; then
+            "$PY" -m pip install --disable-pip-version-check --quiet "websockets>=17.1,<18"
+          fi
+
+          APP_ROOT="$APP" PYTHONPATH="$APP/src" "$PY" - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          from autoresearch.toss_batch_market import collect
+
+          root = Path(os.environ["APP_ROOT"])
+          result = collect(root, limit=50)
+          print(json.dumps(result, ensure_ascii=False))
+          PY
+
+          "$PY" "$APP/scripts/토스상태_요약.py"             --input "$APP/data/providers/toss/latest.json"             --output "$APP/data/providers/toss/status.json"
+
+          rm -rf "$OUT_DIR"
+          mkdir -p "$OUT_DIR"
+          cp "$APP/data/providers/toss/latest.json" "$OUT_DIR/latest.json"
+          cp "$APP/data/providers/toss/status.json" "$OUT_DIR/status.json"
+          if [ -f "$APP/data/providers/toss/history.json" ]; then
+            cp "$APP/data/providers/toss/history.json" "$OUT_DIR/history.json"
+          fi
+
+          python3 - "$OUT_DIR/latest.json" <<'PY'
+          import json, pathlib, sys
+          d = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+          print("provider=", d.get("provider"))
+          print("source_mode=", d.get("source_mode"))
+          print("ranking_fresh_today=", d.get("ranking_fresh_today"))
+          print("current_top50_count=", d.get("current_top50_count"))
+          print("tracked_universe_count=", d.get("tracked_universe_count"))
+          print("regular_ticker_count=", len(d.get("minute_by_ticker") or {}))
+          print("captured_at=", d.get("captured_at"))
+          assert d.get("provider") == "toss"
+          assert d.get("captured_at")
+          PY
+
+      - name: Publish non-secret snapshot branch
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          OUT_DIR="/tmp/stock-autoresearch-toss-publish"
+
+          git config user.name "stock-autoresearch-toss[bot]"
+          git config user.email "stock-autoresearch-toss[bot]@users.noreply.github.com"
+
+          git checkout --orphan stock-autoresearch-toss-data
+          git rm -rf . >/dev/null 2>&1 || true
+
+          cp "$OUT_DIR/latest.json" latest.json
+          cp "$OUT_DIR/status.json" status.json
+          if [ -f "$OUT_DIR/history.json" ]; then
+            cp "$OUT_DIR/history.json" history.json
+          fi
+
+          cat > README.md <<'EOF'
+          # Stock AutoResearch Toss Data
+
+          이 브랜치는 고정 IP Raspberry Pi에서 6분마다 읽은 Toss 공개 시장데이터만 저장한다.
+
+          저장하지 않는 정보:
+          - TOSS_CLIENT_ID
+          - TOSS_CLIENT_SECRET
+          - 계좌 정보
+          - 주문 정보
+          - 공인 IP
+
+          소비 저장소: juhwan7/stock-autoresearch
+          EOF
+
+          git add latest.json status.json README.md
+          if [ -f history.json ]; then git add history.json; fi
+          git commit -m "data: publish Toss 6-minute market snapshot"
+          git push --force origin HEAD:stock-autoresearch-toss-data
