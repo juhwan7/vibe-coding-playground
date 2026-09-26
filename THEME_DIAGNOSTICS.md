@@ -1,11 +1,11 @@
 # MARKET FLOW Theme Diagnostics
 
-- Last check: `2026-09-25 22:16:53 UTC`
+- Last check: `2026-09-26 00:43:57 UTC`
 - App deployed commit: `5fe92bd34655821592654e6f8ee8227b25ce9f52`
 - Local theme-flow API: `online`
 
 - API ok: `true`
-- API updatedAt: `2026-09-25T22:13:18.077Z`
+- API updatedAt: `2026-09-26T00:44:11.595Z`
 - cache pendingGapSymbols: `0`
 
 ## 현재 5개 테마 장중 커버리지
