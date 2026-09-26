@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "captured_at": "2026-09-27T08:12:37.408149+09:00",
+  "provider": "toss",
+  "source_mode": "rest_10m_batch",
+  "ranking_fresh_today": false,
+  "minute_amount_method": "close_x_volume; current Top50 interval may be scaled to exact ranking tradingAmount delta",
+  "minute_amount_exact": false,
+  "ranking": [],
+  "metadata": {},
+  "market_overview": {},
+  "tracked_universe": [],
+  "current_top50_count": 0,
+  "tracked_universe_count": 0,
+  "dropped_from_current_top50_count": 0,
+  "minute_by_ticker": {},
+  "premarket_by_ticker": {},
+  "postmarket_by_ticker": {},
+  "fetch_errors": {},
+  "collector": {
+    "mode": "rest_10m_batch",
+    "last_universe_refresh": "2026-09-27T08:12:37.408149+09:00",
+    "last_message_at": null,
+    "subscriptions": [],
+    "rejected": []
+  },
+  "session": {
+    "pre_market": {
+      "start": "08:00",
+      "end": "08:50"
+    },
+    "krx_regular": {
+      "start": "09:00",
+      "end": "15:30"
+    },
+    "nxt_after": {
+      "start": "15:40",
+      "end": "20:00"
+    }
+  },
+  "limitations": [
+    "Toss REST 1분봉은 OHLCV를 제공하므로 1분 거래대금은 close×volume 근사치",
+    "현재 Top50이 직전 관측에도 Top50이었다면 Toss ranking tradingAmount 차분으로 해당 관측구간 합계를 보정",
+    "Top50 밖으로 밀린 종목도 당일 추적 Universe에 남아 1분봉 조회를 계속함"
+  ]
+}
