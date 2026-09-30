@@ -1,7 +1,7 @@
 # MARKET FLOW Runtime Status
 
-- Last health check: `2026-09-29 22:57:30 UTC`
-- App status: `offline`
+- Last health check: `2026-09-30 01:55:08 UTC`
+- App status: `online`
 - App deployed commit: `5fe92bd34655821592654e6f8ee8227b25ce9f52`
 - Tunnel status: `offline`
 - Tunnel URL: `none`
