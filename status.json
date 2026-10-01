@@ -1,0 +1,22 @@
+{
+  "summarized_at": "2026-10-01T02:31:47.170287+00:00",
+  "available": true,
+  "captured_at": "2026-10-01T11:31:12.905216+09:00",
+  "provider": "toss",
+  "source_mode": "rest_10m_batch",
+  "minute_amount_method": "close_x_volume; current Top50 interval may be scaled to exact ranking tradingAmount delta",
+  "ranking_count": 50,
+  "ranking_fresh_today": true,
+  "current_top50_count": 50,
+  "tracked_universe_count": 91,
+  "dropped_from_current_top50_count": 41,
+  "regular_ticker_count": 90,
+  "premarket_ticker_count": 49,
+  "postmarket_ticker_count": 0,
+  "collector": {
+    "subscription_count": 0,
+    "rejected_count": 0,
+    "last_message_at": "2026-10-01T11:31:12.905216+09:00",
+    "last_universe_refresh": "2026-10-01T11:31:12.905216+09:00"
+  }
+}

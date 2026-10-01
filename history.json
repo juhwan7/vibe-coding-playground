@@ -1,0 +1,303 @@
+{
+  "schema_version": 1,
+  "updated_at": "2026-10-01T11:31:12.905216+09:00",
+  "snapshots": [
+    {
+      "captured_at": "2026-09-25T12:40:55.854533+09:00",
+      "ranking_fresh_today": false,
+      "current_top50_count": 0,
+      "tracked_universe_count": 0,
+      "dropped_from_current_top50_count": 0,
+      "regular_ticker_count": 0,
+      "error_count": 0
+    },
+    {
+      "captured_at": "2026-09-25T18:06:58.730956+09:00",
+      "ranking_fresh_today": false,
+      "current_top50_count": 0,
+      "tracked_universe_count": 0,
+      "dropped_from_current_top50_count": 0,
+      "regular_ticker_count": 0,
+      "error_count": 0
+    },
+    {
+      "captured_at": "2026-09-25T23:36:10.304937+09:00",
+      "ranking_fresh_today": false,
+      "current_top50_count": 0,
+      "tracked_universe_count": 0,
+      "dropped_from_current_top50_count": 0,
+      "regular_ticker_count": 0,
+      "error_count": 0
+    },
+    {
+      "captured_at": "2026-09-26T03:52:51.552163+09:00",
+      "ranking_fresh_today": false,
+      "current_top50_count": 0,
+      "tracked_universe_count": 0,
+      "dropped_from_current_top50_count": 0,
+      "regular_ticker_count": 0,
+      "error_count": 0
+    },
+    {
+      "captured_at": "2026-09-26T06:57:16.471637+09:00",
+      "ranking_fresh_today": false,
+      "current_top50_count": 0,
+      "tracked_universe_count": 0,
+      "dropped_from_current_top50_count": 0,
+      "regular_ticker_count": 0,
+      "error_count": 0
+    },
+    {
+      "captured_at": "2026-09-26T09:29:11.283818+09:00",
+      "ranking_fresh_today": false,
+      "current_top50_count": 0,
+      "tracked_universe_count": 0,
+      "dropped_from_current_top50_count": 0,
+      "regular_ticker_count": 0,
+      "error_count": 0
+    },
+    {
+      "captured_at": "2026-09-26T14:22:59.739136+09:00",
+      "ranking_fresh_today": false,
+      "current_top50_count": 0,
+      "tracked_universe_count": 0,
+      "dropped_from_current_top50_count": 0,
+      "regular_ticker_count": 0,
+      "error_count": 0
+    },
+    {
+      "captured_at": "2026-09-26T19:03:20.949466+09:00",
+      "ranking_fresh_today": false,
+      "current_top50_count": 0,
+      "tracked_universe_count": 0,
+      "dropped_from_current_top50_count": 0,
+      "regular_ticker_count": 0,
+      "error_count": 0
+    },
+    {
+      "captured_at": "2026-09-26T23:25:08.111069+09:00",
+      "ranking_fresh_today": false,
+      "current_top50_count": 0,
+      "tracked_universe_count": 0,
+      "dropped_from_current_top50_count": 0,
+      "regular_ticker_count": 0,
+      "error_count": 0
+    },
+    {
+      "captured_at": "2026-09-27T02:55:15.681790+09:00",
+      "ranking_fresh_today": false,
+      "current_top50_count": 0,
+      "tracked_universe_count": 0,
+      "dropped_from_current_top50_count": 0,
+      "regular_ticker_count": 0,
+      "error_count": 0
+    },
+    {
+      "captured_at": "2026-09-27T05:46:43.653426+09:00",
+      "ranking_fresh_today": false,
+      "current_top50_count": 0,
+      "tracked_universe_count": 0,
+      "dropped_from_current_top50_count": 0,
+      "regular_ticker_count": 0,
+      "error_count": 0
+    },
+    {
+      "captured_at": "2026-09-27T08:12:37.408149+09:00",
+      "ranking_fresh_today": false,
+      "current_top50_count": 0,
+      "tracked_universe_count": 0,
+      "dropped_from_current_top50_count": 0,
+      "regular_ticker_count": 0,
+      "error_count": 0
+    },
+    {
+      "captured_at": "2026-09-27T10:31:34.806598+09:00",
+      "ranking_fresh_today": false,
+      "current_top50_count": 0,
+      "tracked_universe_count": 0,
+      "dropped_from_current_top50_count": 0,
+      "regular_ticker_count": 0,
+      "error_count": 0
+    },
+    {
+      "captured_at": "2026-09-27T16:03:41.479262+09:00",
+      "ranking_fresh_today": false,
+      "current_top50_count": 0,
+      "tracked_universe_count": 0,
+      "dropped_from_current_top50_count": 0,
+      "regular_ticker_count": 0,
+      "error_count": 0
+    },
+    {
+      "captured_at": "2026-09-27T22:03:39.467517+09:00",
+      "ranking_fresh_today": false,
+      "current_top50_count": 0,
+      "tracked_universe_count": 0,
+      "dropped_from_current_top50_count": 0,
+      "regular_ticker_count": 0,
+      "error_count": 0
+    },
+    {
+      "captured_at": "2026-09-28T02:40:32.806739+09:00",
+      "ranking_fresh_today": false,
+      "current_top50_count": 0,
+      "tracked_universe_count": 0,
+      "dropped_from_current_top50_count": 0,
+      "regular_ticker_count": 0,
+      "error_count": 0
+    },
+    {
+      "captured_at": "2026-09-28T05:25:52.808861+09:00",
+      "ranking_fresh_today": false,
+      "current_top50_count": 0,
+      "tracked_universe_count": 0,
+      "dropped_from_current_top50_count": 0,
+      "regular_ticker_count": 0,
+      "error_count": 0
+    },
+    {
+      "captured_at": "2026-09-28T08:18:36.796253+09:00",
+      "ranking_fresh_today": true,
+      "current_top50_count": 50,
+      "tracked_universe_count": 50,
+      "dropped_from_current_top50_count": 0,
+      "regular_ticker_count": 0,
+      "error_count": 0
+    },
+    {
+      "captured_at": "2026-09-28T10:47:08.724381+09:00",
+      "ranking_fresh_today": true,
+      "current_top50_count": 50,
+      "tracked_universe_count": 87,
+      "dropped_from_current_top50_count": 37,
+      "regular_ticker_count": 87,
+      "error_count": 0
+    },
+    {
+      "captured_at": "2026-09-28T16:46:10.464366+09:00",
+      "ranking_fresh_today": true,
+      "current_top50_count": 50,
+      "tracked_universe_count": 107,
+      "dropped_from_current_top50_count": 57,
+      "regular_ticker_count": 84,
+      "error_count": 3
+    },
+    {
+      "captured_at": "2026-09-29T01:05:18.226043+09:00",
+      "ranking_fresh_today": false,
+      "current_top50_count": 0,
+      "tracked_universe_count": 0,
+      "dropped_from_current_top50_count": 0,
+      "regular_ticker_count": 0,
+      "error_count": 0
+    },
+    {
+      "captured_at": "2026-09-29T06:56:50.575254+09:00",
+      "ranking_fresh_today": false,
+      "current_top50_count": 0,
+      "tracked_universe_count": 0,
+      "dropped_from_current_top50_count": 0,
+      "regular_ticker_count": 0,
+      "error_count": 0
+    },
+    {
+      "captured_at": "2026-09-29T10:40:33.915695+09:00",
+      "ranking_fresh_today": true,
+      "current_top50_count": 50,
+      "tracked_universe_count": 50,
+      "dropped_from_current_top50_count": 0,
+      "regular_ticker_count": 50,
+      "error_count": 0
+    },
+    {
+      "captured_at": "2026-09-29T16:32:13.245969+09:00",
+      "ranking_fresh_today": true,
+      "current_top50_count": 50,
+      "tracked_universe_count": 76,
+      "dropped_from_current_top50_count": 26,
+      "regular_ticker_count": 50,
+      "error_count": 0
+    },
+    {
+      "captured_at": "2026-09-29T23:19:28.128560+09:00",
+      "ranking_fresh_today": true,
+      "current_top50_count": 50,
+      "tracked_universe_count": 86,
+      "dropped_from_current_top50_count": 36,
+      "regular_ticker_count": 50,
+      "error_count": 1
+    },
+    {
+      "captured_at": "2026-09-30T04:30:46.180760+09:00",
+      "ranking_fresh_today": false,
+      "current_top50_count": 0,
+      "tracked_universe_count": 0,
+      "dropped_from_current_top50_count": 0,
+      "regular_ticker_count": 0,
+      "error_count": 0
+    },
+    {
+      "captured_at": "2026-09-30T08:10:20.654988+09:00",
+      "ranking_fresh_today": true,
+      "current_top50_count": 50,
+      "tracked_universe_count": 50,
+      "dropped_from_current_top50_count": 0,
+      "regular_ticker_count": 0,
+      "error_count": 0
+    },
+    {
+      "captured_at": "2026-09-30T11:08:40.771512+09:00",
+      "ranking_fresh_today": true,
+      "current_top50_count": 50,
+      "tracked_universe_count": 84,
+      "dropped_from_current_top50_count": 34,
+      "regular_ticker_count": 84,
+      "error_count": 0
+    },
+    {
+      "captured_at": "2026-09-30T17:33:18.498172+09:00",
+      "ranking_fresh_today": true,
+      "current_top50_count": 50,
+      "tracked_universe_count": 103,
+      "dropped_from_current_top50_count": 53,
+      "regular_ticker_count": 84,
+      "error_count": 0
+    },
+    {
+      "captured_at": "2026-10-01T00:16:00.146685+09:00",
+      "ranking_fresh_today": false,
+      "current_top50_count": 0,
+      "tracked_universe_count": 0,
+      "dropped_from_current_top50_count": 0,
+      "regular_ticker_count": 0,
+      "error_count": 0
+    },
+    {
+      "captured_at": "2026-10-01T05:07:57.385525+09:00",
+      "ranking_fresh_today": false,
+      "current_top50_count": 0,
+      "tracked_universe_count": 0,
+      "dropped_from_current_top50_count": 0,
+      "regular_ticker_count": 0,
+      "error_count": 0
+    },
+    {
+      "captured_at": "2026-10-01T08:47:29.949830+09:00",
+      "ranking_fresh_today": true,
+      "current_top50_count": 50,
+      "tracked_universe_count": 50,
+      "dropped_from_current_top50_count": 0,
+      "regular_ticker_count": 0,
+      "error_count": 0
+    },
+    {
+      "captured_at": "2026-10-01T11:31:12.905216+09:00",
+      "ranking_fresh_today": true,
+      "current_top50_count": 50,
+      "tracked_universe_count": 91,
+      "dropped_from_current_top50_count": 41,
+      "regular_ticker_count": 90,
+      "error_count": 1
+    }
+  ]
+}
