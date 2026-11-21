@@ -1,0 +1,1649 @@
+{
+  "schema_version": 1,
+  "captured_at": "2026-11-21T21:10:45.033729+09:00",
+  "provider": "toss",
+  "source_mode": "rest_10m_batch",
+  "ranking_fresh_today": false,
+  "minute_amount_method": "close_x_volume; current Top50 interval may be scaled to exact ranking tradingAmount delta",
+  "minute_amount_exact": false,
+  "ranking": [],
+  "metadata": {
+    "010060": {
+      "name": "OCI홀딩스",
+      "market": "KOSPI",
+      "listing_date": "1985-07-09",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "011070": {
+      "name": "LG이노텍",
+      "market": "KOSPI",
+      "listing_date": "2008-07-24",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "052690": {
+      "name": "한전기술",
+      "market": "KOSPI",
+      "listing_date": "2009-12-14",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "011790": {
+      "name": "SKC",
+      "market": "KOSPI",
+      "listing_date": "1997-07-18",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "402340": {
+      "name": "SK스퀘어",
+      "market": "KOSPI",
+      "listing_date": "2021-11-29",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "009150": {
+      "name": "삼성전기",
+      "market": "KOSPI",
+      "listing_date": "1979-02-27",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "328130": {
+      "name": "루닛",
+      "market": "KOSDAQ",
+      "listing_date": "2022-07-21",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "006400": {
+      "name": "삼성SDI",
+      "market": "KOSPI",
+      "listing_date": "1979-02-27",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "064550": {
+      "name": "바이오니아",
+      "market": "KOSDAQ",
+      "listing_date": "2005-12-29",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "089970": {
+      "name": "브이엠",
+      "market": "KOSDAQ",
+      "listing_date": "2018-08-23",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "488280": {
+      "name": "에스투더블유",
+      "market": "KOSDAQ",
+      "listing_date": "2025-09-19",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "004020": {
+      "name": "현대제철",
+      "market": "KOSPI",
+      "listing_date": "1987-05-23",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "005930": {
+      "name": "삼성전자",
+      "market": "KOSPI",
+      "listing_date": "1975-06-11",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "066570": {
+      "name": "LG전자",
+      "market": "KOSPI",
+      "listing_date": "2002-04-22",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "196170": {
+      "name": "알테오젠",
+      "market": "KOSDAQ",
+      "listing_date": "2014-12-12",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "000720": {
+      "name": "현대건설",
+      "market": "KOSPI",
+      "listing_date": "1984-12-22",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "394800": {
+      "name": "쓰리빌리언",
+      "market": "KOSDAQ",
+      "listing_date": "2024-11-14",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "323280": {
+      "name": "태성",
+      "market": "KOSDAQ",
+      "listing_date": "2019-06-24",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "476060": {
+      "name": "온코닉테라퓨틱스",
+      "market": "KOSDAQ",
+      "listing_date": "2024-12-19",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "222800": {
+      "name": "심텍",
+      "market": "KOSDAQ",
+      "listing_date": "2015-08-07",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "010120": {
+      "name": "LS ELECTRIC",
+      "market": "KOSPI",
+      "listing_date": "1994-07-11",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "005380": {
+      "name": "현대차",
+      "market": "KOSPI",
+      "listing_date": "1974-06-28",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "058470": {
+      "name": "리노공업",
+      "market": "KOSDAQ",
+      "listing_date": "2001-12-18",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "336260": {
+      "name": "두산퓨얼셀",
+      "market": "KOSPI",
+      "listing_date": "2019-10-18",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "062040": {
+      "name": "산일전기",
+      "market": "KOSPI",
+      "listing_date": "2024-07-29",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "009420": {
+      "name": "한올바이오파마",
+      "market": "KOSPI",
+      "listing_date": "1989-12-18",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "103590": {
+      "name": "일진전기",
+      "market": "KOSPI",
+      "listing_date": "2008-08-01",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "000990": {
+      "name": "DB하이텍",
+      "market": "KOSPI",
+      "listing_date": "1975-12-12",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "424870": {
+      "name": "이뮨온시아",
+      "market": "KOSDAQ",
+      "listing_date": "2025-05-19",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "005290": {
+      "name": "동진쎄미켐",
+      "market": "KOSDAQ",
+      "listing_date": "1999-12-21",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "468530": {
+      "name": "프로티나",
+      "market": "KOSDAQ",
+      "listing_date": "2025-07-29",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "042700": {
+      "name": "한미반도체",
+      "market": "KOSPI",
+      "listing_date": "2005-07-22",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "042660": {
+      "name": "한화오션",
+      "market": "KOSPI",
+      "listing_date": "2001-02-02",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "382900": {
+      "name": "범한퓨얼셀",
+      "market": "KOSDAQ",
+      "listing_date": "2022-06-17",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "000660": {
+      "name": "SK하이닉스",
+      "market": "KOSPI",
+      "listing_date": "1996-12-26",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "007810": {
+      "name": "코리아써키트",
+      "market": "KOSPI",
+      "listing_date": "1985-09-09",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "000500": {
+      "name": "가온전선",
+      "market": "KOSPI",
+      "listing_date": "1987-06-08",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "089010": {
+      "name": "켐트로닉스",
+      "market": "KOSDAQ",
+      "listing_date": "2007-01-17",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "338220": {
+      "name": "뷰노",
+      "market": "KOSDAQ",
+      "listing_date": "2021-02-26",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "141080": {
+      "name": "리가켐바이오",
+      "market": "KOSDAQ",
+      "listing_date": "2013-05-10",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "161580": {
+      "name": "필옵틱스",
+      "market": "KOSDAQ",
+      "listing_date": "2017-06-01",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "012330": {
+      "name": "현대모비스",
+      "market": "KOSPI",
+      "listing_date": "1989-09-05",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "108490": {
+      "name": "로보티즈",
+      "market": "KOSDAQ",
+      "listing_date": "2018-10-26",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "035420": {
+      "name": "NAVER",
+      "market": "KOSPI",
+      "listing_date": "2008-11-28",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "119850": {
+      "name": "지엔씨에너지",
+      "market": "KOSDAQ",
+      "listing_date": "2013-10-02",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "034020": {
+      "name": "두산에너빌리티",
+      "market": "KOSPI",
+      "listing_date": "2000-10-25",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "298380": {
+      "name": "에이비엘바이오",
+      "market": "KOSDAQ",
+      "listing_date": "2018-12-19",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "028300": {
+      "name": "HLB",
+      "market": "KOSDAQ",
+      "listing_date": "1996-07-27",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "000150": {
+      "name": "두산",
+      "market": "KOSPI",
+      "listing_date": "1973-06-29",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "007660": {
+      "name": "이수페타시스",
+      "market": "KOSPI",
+      "listing_date": "2003-10-07",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "494310": {
+      "name": "KODEX 반도체레버리지",
+      "market": "KOSPI",
+      "listing_date": "2024-10-22",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "ETF"
+    },
+    "233740": {
+      "name": "KODEX 코스닥150레버리지",
+      "market": "KOSPI",
+      "listing_date": "2015-12-17",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "ETF"
+    },
+    "009830": {
+      "name": "한화솔루션",
+      "market": "KOSPI",
+      "listing_date": "1974-06-19",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "488080": {
+      "name": "TIGER 반도체TOP10레버리지",
+      "market": "KOSPI",
+      "listing_date": "2024-07-23",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "ETF"
+    },
+    "005935": {
+      "name": "삼성전자우",
+      "market": "KOSPI",
+      "listing_date": "1989-09-25",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "105560": {
+      "name": "KB금융",
+      "market": "KOSPI",
+      "listing_date": "2008-10-10",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "0167A0": {
+      "name": "SOL AI반도체TOP2플러스",
+      "market": "KOSPI",
+      "listing_date": "2026-03-17",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "ETF"
+    },
+    "396500": {
+      "name": "TIGER 반도체TOP10",
+      "market": "KOSPI",
+      "listing_date": "2021-08-10",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "ETF"
+    },
+    "387690": {
+      "name": "레메디",
+      "market": "KOSDAQ",
+      "listing_date": "2026-07-13",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "036930": {
+      "name": "주성엔지니어링",
+      "market": "KOSDAQ",
+      "listing_date": "1999-12-24",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "252670": {
+      "name": "KODEX 200선물인버스2X",
+      "market": "KOSPI",
+      "listing_date": "2016-09-22",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "ETF"
+    },
+    "229200": {
+      "name": "KODEX 코스닥150",
+      "market": "KOSPI",
+      "listing_date": "2015-10-01",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "ETF"
+    },
+    "298040": {
+      "name": "효성중공업",
+      "market": "KOSPI",
+      "listing_date": "2018-07-13",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "122630": {
+      "name": "KODEX 레버리지",
+      "market": "KOSPI",
+      "listing_date": "2010-02-22",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "ETF"
+    },
+    "0010S0": {
+      "name": "와이즈플래닛컴퍼니",
+      "market": "KOSDAQ",
+      "listing_date": "2026-09-23",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "091160": {
+      "name": "KODEX 반도체",
+      "market": "KOSPI",
+      "listing_date": "2006-06-27",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "ETF"
+    },
+    "0193T0": {
+      "name": "KODEX SK하이닉스단일종목레버리지",
+      "market": "KOSPI",
+      "listing_date": "2026-05-27",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "ETF"
+    },
+    "0197X0": {
+      "name": "SOL SK하이닉스선물단일종목인버스2X",
+      "market": "KOSPI",
+      "listing_date": "2026-05-27",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "ETF"
+    },
+    "047040": {
+      "name": "대우건설",
+      "market": "KOSPI",
+      "listing_date": "2001-03-23",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "096770": {
+      "name": "SK이노베이션",
+      "market": "KOSPI",
+      "listing_date": "2007-07-25",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "472150": {
+      "name": "TIGER 배당커버드콜액티브",
+      "market": "KOSPI",
+      "listing_date": "2023-12-12",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "ETF"
+    },
+    "379810": {
+      "name": "KODEX 미국나스닥100",
+      "market": "KOSPI",
+      "listing_date": "2021-04-09",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "ETF"
+    },
+    "114800": {
+      "name": "KODEX 인버스",
+      "market": "KOSPI",
+      "listing_date": "2009-09-16",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "ETF"
+    },
+    "148020": {
+      "name": "RISE 200",
+      "market": "KOSPI",
+      "listing_date": "2011-10-20",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "ETF"
+    },
+    "232080": {
+      "name": "TIGER 코스닥150",
+      "market": "KOSPI",
+      "listing_date": "2015-11-12",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "ETF"
+    },
+    "360750": {
+      "name": "TIGER 미국S&P500",
+      "market": "KOSPI",
+      "listing_date": "2020-08-07",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "ETF"
+    },
+    "459580": {
+      "name": "KODEX CD금리액티브(합성)",
+      "market": "KOSPI",
+      "listing_date": "2023-06-08",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "ETF"
+    },
+    "133690": {
+      "name": "TIGER 미국나스닥100",
+      "market": "KOSPI",
+      "listing_date": "2010-10-18",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "ETF"
+    },
+    "069500": {
+      "name": "KODEX 200",
+      "market": "KOSPI",
+      "listing_date": "2002-10-14",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "ETF"
+    },
+    "395270": {
+      "name": "HANARO Fn K-반도체",
+      "market": "KOSPI",
+      "listing_date": "2021-07-30",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "ETF"
+    },
+    "102110": {
+      "name": "TIGER 200",
+      "market": "KOSPI",
+      "listing_date": "2008-04-03",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "ETF"
+    },
+    "379800": {
+      "name": "KODEX 미국S&P500",
+      "market": "KOSPI",
+      "listing_date": "2021-04-09",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "ETF"
+    },
+    "034730": {
+      "name": "SK",
+      "market": "KOSPI",
+      "listing_date": "2009-11-11",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "0195S0": {
+      "name": "TIGER SK하이닉스단일종목레버리지",
+      "market": "KOSPI",
+      "listing_date": "2026-05-27",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "ETF"
+    },
+    "028260": {
+      "name": "삼성물산",
+      "market": "KOSPI",
+      "listing_date": "2014-12-18",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "267260": {
+      "name": "HD현대일렉트릭",
+      "market": "KOSPI",
+      "listing_date": "2017-05-10",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "395160": {
+      "name": "KODEX AI반도체TOP2플러스",
+      "market": "KOSPI",
+      "listing_date": "2021-07-30",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "ETF"
+    },
+    "001820": {
+      "name": "삼화콘덴서",
+      "market": "KOSPI",
+      "listing_date": "1976-06-26",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "353200": {
+      "name": "대덕전자",
+      "market": "KOSPI",
+      "listing_date": "2020-05-21",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "329180": {
+      "name": "HD현대중공업",
+      "market": "KOSPI",
+      "listing_date": "2021-09-17",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "052260": {
+      "name": "현대바이오랜드",
+      "market": "KOSDAQ",
+      "listing_date": "2001-05-17",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "082740": {
+      "name": "한화엔진",
+      "market": "KOSPI",
+      "listing_date": "2011-01-04",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "068270": {
+      "name": "셀트리온",
+      "market": "KOSPI",
+      "listing_date": "2018-02-09",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "094360": {
+      "name": "칩스앤미디어",
+      "market": "KOSDAQ",
+      "listing_date": "2015-08-05",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "010170": {
+      "name": "대한광통신",
+      "market": "KOSDAQ",
+      "listing_date": "1994-11-07",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "294870": {
+      "name": "IPARK현대산업개발",
+      "market": "KOSPI",
+      "listing_date": "2018-06-12",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "240810": {
+      "name": "원익IPS",
+      "market": "KOSDAQ",
+      "listing_date": "2016-05-02",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "0010F0": {
+      "name": "보원케미칼",
+      "market": "KOSDAQ",
+      "listing_date": "2026-04-03",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "439580": {
+      "name": "블루엠텍",
+      "market": "KOSDAQ",
+      "listing_date": "2023-12-13",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "425040": {
+      "name": "티이엠씨",
+      "market": "KOSDAQ",
+      "listing_date": "2023-01-19",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "218410": {
+      "name": "RFHIC",
+      "market": "KOSDAQ",
+      "listing_date": "2015-06-30",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "014950": {
+      "name": "삼익제약",
+      "market": "KOSDAQ",
+      "listing_date": "2025-10-27",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "303810": {
+      "name": "동국생명과학",
+      "market": "KOSDAQ",
+      "listing_date": "2025-02-17",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "0039P0": {
+      "name": "매드업",
+      "market": "KOSDAQ",
+      "listing_date": "2026-07-01",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "069260": {
+      "name": "TKG휴켐스",
+      "market": "KOSPI",
+      "listing_date": "2002-10-07",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "393210": {
+      "name": "토마토시스템",
+      "market": "KOSDAQ",
+      "listing_date": "2023-04-27",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "386380": {
+      "name": "스카이랩스",
+      "market": "KOSDAQ",
+      "listing_date": "2026-09-04",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "403870": {
+      "name": "HPSP",
+      "market": "KOSDAQ",
+      "listing_date": "2022-07-15",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "010140": {
+      "name": "삼성중공업",
+      "market": "KOSPI",
+      "listing_date": "1994-01-28",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "452190": {
+      "name": "한빛레이저",
+      "market": "KOSDAQ",
+      "listing_date": "2024-01-04",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "0035S0": {
+      "name": "빅웨이브로보틱스",
+      "market": "KOSDAQ",
+      "listing_date": "2026-09-29",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "486510": {
+      "name": "글로벌테크놀로지",
+      "market": "KOSDAQ",
+      "listing_date": "2026-09-29",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "017670": {
+      "name": "SK텔레콤",
+      "market": "KOSPI",
+      "listing_date": "1989-11-07",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "373220": {
+      "name": "LG에너지솔루션",
+      "market": "KOSPI",
+      "listing_date": "2022-01-27",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "012450": {
+      "name": "한화에어로스페이스",
+      "market": "KOSPI",
+      "listing_date": "1987-05-27",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "305720": {
+      "name": "KODEX 2차전지산업",
+      "market": "KOSPI",
+      "listing_date": "2018-09-12",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "ETF"
+    },
+    "043260": {
+      "name": "성호전자",
+      "market": "KOSDAQ",
+      "listing_date": "2001-11-29",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "490470": {
+      "name": "세미파이브",
+      "market": "KOSDAQ",
+      "listing_date": "2025-12-29",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "089030": {
+      "name": "테크윙",
+      "market": "KOSDAQ",
+      "listing_date": "2011-11-10",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "036540": {
+      "name": "SFA반도체",
+      "market": "KOSDAQ",
+      "listing_date": "2001-05-02",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "267320": {
+      "name": "나인테크",
+      "market": "KOSDAQ",
+      "listing_date": "2017-06-22",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "0161M0": {
+      "name": "네오사피엔스",
+      "market": "KOSDAQ",
+      "listing_date": "2026-09-21",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "417310": {
+      "name": "코람코더원리츠",
+      "market": "KOSPI",
+      "listing_date": "2022-03-28",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "REIT"
+    },
+    "067310": {
+      "name": "하나마이크론",
+      "market": "KOSDAQ",
+      "listing_date": "2005-10-11",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "047920": {
+      "name": "HLB제약",
+      "market": "KOSDAQ",
+      "listing_date": "2015-12-21",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "356680": {
+      "name": "엑스게이트",
+      "market": "KOSDAQ",
+      "listing_date": "2023-03-16",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "128940": {
+      "name": "한미약품",
+      "market": "KOSPI",
+      "listing_date": "2010-07-30",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "457190": {
+      "name": "이수스페셜티케미컬",
+      "market": "KOSPI",
+      "listing_date": "2023-05-31",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "005490": {
+      "name": "POSCO홀딩스",
+      "market": "KOSPI",
+      "listing_date": "1988-06-10",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "001440": {
+      "name": "대한전선",
+      "market": "KOSPI",
+      "listing_date": "1968-12-27",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "439960": {
+      "name": "코스모로보틱스",
+      "market": "KOSDAQ",
+      "listing_date": "2026-05-11",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "002710": {
+      "name": "TCC스틸",
+      "market": "KOSPI",
+      "listing_date": "1984-12-21",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "271940": {
+      "name": "일진하이솔루스",
+      "market": "KOSPI",
+      "listing_date": "2021-09-01",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "095610": {
+      "name": "테스",
+      "market": "KOSDAQ",
+      "listing_date": "2008-05-20",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "229640": {
+      "name": "LS에코에너지",
+      "market": "KOSPI",
+      "listing_date": "2016-09-22",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "023160": {
+      "name": "태광",
+      "market": "KOSDAQ",
+      "listing_date": "1994-09-07",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "039030": {
+      "name": "이오테크닉스",
+      "market": "KOSDAQ",
+      "listing_date": "2000-08-24",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "047050": {
+      "name": "포스코인터내셔널",
+      "market": "KOSPI",
+      "listing_date": "2001-03-23",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "126340": {
+      "name": "비나텍",
+      "market": "KOSDAQ",
+      "listing_date": "2020-09-23",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "014620": {
+      "name": "성광벤드",
+      "market": "KOSDAQ",
+      "listing_date": "2001-01-11",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "100840": {
+      "name": "SNT에너지",
+      "market": "KOSPI",
+      "listing_date": "2008-02-22",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "098070": {
+      "name": "한텍",
+      "market": "KOSDAQ",
+      "listing_date": "2025-03-20",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "145170": {
+      "name": "노브랜드",
+      "market": "KOSDAQ",
+      "listing_date": "2024-05-23",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "072950": {
+      "name": "빛샘전자",
+      "market": "KOSDAQ",
+      "listing_date": "2012-03-21",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "086790": {
+      "name": "하나금융지주",
+      "market": "KOSPI",
+      "listing_date": "2005-12-12",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "488770": {
+      "name": "KODEX 머니마켓액티브",
+      "market": "KOSPI",
+      "listing_date": "2024-08-06",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "ETF"
+    },
+    "266690": {
+      "name": "덕산넵코어스",
+      "market": "KOSDAQ",
+      "listing_date": "2026-09-30",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "092790": {
+      "name": "넥스틸",
+      "market": "KOSPI",
+      "listing_date": "2023-08-21",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "437730": {
+      "name": "삼현",
+      "market": "KOSDAQ",
+      "listing_date": "2024-03-21",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "003530": {
+      "name": "한화투자증권",
+      "market": "KOSPI",
+      "listing_date": "1986-11-25",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "178320": {
+      "name": "서진시스템",
+      "market": "KOSDAQ",
+      "listing_date": "2017-03-27",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "012210": {
+      "name": "삼미금속",
+      "market": "KOSDAQ",
+      "listing_date": "2025-12-29",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "033160": {
+      "name": "엠케이전자",
+      "market": "KOSDAQ",
+      "listing_date": "1997-11-10",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "080220": {
+      "name": "제주반도체",
+      "market": "KOSDAQ",
+      "listing_date": "2005-02-01",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "009410": {
+      "name": "태영건설",
+      "market": "KOSPI",
+      "listing_date": "1989-11-13",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "005010": {
+      "name": "휴스틸",
+      "market": "KOSPI",
+      "listing_date": "1973-06-29",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "000270": {
+      "name": "기아",
+      "market": "KOSPI",
+      "listing_date": "1973-07-21",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "071090": {
+      "name": "하이스틸",
+      "market": "KOSPI",
+      "listing_date": "2003-02-17",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "316140": {
+      "name": "우리금융지주",
+      "market": "KOSPI",
+      "listing_date": "2019-02-13",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "009900": {
+      "name": "명신산업",
+      "market": "KOSPI",
+      "listing_date": "2020-12-07",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "036570": {
+      "name": "NC",
+      "market": "KOSPI",
+      "listing_date": "2003-05-22",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "460860": {
+      "name": "동국제강",
+      "market": "KOSPI",
+      "listing_date": "2023-06-16",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "002240": {
+      "name": "고려제강",
+      "market": "KOSPI",
+      "listing_date": "1976-05-25",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "114190": {
+      "name": "강원에너지",
+      "market": "KOSDAQ",
+      "listing_date": "2009-11-20",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "307950": {
+      "name": "현대오토에버",
+      "market": "KOSPI",
+      "listing_date": "2019-03-28",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "084010": {
+      "name": "대한제강",
+      "market": "KOSPI",
+      "listing_date": "2005-10-31",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "104700": {
+      "name": "한국철강",
+      "market": "KOSPI",
+      "listing_date": "2008-09-29",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "044490": {
+      "name": "태웅",
+      "market": "KOSDAQ",
+      "listing_date": "2001-11-08",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "083650": {
+      "name": "비에이치아이",
+      "market": "KOSDAQ",
+      "listing_date": "2005-12-02",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "306200": {
+      "name": "세아제강",
+      "market": "KOSPI",
+      "listing_date": "2018-10-05",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "015760": {
+      "name": "한국전력",
+      "market": "KOSPI",
+      "listing_date": "1989-08-10",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "101730": {
+      "name": "위메이드맥스",
+      "market": "KOSDAQ",
+      "listing_date": "2009-06-03",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "468670": {
+      "name": "브릴스",
+      "market": "KOSDAQ",
+      "listing_date": "2026-10-01",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "098460": {
+      "name": "고영",
+      "market": "KOSDAQ",
+      "listing_date": "2008-06-03",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "396300": {
+      "name": "HT로보틱스",
+      "market": "KOSDAQ",
+      "listing_date": "2022-03-24",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "000250": {
+      "name": "삼천당제약",
+      "market": "KOSDAQ",
+      "listing_date": "2000-10-04",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    },
+    "455850": {
+      "name": "SOL AI반도체소부장",
+      "market": "KOSPI",
+      "listing_date": "2023-04-25",
+      "nxt_supported": false,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "ETF"
+    },
+    "272210": {
+      "name": "한화시스템",
+      "market": "KOSPI",
+      "listing_date": "2019-11-13",
+      "nxt_supported": true,
+      "krx_trading_suspended": false,
+      "nxt_trading_suspended": false,
+      "security_type": "STOCK"
+    }
+  },
+  "market_overview": {},
+  "tracked_universe": [],
+  "current_top50_count": 0,
+  "tracked_universe_count": 0,
+  "dropped_from_current_top50_count": 0,
+  "minute_by_ticker": {},
+  "premarket_by_ticker": {},
+  "postmarket_by_ticker": {},
+  "fetch_errors": {},
+  "collector": {
+    "mode": "rest_10m_batch",
+    "last_universe_refresh": "2026-11-21T21:10:45.033729+09:00",
+    "last_message_at": null,
+    "subscriptions": [],
+    "rejected": []
+  },
+  "session": {
+    "pre_market": {
+      "start": "08:00",
+      "end": "08:50"
+    },
+    "krx_regular": {
+      "start": "09:00",
+      "end": "15:30"
+    },
+    "nxt_after": {
+      "start": "15:40",
+      "end": "20:00"
+    }
+  },
+  "limitations": [
+    "Toss REST 1분봉은 OHLCV를 제공하므로 1분 거래대금은 close×volume 근사치",
+    "현재 Top50이 직전 관측에도 Top50이었다면 Toss ranking tradingAmount 차분으로 해당 관측구간 합계를 보정",
+    "Top50 밖으로 밀린 종목도 당일 추적 Universe에 남아 1분봉 조회를 계속함"
+  ]
+}
